@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
 
         # ── Menu Sobre ─────────────────────────────────────────────────────
         about_menu = menu_bar.addMenu("ℹ️  Sobre")
-        act_info   = QAction("📋  Info", self)
+        act_info   = QAction("📋  Sobre Meshtastic Monitor", self)
         act_info.triggered.connect(self._show_about_dialog)
         about_menu.addAction(act_info)
 
@@ -456,6 +456,12 @@ class MainWindow(QMainWindow):
         self.worker.local_node_ready.connect(self._on_local_node_ready)
         self.worker.interface_ready.connect(self.config_tab.set_interface)
         self.worker.traceroute_result.connect(self._on_traceroute_result)
+        self.worker.neighbor_info_received.connect(
+            lambda nid, nbs: self.map_widget.add_neighbor_info(nid, nbs)
+        )
+        self.worker.neighbor_info_received.connect(
+            lambda nid, nbs: self.metrics_tab.ingest_neighbor_info(nid, nbs)
+        )
         self.source_model.node_inserted.connect(self.messages_tab._refresh_dm_list)
         self.worker.start()
 
@@ -615,6 +621,11 @@ class MainWindow(QMainWindow):
         """Alimenta a MetricsTab com dados de cada pacote recebido."""
         if packet is not None:
             self.metrics_tab.ingest_packet(packet, node_data)
+        # Regista posição GPS para cálculo de alcance de links
+        lat = node_data.get('latitude')
+        lon = node_data.get('longitude')
+        if lat is not None and lon is not None:
+            self.metrics_tab.ingest_node_position(node_id_string, lat, lon)
 
     def _on_worker_error(self, message: str):
         QMessageBox.critical(self, "Erro no Meshtastic", message)

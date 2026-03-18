@@ -253,7 +253,7 @@ class NodeTableModel(QAbstractTableModel):
             if is_local:
                 return QColor("#1a1000")   # fundo âmbar muito subtil para o nó local
             if _FAVORITES.is_favorite(node_id):
-                return QColor("#1a1a0a")  # fundo dourado muito subtil para favoritos
+                return QColor("#2d2200")  # fundo âmbar para favoritos — mais visível
             if node.get("_selected_highlight"):
                 return QColor("#1a3a1a")
 

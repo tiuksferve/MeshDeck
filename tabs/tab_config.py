@@ -410,6 +410,7 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Intervalo broadcast NodeInfo (s)", "node_info_broadcast_secs","spin_int",(0,604800)),
         ("Fuso horário (TZ string)","tzdef",                   "text",   None),
         ("Disable triple-click",    "disable_triple_click",    "bool",   None),
+        ("Quick chat button",       "quick_chat_button",       "bool",   None),
     ],
     "localConfig.position": [
         ("Modo GPS",                "gps_mode",                "combo",
@@ -468,6 +469,7 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Cabeçalho negrito",       "heading_bold",            "bool",   None),
         ("Override largura fone",   "compass_north_top",       "bool",   None),
         ("Brilho do backlight",     "backlight_secs",          "spin_int",(0,3600)),
+        ("Brilho TFT (0-255)",      "tft_brightness",          "spin_int",(0,255)),
     ],
     "localConfig.lora": [
         ("Usar preset",             "use_preset",              "bool",   None),
@@ -491,6 +493,7 @@ MESHTASTIC_CONFIG_DEFS = {
         ("RX boosted gain (SX126x)","sx126x_rx_boosted_gain",  "bool",   None),
         ("PA fan GPIO",             "pa_fan_disabled",         "bool",   None),
         ("OK para MQTT",            "config_ok_to_mqtt",       "bool",   None),
+        ("Número do canal (0-7)",   "channel_num",             "spin_int",(0,7)),
     ],
     "localConfig.bluetooth": [
         ("Habilitado",              "enabled",                 "bool",   None),
@@ -511,6 +514,7 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Map reporting",           "map_reporting_enabled",   "bool",   None),
         ("Precisão do mapa",        "map_report_settings.position_precision","spin_int",(0,32)),
         ("Intervalo map report (s)","map_report_settings.publish_interval_secs","spin_int",(0,86400)),
+        ("Ok para MQTT (canal)",    "ok_to_mqtt",              "bool",   None),
     ],
     "moduleConfig.serial": [
         ("Habilitado",              "enabled",                 "bool",   None),

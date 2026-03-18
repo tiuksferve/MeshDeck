@@ -44,6 +44,9 @@ class MetricsTab(QWidget):
         ("🔋 Nós & Bateria",    "nodes"),
         ("✅ Fiabilidade",      "reliability"),
         ("⏱ Latência",         "latency"),
+        ("🔗 Vizinhança",       "neighbors"),
+        ("📏 Alcance & Links",  "range_links"),
+        ("⏰ Intervalos",       "intervals"),
     ]
 
     # Limites do canal (documentação oficial Meshtastic)
@@ -116,6 +119,16 @@ class MetricsTab(QWidget):
 
         # Série temporal de nós activos (janela 60 min, ponto a cada 5s)
         self._nodes_active_ts: list = []  # [(ts, count)]
+
+        # Vizinhança (NeighborInfo) — {nid: [(nb_id, snr), ...]}
+        self._nb_links:   dict = {}   # nid → lista de (neighbor_id, snr)
+
+        # Intervalo entre pacotes por nó — {nid: [last_ts, [interval_secs, ...]]}
+        self._pkt_intervals: dict = {}  # nid → {'last': ts, 'vals': [s,...]}
+
+        # Alcance por link (calculado de POSITION_APP + GPS coords)
+        # {canonical_pair: {'dist_km': float, 'snr': float, 'count': int}}
+        self._link_range: dict = {}   # (nid_a, nid_b) → stats
 
     # ── UI ────────────────────────────────────────────────────────────────
     def _build_ui(self):
@@ -218,6 +231,9 @@ class MetricsTab(QWidget):
             'nodes':       self._data_nodes,
             'reliability': self._data_reliability,
             'latency':     self._data_latency,
+            'neighbors':   self._data_neighbors,
+            'range_links': self._data_range_links,
+            'intervals':   self._data_intervals,
         }.get(key)
         if data_fn is None:
             return
@@ -312,6 +328,17 @@ class MetricsTab(QWidget):
             if len(self._nodes_active_ts) > 120:
                 self._nodes_active_ts = self._nodes_active_ts[-120:]
 
+        # Intervalo entre pacotes por nó
+        if nid:
+            entry = self._pkt_intervals.setdefault(nid, {'last': None, 'vals': []})
+            if entry['last'] is not None:
+                interval = ts - entry['last']
+                if 1 < interval < 3600:   # ignora gaps > 1h (nó estava offline)
+                    entry['vals'].append(round(interval, 1))
+                    if len(entry['vals']) > 100:
+                        entry['vals'] = entry['vals'][-80:]
+            entry['last'] = ts
+
         # ── Fiabilidade da rede — processada em ingest_raw_packet ─────────
 
     def ingest_message_status(self, req_id: int, status: str):
@@ -354,6 +381,12 @@ class MetricsTab(QWidget):
             return   # página ainda a carregar — o timer vai actualizar quando pronta
         # Chama directamente sem singleShot para minimizar latência
         self._refresh_current()
+
+
+    def ingest_neighbor_info(self, from_id: str, neighbors: list):
+        """Regista dados de NeighborInfo para a tabela de vizinhança nas métricas."""
+        if from_id and neighbors:
+            self._nb_links[from_id] = neighbors
 
     def ingest_raw_packet(self, packet: dict):
         """Processa pacote raw para métricas de fiabilidade da rede (todos os nós)."""
@@ -409,6 +442,9 @@ class MetricsTab(QWidget):
             'nodes':       self._html_nodes,
             'reliability': self._html_reliability,
             'latency':     self._html_latency,
+            'neighbors':   self._html_neighbors,
+            'range_links': self._html_range_links,
+            'intervals':   self._html_intervals,
         }.get(key, self._html_overview)
         self._chart_view.setHtml(html_fn())
         # O timer é retomado em _mark_page_ready via loadFinished + 500ms
@@ -920,6 +956,9 @@ window._metricsUpdateData = function(d) {{
         n_ts = len(ts_vals) or 1
         body = f"""
 <div class="subtitle">Canal LoRa · Airtime TX · Hourly Duty Cycle · {self._now_str()}</div>
+<div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
+  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
+</div>
 <div class="grid-3">{ch_kpi}{duty_kpi}{air_kpi}</div>
 <div class="card" style="margin-top:16px">
   <h3>Channel Utilization ao Longo do Tempo</h3>
@@ -1011,6 +1050,9 @@ window._metricsUpdateData = function(d) {{
 
         body = f"""
 <div class="subtitle" id="snr-n">Distribuição de SNR e hops · {len(self._snr_values)} amostras</div>
+<div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
+  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
+</div>
 <div class="card" id="assessment-card" style="margin-bottom:16px;border-left:4px solid {
 '#39d353' if snr_avg and snr_avg >= 5 else '#f0883e' if snr_avg and snr_avg >= 0 else '#f85149'
 }">
@@ -1392,6 +1434,9 @@ window._hwChart = new Chart(document.getElementById('hwChart'), {{
 
         body = f"""
 <div class="subtitle">Saúde dos nós, baterias e hardware · {self._now_str()}</div>
+<div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
+  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
+</div>
 <div class="grid-3">
   <div class="card"><h3>Nós Activos (2h)</h3>
     <div class="kpi green" id="nodes-active">{n_active}</div></div>
@@ -1521,6 +1566,9 @@ window._metricsUpdateData = function(d) {{
 
         body = f"""
 <div class="subtitle">RTT (Round-Trip Time) — tempo entre envio e ACK · {d['n']} amostras · {d['now']}</div>
+<div class="card" style="margin-bottom:16px;border-left:4px solid #f0883e;padding:8px 14px">
+  <span style="color:#f0883e;font-size:12px;font-weight:bold">🏠 Métrica do Nó Local</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo referem-se exclusivamente ao nó local (mensagens enviadas e respectivos ACK/NAK). Os outros nós da rede não contribuem para estes valores.</span>
+</div>
 <div class="grid-3">
   {kpi(d['avg'], 's', 'RTT Médio', avg_color)}
   {kpi(d['med'], 's', 'RTT Mediana', '')}
@@ -1801,3 +1849,236 @@ window._metricsUpdateData = function(d) {{
 }};
 </script>"""
         return self._base_html("✅ Fiabilidade", body)
+
+    # ── 8. Vizinhança ─────────────────────────────────────────────────────
+    def _data_neighbors(self) -> dict:
+        rows = []
+        seen = set()
+        for from_id, neighbors in self._nb_links.items():
+            for nb_id, snr in neighbors:
+                key = tuple(sorted([from_id.lower(), nb_id.lower()]))
+                if key in seen:
+                    continue
+                seen.add(key)
+                snr_str = f"{snr:+.1f}" if snr else "—"
+                rows.append([self._name(from_id), self._name(nb_id), snr_str, float(snr) if snr else None])
+        rows.sort(key=lambda r: r[2], reverse=True)
+        return {"rows": rows, "n_links": len(rows), "n_nodes": len(self._nb_links), "now": self._now_str()}
+
+    def _html_neighbors(self) -> str:
+        if not self._nb_links:
+            body = ('<div class="no-data">⏳ Sem dados de NeighborInfo ainda.<br><br>'
+                    'Os nós da rede enviam automaticamente pacotes <b>NEIGHBORINFO_APP</b> '
+                    'com a lista de vizinhos directos e respectivo SNR.<br>'
+                    'Estes dados aparecem normalmente após 1–2 minutos de operação.</div>')
+            return self._base_html("🔗 Vizinhança", body)
+
+        d = self._data_neighbors()
+        rows_html = ""
+        for from_n, nb_n, snr_str, snr_val in d["rows"]:
+            if snr_val is not None:
+                color = "green" if snr_val >= 5 else ("orange" if snr_val >= 0 else "red")
+            else:
+                color = "gray"
+            rows_html += (
+                f"<tr><td>{from_n}</td><td style='color:#8b949e'>↔</td>"
+                f"<td>{nb_n}</td>"
+                f"<td><span class='tag tag-{color}'>{snr_str} dB</span></td></tr>"
+            )
+        if not rows_html:
+            rows_html = "<tr><td colspan='4' class='no-data'>Sem pares</td></tr>"
+
+        body = f"""
+<div class="subtitle">Nós que se vêem mutuamente via LoRa · {d['n_nodes']} nós reportaram · {d['n_links']} pares únicos · {d['now']}</div>
+<div class="card" style="margin-bottom:16px;border-left:4px solid #8b949e;padding:8px 14px">
+  <span style="color:#8b949e;font-size:11px">
+    ℹ️ Estes dados provêm de pacotes <b>NEIGHBORINFO_APP</b> enviados pelos nós da rede —
+    representam ligações directas observadas por cada nó (não pelo nó local).
+    As linhas roxas pontilhadas no mapa mostram os mesmos pares.
+  </span>
+</div>
+<div class="card">
+  <h3>Pares de Vizinhos Directos</h3>
+  <table>
+    <tr><th>Nó A</th><th></th><th>Nó B</th><th>SNR</th></tr>
+    {rows_html}
+  </table>
+</div>
+<script>
+window._metricsUpdateData = function(d) {{
+  // Tabela de vizinhos não tem update incremental — actualiza no próximo render
+}};
+</script>"""
+        return self._base_html("🔗 Vizinhança", body)
+
+    # ── 9. Alcance & Links ────────────────────────────────────────────────
+    def _data_range_links(self) -> dict:
+        """Calcula distância entre pares de nós vizinhos com GPS."""
+        import math as _m
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 6371.0
+            dlat = _m.radians(lat2 - lat1)
+            dlon = _m.radians(lon2 - lon1)
+            a = (_m.sin(dlat/2)**2 +
+                 _m.cos(_m.radians(lat1)) * _m.cos(_m.radians(lat2)) * _m.sin(dlon/2)**2)
+            return R * 2 * _m.atan2(_m.sqrt(a), _m.sqrt(1-a))
+
+        # Usa posições dos nós nos pacotes recebidos
+        node_pos = {}  # nid → (lat, lon)
+        for p in self._packets:
+            nid = p[1]
+            if nid and nid not in node_pos:
+                # Tenta encontrar posição nos dados acumulados
+                # (serão injectados via ingest_packet se o node_data tiver coords)
+                pass
+
+        # Usa _nb_links para pares + posições do node_short (limitado)
+        # Calcula para cada par de vizinhos se ambos tiverem lat/lon no _node_pos
+        rows = []
+        max_range = None
+        max_pair  = ("—", "—")
+
+        # Nota: posições vêm de self._node_pos injectado em ingest_packet
+        node_pos = getattr(self, '_node_pos', {})
+        seen = set()
+        for from_id, neighbors in self._nb_links.items():
+            pos_a = node_pos.get(from_id)
+            if not pos_a:
+                continue
+            for nb_id, snr in neighbors:
+                key = tuple(sorted([from_id.lower(), nb_id.lower()]))
+                if key in seen:
+                    continue
+                seen.add(key)
+                pos_b = node_pos.get(nb_id)
+                if not pos_b:
+                    continue
+                dist = round(haversine(pos_a[0], pos_a[1], pos_b[0], pos_b[1]), 3)
+                snr_str = f"{snr:+.1f}" if snr else "—"
+                rows.append([self._name(from_id), self._name(nb_id), dist, snr_str, snr])
+                if max_range is None or dist > max_range:
+                    max_range = dist
+                    max_pair = (self._name(from_id), self._name(nb_id))
+
+        rows.sort(key=lambda r: r[2], reverse=True)
+        return {"rows": rows, "max_range": max_range, "max_pair": max_pair,
+                "n_with_gps": len(node_pos), "now": self._now_str()}
+
+    def ingest_node_position(self, nid: str, lat: float, lon: float):
+        """Regista posição GPS de um nó para cálculo de alcance."""
+        if nid and lat is not None and lon is not None:
+            if not hasattr(self, '_node_pos'):
+                self._node_pos = {}
+            self._node_pos[nid] = (lat, lon)
+
+    def _html_range_links(self) -> str:
+        d = self._data_range_links()
+        if not d["rows"]:
+            body = ('<div class="no-data">⏳ Sem dados de alcance ainda.<br><br>'
+                    'Requer que os nós reportem posição GPS (<b>POSITION_APP</b>) '
+                    'e que os dados de vizinhança (<b>NEIGHBORINFO_APP</b>) estejam disponíveis.<br>'
+                    f'Nós com GPS conhecidos: {d["n_with_gps"]}</div>')
+            return self._base_html("📏 Alcance & Links", body)
+
+        def kpi(val, unit, label, color=""):
+            v = f"{val}{unit}" if val is not None else "—"
+            return f'<div class="card"><h3>{label}</h3><div class="kpi {color}">{v}</div></div>'
+
+        rows_html = ""
+        for from_n, nb_n, dist, snr_str, snr_val in d["rows"]:
+            dist_color = "green" if dist < 2 else ("orange" if dist < 10 else "blue")
+            if snr_val is not None:
+                snr_color = "green" if snr_val >= 5 else ("orange" if snr_val >= 0 else "red")
+            else:
+                snr_color = "gray"
+            rows_html += (
+                f"<tr><td>{from_n}</td><td>{nb_n}</td>"
+                f"<td><span class='tag tag-{dist_color}'>{dist} km</span></td>"
+                f"<td><span class='tag tag-{snr_color}'>{snr_str} dB</span></td></tr>"
+            )
+
+        body = f"""
+<div class="subtitle">Alcance dos links LoRa directos (requer GPS + NeighborInfo) · {d['now']}</div>
+<div class="card" style="margin-bottom:16px;border-left:4px solid #8b949e;padding:8px 14px">
+  <span style="color:#8b949e;font-size:11px">
+    ℹ️ Métrica da rede — calcula a distância real entre nós vizinhos reportados via
+    <b>NEIGHBORINFO_APP</b>, usando as coordenadas GPS de cada nó (fórmula de Haversine).
+    Não envolve o nó local a não ser que ele também esteja nos pares.
+  </span>
+</div>
+<div class="grid-3" style="margin-bottom:16px">
+  {kpi(f"{d['max_range']:.2f}" if d['max_range'] else None, " km", "Maior Alcance", "blue")}
+  <div class="card"><h3>Par de maior alcance</h3>
+    <div style="font-size:14px;font-weight:bold;color:#58a6ff">
+      {d['max_pair'][0]} ↔ {d['max_pair'][1]}
+    </div></div>
+  {kpi(d['n_with_gps'], " nós", "Nós com GPS", "")}
+</div>
+<div class="card">
+  <h3>Links por Alcance</h3>
+  <table>
+    <tr><th>Nó A</th><th>Nó B</th><th>Distância</th><th>SNR</th></tr>
+    {rows_html}
+  </table>
+</div>
+<script>window._metricsUpdateData=function(d){{}};</script>"""
+        return self._base_html("📏 Alcance & Links", body)
+
+    # ── 10. Intervalos entre pacotes ─────────────────────────────────────
+    def _data_intervals(self) -> dict:
+        rows = []
+        for nid, entry in self._pkt_intervals.items():
+            vals = entry['vals']
+            if len(vals) < 2:
+                continue
+            avg = round(sum(vals) / len(vals), 1)
+            mn  = round(min(vals), 1)
+            mx  = round(max(vals), 1)
+            rows.append([self._name(nid), avg, mn, mx, len(vals)])
+        rows.sort(key=lambda r: r[1])
+        return {"rows": rows, "now": self._now_str()}
+
+    def _html_intervals(self) -> str:
+        d = self._data_intervals()
+        if not d["rows"]:
+            body = ('<div class="no-data">⏳ Sem dados de intervalos ainda.<br><br>'
+                    'Requer pelo menos 2 pacotes por nó para calcular o intervalo médio.</div>')
+            return self._base_html("⏰ Intervalos", body)
+
+        rows_html = ""
+        for nid_n, avg, mn, mx, count in d["rows"]:
+            # Cores: verde <60s (activo), laranja 60-300s, vermelho >300s
+            color = "green" if avg < 60 else ("orange" if avg < 300 else "red")
+            freq_label = "Alta frequência" if avg < 30 else ("Normal" if avg < 180 else "Baixa frequência")
+            rows_html += (
+                f"<tr><td>{nid_n}</td>"
+                f"<td><span class='tag tag-{color}'>{avg}s</span></td>"
+                f"<td style='color:#8b949e'>{mn}s</td>"
+                f"<td style='color:#8b949e'>{mx}s</td>"
+                f"<td style='color:#8b949e'>{count}</td>"
+                f"<td style='font-size:11px;color:#8b949e'>{freq_label}</td></tr>"
+            )
+
+        body = f"""
+<div class="subtitle">Intervalo real entre pacotes recebidos de cada nó · {d['now']}</div>
+<div class="card" style="margin-bottom:16px;border-left:4px solid #8b949e;padding:8px 14px">
+  <span style="color:#8b949e;font-size:11px">
+    ℹ️ Métrica da rede — mede o tempo real entre pacotes consecutivos de cada nó observado.
+    Um intervalo muito baixo pode indicar um nó mal configurado a congestionar o canal.
+    Um intervalo muito alto pode indicar um nó com problemas de cobertura ou bateria fraca.
+    Não envolve o nó local a não ser que ele também envie pacotes observáveis.
+  </span>
+</div>
+<div class="card">
+  <h3>Intervalo Médio entre Pacotes por Nó</h3>
+  <table>
+    <tr><th>Nó</th><th>Média</th><th>Mín.</th><th>Máx.</th><th>Amostras</th><th>Frequência</th></tr>
+    {rows_html}
+  </table>
+  <div style="color:#8b949e;font-size:10px;margin-top:8px;padding-top:8px;border-top:1px solid #21262d">
+    ℹ️ Intervalos &lt;30s = alta frequência · 30–180s = normal · &gt;180s = baixa frequência
+  </div>
+</div>
+<script>window._metricsUpdateData=function(d){{}};</script>"""
+        return self._base_html("⏰ Intervalos", body)
+

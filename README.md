@@ -1,74 +1,124 @@
-# Meshtastic Monitor — uConsole CM4
+# 📡 Meshtastic Monitor — uConsole CM4
 
-Interface gráfica avançada para monitorização e comunicação em redes Meshtastic,
-optimizada para o ClockworkPi uConsole CM4. Conecta via TCP ao daemon `meshtasticd`.
+Interface gráfica avançada para monitorização, comunicação e análise de redes
+[Meshtastic](https://meshtastic.org) via TCP ao daemon `meshtasticd`.  
+Desenvolvida e optimizada para o **ClockworkPi uConsole CM4**, mas funciona em
+qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
 
-## Estrutura do projecto
+---
+
+## 🚀 Capacidades
+
+### 📋 Lista de Nós
+- Lista em tempo real de todos os nós visíveis na rede com actualização automática
+- Colunas: ID, Nome, Último Contacto, SNR, Hops, Via (RF/MQTT), GPS, Bateria, Hardware, Último Tipo de Pacote
+- **Nó local fixado no topo** com fundo âmbar e prefixo 🏠
+- **Favoritos** com fundo amarelo destacado e fixados abaixo do nó local (⭐)
+- Pesquisa em tempo real por ID, nome longo ou nome curto
+- Duplo clique para ver detalhes completos do último pacote recebido
+- Ação rápida de DM (📩) e traceroute (📡) directamente da lista
+- Indicador visual de encriptação PKI (🔒) vs PSK (📩)
+- Contador de nós totais e nós online (últimas 2 horas)
+
+### 🗺 Mapa Interactivo (Leaflet)
+- 4 temas: 🌑 Escuro · ☀ Claro · 🗺 OpenStreetMap · 🛰 Satélite
+- **Marcadores coloridos** por estado (seleccionado, activo, RF, MQTT, inactivo)
+- **Traceroutes** com linhas verdes (ida/volta) e tooltips de SNR por segmento
+- **Vizinhança NeighborInfo** — linhas roxas pontilhadas entre pares de nós vizinhos
+- **Legenda integrada** no canto inferior direito do mapa
+- Popup por nó com informações completas e botão de Traceroute
+- Painel esquerdo com lista de traceroutes com checkboxes
+
+### 💬 Mensagens
+- Múltiplos canais (Primary + Secondary, índices 0-7)
+- DMs com suporte a PKI (E2E) e PSK (fallback automático)
+- Indicador de leitura por canal e por DM
+- ACK/NAK por mensagem enviada
+
+### ⚙️ Configuração Completa do Nó
+- Todas as secções de localConfig e moduleConfig do firmware Meshtastic
+- Canais: PSK, nome, papel, uplink/downlink MQTT
+- Mensagens pré-definidas com área de texto (separadas por |)
+- Transacção atómica — firmware reinicia só uma vez
+
+### 📊 Métricas em Tempo Real (10 secções)
+
+| Secção | Tipo | O que mede |
+|--------|------|-----------|
+| 📊 Visão Geral | Misto | Resumo: pacotes, nós, SNR, taxa entrega |
+| 📡 Canal & Airtime | 🌐 Rede | Channel utilization, airtime TX, duty cycle EU |
+| 📶 Qualidade RF | 🌐 Rede | Histograma SNR, hops, avaliação automática |
+| 📦 Tráfego | 🌐 Rede | Pacotes por tipo, pacotes/min, RF vs MQTT |
+| 🔋 Nós & Bateria | 🌐 Rede | Bateria, tensão, uptime, hardware model, GPS |
+| ✅ Fiabilidade | 🏠 Local | ACK/NAK, taxa entrega, duplicados, colisões |
+| ⏱ Latência (RTT) | 🏠 Local | RTT médio/mín/máx/P90 (envio→ACK) |
+| 🔗 Vizinhança | 🌐 Rede | Pares vizinhos directos com SNR |
+| 📏 Alcance & Links | 🌐 Rede | Distância km entre vizinhos com GPS |
+| ⏰ Intervalos | 🌐 Rede | Intervalo entre pacotes por nó |
+
+> **🏠 Métrica do Nó Local** — exclusivo ao nó ligado  
+> **🌐 Métrica da Rede** — todos os pacotes observados
+
+---
+
+## 📁 Estrutura do Projecto
 
 ```
 meshtastic_monitor/
-│
-├── main.py              ← Ponto de entrada — executa aqui
-├── constants.py         ← Cores, estilos Qt, APP_STYLESHEET, MAP_THEMES
-├── models.py            ← FavoritesStore, NodeTableModel, NodeFilterProxyModel, _safe_update
-├── worker.py            ← MeshtasticWorker (TCP + pubsub + processamento de pacotes)
-├── dialogs.py           ← ConnectionDialog, ConsoleWindow, RebootWaitDialog, _LogHandler
-│
+├── main.py              ← Ponto de entrada
+├── constants.py         ← Cores e estilos Qt
+├── models.py            ← Modelos de dados e favoritos
+├── worker.py            ← Comunicação TCP com o daemon
+├── dialogs.py           ← Diálogos auxiliares
 ├── tabs/
-│   ├── __init__.py
-│   ├── tab_nodes.py     ← MapWidget com traceroutes e NeighborInfo (Leaflet)
-│   ├── tab_messages.py  ← MessagesTab — canais, DMs PKI/PSK
-│   ├── tab_config.py    ← ConfigTab, ChannelsTab, todas as definições de config Meshtastic
-│   └── tab_metrics.py   ← MetricsTab — Canal, RF, Tráfego, Bateria, Fiabilidade, Latência
-│
+│   ├── tab_nodes.py     ← Mapa Leaflet e lista de traceroutes
+│   ├── tab_messages.py  ← Canais e DMs
+│   ├── tab_config.py    ← Configuração completa do nó
+│   └── tab_metrics.py   ← 10 secções de métricas
 └── requirements.txt
 ```
 
-## Dependências de importação
+---
 
-```
-constants  ←── (sem dependências locais)
-models     ←── constants
-worker     ←── constants, dialogs (_LogHandler)
-dialogs    ←── constants
-tabs/*     ←── constants  [tab_nodes também importa models (_FAVORITES)]
-main       ←── constants, models, worker, dialogs, tabs/*
+## ⚙️ Instalação
+
+```bash
+pip install -r requirements.txt
+# ou
+pip install meshtastic PyQt5 PyQtWebEngine pypubsub
 ```
 
-## Como executar
+### No uConsole CM4 (Debian/Ubuntu)
+
+```bash
+sudo apt install python3-pyqt5 python3-pyqt5.qtwebengine python3-pip
+pip3 install meshtastic pypubsub --break-system-packages
+```
+
+**Requisitos:** Python 3.9+ · `meshtasticd` em execução na porta 4403
+
+---
+
+## 🚀 Execução
 
 ```bash
 cd meshtastic_monitor/
 python3 main.py
 ```
 
-Ou a partir do directório pai:
+O diálogo de ligação pede o endereço/porta do daemon (`localhost:4403` por defeito).
 
-```bash
-python3 meshtastic_monitor/main.py
-```
+---
 
-## Instalação de dependências
+## 🗂 Ficheiro de Favoritos
 
-```bash
-pip install meshtastic PyQt5 PyQtWebEngine pypubsub
-```
+Os favoritos são guardados em `~/.meshtastic_monitor_favorites.json` com dados
+completos do nó (nome, GPS, chave pública).
 
-## Módulos e responsabilidades
+---
 
-| Ficheiro | Linhas | Conteúdo |
-|---|---|---|
-| `constants.py` | ~297 | Todas as cores, estilos CSS/Qt, constantes globais |
-| `models.py` | ~411 | Modelos de dados — tabela de nós, favoritos, filtro |
-| `worker.py` | ~1111 | Toda a lógica TCP/pubsub, processamento de pacotes |
-| `dialogs.py` | ~330 | Diálogos independentes, log handler |
-| `tabs/tab_nodes.py` | ~932 | Mapa Leaflet + traceroutes |
-| `tabs/tab_messages.py` | ~620 | Mensagens canal + DM |
-| `tabs/tab_config.py` | ~1420 | Configuração completa do nó |
-| `tabs/tab_metrics.py` | ~1803 | Métricas em tempo real |
-| `main.py` | ~1202 | MainWindow + wiring de sinais |
-
-## Desenvolvido por
+## 🧑‍💻 Desenvolvido por
 
 **CT7BRA — Tiago Veiga**  
-Python 3 · PyQt5 · Meshtastic · Leaflet · Chart.js
+Python 3 · PyQt5 · Meshtastic · Leaflet · Chart.js  
+Optimizado para ClockworkPi uConsole CM4

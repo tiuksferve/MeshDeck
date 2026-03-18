@@ -53,6 +53,9 @@ class MapWidget(QWidget):
         self._tr_blocking_signals: bool = False
         self._tr_nodes:           list = []
 
+        # Neighbor links — {nid: [(neighbor_id, snr), ...]}
+        self._nb_links:           dict = {}   # nid → lista de (neighbor_id, snr)
+
         outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -147,17 +150,6 @@ class MapWidget(QWidget):
 
         ctrl_layout.addStretch()
 
-        # Legenda dos marcadores (sempre visível)
-        self._legend_markers = QLabel(
-            "<span style='color:#00ff88;font-size:13px;'>●</span> Seleccionado &nbsp;"
-            "<span style='color:#ff4444;font-size:13px;'>●</span> Último pacote &nbsp;"
-            "<span style='color:#2b7cd3;font-size:13px;'>●</span> RF &nbsp;"
-            "<span style='color:#ff8800;font-size:13px;'>●</span> MQTT &nbsp;"
-            "<span style='color:#555566;font-size:13px;'>●</span> Inativos"
-        )
-        self._legend_markers.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
-        ctrl_layout.addWidget(self._legend_markers)
-
         right_layout.addWidget(ctrl_bar)
 
         self.web = QWebEngineView()
@@ -229,10 +221,31 @@ class MapWidget(QWidget):
     color:{TEXT_PRIMARY};border-radius:8px;font-family:monospace;font-size:12px;
   }}
   .custom-popup .leaflet-popup-tip{{background:{PANEL_BG};}}
+  .map-legend{{
+    position:absolute;bottom:30px;right:10px;z-index:1000;
+    background:rgba(22,27,34,0.92);border:1px solid #30363d;
+    border-radius:6px;padding:8px 12px;font-family:monospace;font-size:11px;
+    color:#e6edf3;pointer-events:none;
+  }}
+  .map-legend div{{margin:2px 0;display:flex;align-items:center;gap:6px;}}
+  .leg-line{{display:inline-block;width:24px;height:2px;vertical-align:middle;}}
+  .leg-dot{{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;}}
 </style>
 </head>
 <body>
 <div id="map"></div>
+
+<div class="map-legend">
+  <div><span class="leg-dot" style="background:#2b7cd3;border:1px solid #1050aa"></span> RF activo</div>
+  <div><span class="leg-dot" style="background:#ff8800;border:1px solid #cc6600"></span> MQTT</div>
+  <div><span class="leg-dot" style="background:#ff4444;border:1px solid #cc0000"></span> Pacote recebido</div>
+  <div><span class="leg-dot" style="background:#555566;border:1px solid #444455"></span> Inactivo (&gt;2h)</div>
+  <div><span class="leg-dot" style="background:#00ff88;border:1px solid #00cc66"></span> Seleccionado</div>
+  <div><span class="leg-line" style="background:#00cc44"></span> Traceroute ida</div>
+  <div><span class="leg-line" style="background:#007a29"></span> Traceroute volta</div>
+  <div><span class="leg-line" style="background:#bc8cff;border-top:2px dashed #bc8cff;height:0"></span> Vizinhança (NeighborInfo)</div>
+</div>
+
 <script>
 (function(){{
   var map = L.map('map', {{
@@ -245,6 +258,7 @@ class MapWidget(QWidget):
   window._map         = map;
   window._markerLayer = L.layerGroup().addTo(map);
   window._trLayer     = null;
+  window._nbLayer     = null;
   window._selPopupClosed = false;
   window._mapReady    = true;
   // Redesenha rotas ao mudar zoom (offset em px precisa de recalculo)
@@ -286,6 +300,8 @@ class MapWidget(QWidget):
             self._inject_markers_js(nodes_loc, most_recent)
         if self._tr_records:
             self._draw_traceroute_js()
+        if self._nb_links:
+            self._draw_neighbor_js()
 
     def set_selected_node(self, node_id: Optional[str]):
         self._selected_node_id      = node_id
@@ -903,6 +919,87 @@ class MapWidget(QWidget):
         self.btn_tr_all.setChecked(True)
         self.btn_tr_all.setText("◉  Mostrar todas")
         self._clear_traceroute_js()
+
+
+    def add_neighbor_info(self, from_id: str, neighbors: list):
+        """Recebe dados de NeighborInfo e redesenha as linhas roxas de vizinhança."""
+        if from_id:
+            self._nb_links[from_id] = neighbors
+        if self._map_initialized:
+            self._draw_neighbor_js()
+
+    def _draw_neighbor_js(self):
+        """Desenha linhas pontilhadas roxas entre nós vizinhos com GPS."""
+        if not self._map_initialized or not self._nb_links:
+            return
+
+        cache = self._build_node_cache()
+
+        def pos(nid):
+            n = cache.get(nid.lower()) if nid else None
+            if not n:
+                return None
+            lat, lon = n.get('latitude'), n.get('longitude')
+            return [float(lat), float(lon)] if lat is not None and lon is not None else None
+
+        def name(nid):
+            n = cache.get(nid.lower()) if nid else None
+            if not n:
+                return nid or '?'
+            return (n.get('short_name') or n.get('long_name') or nid).strip()
+
+        segments = []
+        seen = set()
+        for from_id, neighbors in self._nb_links.items():
+            p_a = pos(from_id)
+            if not p_a:
+                continue
+            for nb_id, snr in neighbors:
+                p_b = pos(nb_id)
+                if not p_b:
+                    continue
+                # Chave canónica para não desenhar a mesma linha duas vezes
+                key = tuple(sorted([from_id.lower(), nb_id.lower()]))
+                if key in seen:
+                    continue
+                seen.add(key)
+                snr_str = f"{snr:+.1f} dB" if snr != 0.0 else "SNR desconhecido"
+                tip = (f"🔗 Vizinhos: {name(from_id)}  ↔  {name(nb_id)}"
+                       f"  |  SNR: {snr_str}")
+                segments.append({
+                    'lat1': p_a[0], 'lon1': p_a[1],
+                    'lat2': p_b[0], 'lon2': p_b[1],
+                    'tip': tip,
+                })
+
+        if not segments:
+            self._clear_neighbor_js()
+            return
+
+        js = (
+            "(function(){"
+            "if(!window._mapReady){return;}"
+            "if(window._nbLayer){window._map.removeLayer(window._nbLayer);}"
+            "window._nbLayer=L.layerGroup().addTo(window._map);"
+            "var segs=" + __import__('json').dumps(segments, ensure_ascii=False) + ";"
+            "segs.forEach(function(e){"
+            "L.polyline([[e.lat1,e.lon1],[e.lat2,e.lon2]],"
+            "{color:'#bc8cff',weight:2,opacity:0.75,"
+            "dashArray:'6 5',interactive:true})"
+            ".bindTooltip(e.tip,{sticky:true,className:'custom-tooltip-tr'})"
+            ".addTo(window._nbLayer);"
+            "});"
+            "})();"
+        )
+        self.web.page().runJavaScript(js)
+
+    def _clear_neighbor_js(self):
+        if not self._map_initialized:
+            return
+        self.web.page().runJavaScript(
+            "if(window._nbLayer){window._map.removeLayer(window._nbLayer);"
+            "window._nbLayer=null;}"
+        )
 
     def _on_theme_clicked(self, idx: int):
         self._theme_idx = idx
