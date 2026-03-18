@@ -1,6 +1,6 @@
 """
 tabs/tab_metrics.py — Aba de métricas em tempo real: Canal & Airtime,
-Qualidade RF, Tráfego, Nós & Bateria, Fiabilidade e Latência.
+Qualidade RF, Tráfego, Nós & Bateria, Reliability e Latência.
 Usa Chart.js via QWebEngineView para visualização.
 """
 import json
@@ -20,6 +20,7 @@ from constants import (
     logger, DARK_BG, PANEL_BG, BORDER_COLOR, ACCENT_GREEN, ACCENT_BLUE,
     ACCENT_ORANGE, ACCENT_RED, TEXT_PRIMARY, TEXT_MUTED
 )
+from i18n import tr
 
 class MetricsTab(QWidget):
     """
@@ -29,24 +30,24 @@ class MetricsTab(QWidget):
 
     Secções:
       1. Visão Geral       — resumo executivo da rede
-      2. Canal & Airtime   — utilização do canal e airtime TX (firmware metrics)
+      2. Canal & Airtime   — utilization do canal e airtime TX (firmware metrics)
       3. Qualidade RF      — distribuição de SNR e hops
       4. Tráfego           — pacotes por tipo e taxa de mensagens/min
-      5. Nós & Bateria     — saúde dos nós, bateria
-      6. Fiabilidade       — ACK/NAK, taxa de entrega
+      5. Nós & Bateria     — saúde dos nodes, bateria
+      6. Reliability       — ACK/NAK, taxa de entrega
     """
 
     SECTIONS = [
-        ("📊 Visão Geral",      "overview"),
-        ("📡 Canal & Airtime",  "channel"),
-        ("📶 Qualidade RF",     "rf"),
-        ("📦 Tráfego",          "traffic"),
-        ("🔋 Nós & Bateria",    "nodes"),
-        ("✅ Fiabilidade",      "reliability"),
-        ("⏱ Latência",         "latency"),
-        ("🔗 Vizinhança",       "neighbors"),
-        ("📏 Alcance & Links",  "range_links"),
-        ("⏰ Intervalos",       "intervals"),
+        (tr("📊 Overview"),      "overview"),
+        (tr("📡 Channel & Airtime"),  "channel"),
+        (tr("📶 RF Quality"),     "rf"),
+        (tr("📦 Traffic"),          "traffic"),
+        (tr("🔋 Nodes & Battery"),    "nodes"),
+        (tr("✅ Reliability"),      "reliability"),
+        (tr("⏱ Latency"),         "latency"),
+        (tr("🔗 Neighbourhood"),       "neighbors"),
+        (tr("📏 Range & Links"),  "range_links"),
+        (tr("⏰ Intervals"),       "intervals"),
     ]
 
     # Limites do canal (documentação oficial Meshtastic)
@@ -72,13 +73,13 @@ class MetricsTab(QWidget):
         # Mapa de nomes curtos: nid → short_name (actualizado em cada pacote)
         self._node_short: dict = {}   # nid → short_name ou nid se desconhecido
 
-        # Pacotes recebidos — lista de (timestamp, from_id, portnum, snr, hops, via_mqtt)
+        # Packets received — lista de (timestamp, from_id, portnum, snr, hops, via_mqtt)
         self._packets: list = []
 
         # Canal & Airtime — por nó: {nid: [{'ts':..,'ch_util':..,'air_tx':..}]}
         self._ch_util: dict  = {}   # nid → último channelUtilization (%)
         self._air_tx: dict   = {}   # nid → último airUtilTx (%)
-        self._ch_util_ts: list = [] # [(ts, valor_médio)]  — série temporal 30 pontos
+        self._ch_util_ts: list = [] # [(ts, valor_average)]  — série temporal 30 pontos
 
         # Qualidade RF — histogramas
         self._snr_values:  list = []   # todos os SNR recebidos
@@ -100,24 +101,24 @@ class MetricsTab(QWidget):
         # Hardware model por nó
         self._hw_model:   dict  = {}   # nid → hw_model string
 
-        # Fiabilidade — nó local (mensagens enviadas)
+        # Reliability — local node (mensagens enviadas)
         self._msgs_sent         = 0
         self._msgs_acked        = 0    # ACK real do destinatário
         self._msgs_ack_implicit = 0    # retransmissão local confirmada (não é entrega)
         self._msgs_naked        = 0
         self._sent_packet_ids: set = set()   # IDs dos nossos pacotes enviados (filtro)
 
-        # Fiabilidade — rede (observação passiva de todos os pacotes)
+        # Reliability — rede (observação passiva de todos os pacotes)
         # Packet IDs vistos: {packet_id → (from_id, timestamp, count_seen)}
         # Duplicados = mesmo ID visto mais de uma vez (sinal de flood saudável)
         self._pkt_ids: dict    = {}    # packet_id → {'from': nid, 'ts': t, 'count': n}
         self._duplicates: int  = 0     # pacotes recebidos com ID já visto
-        self._routing_acks: int = 0    # ROUTING_APP com ACK recebidos na rede
-        self._routing_naks: int = 0    # ROUTING_APP com NAK recebidos na rede
+        self._routing_acks: int = 0    # ROUTING_APP com ACKs received na rede
+        self._routing_naks: int = 0    # ROUTING_APP com NAKs received na rede
         # Série temporal de PDR observado (janela 30 min)
         self._pdr_ts: list     = []    # [(ts, pct_unique)]
 
-        # Série temporal de nós activos (janela 60 min, ponto a cada 5s)
+        # Série temporal de nodes activos (janela 60 min, ponto a cada 5s)
         self._nodes_active_ts: list = []  # [(ts, count)]
 
         # Vizinhança (NeighborInfo) — {nid: [(nb_id, snr), ...]}
@@ -146,7 +147,7 @@ class MetricsTab(QWidget):
         ll.setContentsMargins(0, 8, 0, 0)
         ll.setSpacing(0)
 
-        lbl = QLabel("  Métricas")
+        lbl = QLabel("  Metrics")
         lbl.setStyleSheet(
             f"color:{TEXT_MUTED};font-size:10px;font-weight:bold;"
             f"padding:4px 12px 8px 12px;letter-spacing:1px;"
@@ -169,7 +170,7 @@ class MetricsTab(QWidget):
         ll.addWidget(self._section_list, stretch=1)
 
         # Botão limpar
-        btn_clear = QPushButton("🗑  Limpar dados")
+        btn_clear = QPushButton(tr("🗑  Clear data"))
         btn_clear.setStyleSheet(
             f"QPushButton{{background:{DARK_BG};color:{TEXT_MUTED};"
             f"border:none;border-top:1px solid {BORDER_COLOR};"
@@ -210,8 +211,8 @@ class MetricsTab(QWidget):
 
     def _on_clear(self):
         reply = QMessageBox.question(
-            self, "Limpar Métricas",
-            "Limpar todos os dados de métricas recolhidos nesta sessão?",
+            self, tr("Clear Metrics"),
+            tr("Clear all metrics data collected this session?"),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply == QMessageBox.Yes:
@@ -259,7 +260,7 @@ class MetricsTab(QWidget):
         if nid and sn:
             self._node_short[nid] = sn
 
-        # hopsAway do node_data (mais fiável)
+        # hopsAway do node_data (mais reliable)
         hops = node_data.get('hops_away')
 
         self._packets.append((ts, nid, portnum, snr, hops, via_mqtt))
@@ -296,7 +297,7 @@ class MetricsTab(QWidget):
                 if batt is not None and nid: self._battery[nid]  = int(batt)
                 if volt is not None and nid: self._voltage[nid]  = round(float(volt), 3)
                 if uptm is not None and nid: self._uptime[nid]   = int(uptm)
-                # Série temporal: média de todos os nós
+                # Série temporal: média de todos os nodes
                 if self._ch_util:
                     avg = sum(self._ch_util.values()) / len(self._ch_util)
                     self._ch_util_ts.append((ts, round(avg, 1)))
@@ -318,7 +319,7 @@ class MetricsTab(QWidget):
         if hw2 and nid:
             self._hw_model[nid] = hw2
 
-        # Série temporal de nós activos (a cada 60s)
+        # Série temporal de nodes activos (a cada 60s)
         if not self._nodes_active_ts or ts - self._nodes_active_ts[-1][0] >= 60:
             cutoff = ts - 7200  # 2h
             active = len(set(
@@ -339,10 +340,10 @@ class MetricsTab(QWidget):
                         entry['vals'] = entry['vals'][-80:]
             entry['last'] = ts
 
-        # ── Fiabilidade da rede — processada em ingest_raw_packet ─────────
+        # ── Reliability da rede — processada em ingest_raw_packet ─────────
 
     def ingest_message_status(self, req_id: int, status: str):
-        """Regista ACK/NAK APENAS para mensagens enviadas pelo nó local."""
+        """Regista ACK/NAK APENAS para mensagens enviadas pelo local node."""
         if req_id not in self._sent_packet_ids:
             return
         if status == 'nak':
@@ -365,16 +366,16 @@ class MetricsTab(QWidget):
         self._refresh_if_reliability()
 
     def ingest_message_sent(self, packet_id: int):
-        """Regista mensagem enviada pelo nó local com o seu packet_id."""
+        """Regista mensagem enviada pelo local node com o seu packet_id."""
         self._msgs_sent += 1
         if packet_id:
             self._sent_packet_ids.add(packet_id)
             self._sent_ts[packet_id] = time.time()   # regista timestamp para RTT
-        # Força refresh imediato na secção Fiabilidade
+        # Força refresh imediato na secção Reliability
         self._refresh_if_reliability()
 
     def _refresh_if_reliability(self):
-        """Dispara refresh imediato se a secção activa for Fiabilidade e a página está pronta."""
+        """Dispara refresh imediato se a secção activa for Reliability e a página está pronta."""
         if getattr(self, '_current_key', None) != 'reliability':
             return
         if not getattr(self, '_page_ready', False):
@@ -383,13 +384,21 @@ class MetricsTab(QWidget):
         self._refresh_current()
 
 
+    def retranslate_sections(self):
+        """Rebuild section list labels in current language."""
+        self._section_list.clear()
+        for label, _ in self.SECTIONS:
+            self._section_list.addItem(label)
+        row = getattr(self, '_current_row', 0)
+        self._section_list.setCurrentRow(min(row, len(self.SECTIONS)-1))
+
     def ingest_neighbor_info(self, from_id: str, neighbors: list):
         """Regista dados de NeighborInfo para a tabela de vizinhança nas métricas."""
         if from_id and neighbors:
             self._nb_links[from_id] = neighbors
 
     def ingest_raw_packet(self, packet: dict):
-        """Processa pacote raw para métricas de fiabilidade da rede (todos os nós)."""
+        """Processa pacote raw para métricas de fiabilidade da rede (todos os nodes)."""
         ts      = time.time()
         pkt_id  = packet.get('id')
         nid     = packet.get('fromId', '')
@@ -397,7 +406,7 @@ class MetricsTab(QWidget):
         portnum = decoded.get('portnum', '')
 
         # ── Duplicados (flood) ─────────────────────────────────────────
-        # Rastreia IDs únicos; duplicados = mesmo ID recebido via múltiplos nós
+        # Rastreia IDs unique; duplicados = mesmo ID recebido via múltiplos nodes
         # Indica flood activo (saudável) vs congestionamento (excessivo)
         if pkt_id and nid:
             if pkt_id in self._pkt_ids:
@@ -549,7 +558,7 @@ class MetricsTab(QWidget):
     def _rf_assessment(self, snr_avg, snr_med, snr_p10, hops_values) -> str:
         """Avaliação da qualidade RF da rede baseada em distribuição de pacotes por faixa de SNR."""
         if snr_avg is None or not self._snr_values:
-            return "⏳ Aguardando dados suficientes para avaliação..."
+            return "⏳ Waiting for enough data for assessment..."
 
         n = len(self._snr_values)
         # Distribuição por faixa — igual às apps iOS/Android
@@ -563,31 +572,31 @@ class MetricsTab(QWidget):
 
         # ── Análise da distribuição ──────────────────────────────────────
         lines.append(
-            f"<b>Distribuição de qualidade</b> em {n} pacotes: "
-            f"<span style='color:#39d353'>{pct_exc}% excelente (≥8dB)</span> · "
-            f"<span style='color:#56d364'>{pct_good}% bom (5–8dB)</span> · "
+            f"<b>Quality distribution</b> in " + str(n) + " packets: "
+            f"<span style='color:#39d353'>{pct_exc}% excellent (≥8dB)</span> · "
+            f"<span style='color:#56d364'>{pct_good}% good (5–8dB)</span> · "
             f"<span style='color:#f0883e'>{pct_marg}% marginal (0–5dB)</span> · "
-            f"<span style='color:#f85149'>{pct_weak}% fraco (&lt;0dB)</span>"
+            f"<span style='color:#f85149'>{pct_weak}% weak (&lt;0dB)</span>"
         )
 
         # ── Avaliação global ─────────────────────────────────────────────
         if pct_ok >= 80:
-            lines.append("✅ <b>Rede em excelentes condições RF.</b> A grande maioria dos pacotes chega com sinal forte.")
+            lines.append("✅ <b>Network in excellent RF condition.</b> The vast majority of packets chega com sinal forte.")
         elif pct_ok >= 60:
-            lines.append("✅ <b>Qualidade RF boa.</b> A maioria das ligações é estável, com algumas margens.")
+            lines.append("✅ <b>Good RF quality.</b> Most links are stable with some margins.")
         elif pct_ok >= 40:
-            lines.append("⚠️ <b>Qualidade RF moderada.</b> Uma parte significativa dos pacotes está em zona marginal — risco de perda em condições adversas.")
+            lines.append("⚠️ <b>Moderate RF quality.</b> A significant portion of packets is in the marginal zone — risk of loss in adverse conditions.")
         else:
-            lines.append("🚨 <b>Qualidade RF fraca.</b> Mais de 60% dos pacotes chegam com sinal deficiente. Reveja antenas e posicionamento.")
+            lines.append("🚨 <b>Weak RF quality.</b> Over 60% of packets arrive with poor signal. Check antennas and positioning.")
 
-        # ── SNR P10 (pior 10%) ───────────────────────────────────────────
+        # ── SNR P10 (worst 10%) ───────────────────────────────────────────
         if snr_p10 is not None:
             if snr_p10 < -10:
-                lines.append(f"⚠️ <b>Pior decil:</b> SNR ≤ {snr_p10} dB — algumas ligações estão severamente degradadas, possivelmente com perda de pacotes frequente.")
+                lines.append(f"⚠️ <b>Worst decile:</b> SNR ≤ {snr_p10} dB — some links severely degraded, frequent packet loss possible.")
             elif snr_p10 < 0:
-                lines.append(f"ℹ️ <b>Pior decil:</b> SNR ≤ {snr_p10} dB — ligações marginais no extremo da cobertura.")
+                lines.append(f"ℹ️ <b>Worst decile:</b> SNR ≤ {snr_p10} dB — marginal links at coverage edge.")
             else:
-                lines.append(f"✅ <b>Pior decil:</b> SNR ≥ {snr_p10} dB — mesmo os piores percursos têm sinal razoável.")
+                lines.append(f"✅ <b>Worst decile:</b> SNR ≥ {snr_p10} dB — even the worst paths have reasonable signal.")
 
         # ── Análise de hops ──────────────────────────────────────────────
         if hops_values:
@@ -596,20 +605,20 @@ class MetricsTab(QWidget):
             pct_1hop   = round(hops_values.count(1) / len(hops_values) * 100)
             max_hops   = max(hops_values)
             lines.append(
-                f"<b>Topologia:</b> {pct_direct}% directos · {pct_1hop}% a 1 hop · média {avg_hops:.1f} hops · máximo {max_hops} hops."
+                f"<b>Topology:</b> {pct_direct}% direct · {pct_1hop}% at 1 hop · avg {avg_hops:.1f} hops · max {max_hops} hops."
             )
             if avg_hops > 2.5:
-                lines.append("⚠️ Média de hops elevada — a rede depende muito de repetidores. Pode aumentar latência e congestionamento.")
+                lines.append("⚠️ High average hops — network relies heavily on repeaters. May increase latency and congestion.")
             if max_hops >= 6:
-                lines.append(f"⚠️ Máximo de {max_hops} hops detectado — próximo do limite do firmware (7). Considere rever o hop limit configurado.")
+                lines.append(f"⚠️ Maximum of {max_hops} hops detected — near firmware limit (7). Consider reviewing the configured hop limit.")
 
         # ── Conclusão ────────────────────────────────────────────────────
         if pct_ok >= 70 and (not hops_values or sum(hops_values)/len(hops_values) < 2):
-            lines.append("<br><b>Conclusão:</b> Rede RF saudável e bem dimensionada. 🟢")
+            lines.append("<br><b>Conclusion:</b> Healthy and well-sized RF network. 🟢")
         elif pct_ok >= 50:
-            lines.append("<br><b>Conclusão:</b> Rede funcional com oportunidades de melhoria. Monitorize em períodos de maior tráfego. 🟡")
+            lines.append("<br><b>Conclusion:</b> Functional network with room for improvement. Monitor during high traffic periods. 🟡")
         else:
-            lines.append("<br><b>Conclusão:</b> Qualidade RF abaixo do esperado. Reveja infraestrutura de antenas, posicionamento e modo de radio configurado. 🔴")
+            lines.append("<br><b>Conclusion:</b> RF quality below expectations. Review antenna infrastructure, positioning and radio mode. 🔴")
 
         return "<br>".join(lines)
 
@@ -637,7 +646,7 @@ class MetricsTab(QWidget):
     def _data_traffic(self) -> dict:
         now = time.time()
         label_map={"TEXT_MESSAGE_APP":"💬 Mensagem","NODEINFO_APP":"🆔 NodeInfo",
-                   "POSITION_APP":"📍 Posição","TELEMETRY_APP":"📊 Telemetria",
+                   "POSITION_APP":"📍 Position","TELEMETRY_APP":"📊 Telemetry",
                    "TRACEROUTE_APP":"🔍 Traceroute","ROUTING_APP":"🔀 Routing",
                    "NEIGHBORINFO_APP":"🔗 NeighborInfo","ADMIN_APP":"⚙ Admin",
                    "RANGE_TEST_APP":"📏 Range Test","STORE_AND_FORWARD_APP":"📦 S&F"}
@@ -648,7 +657,7 @@ class MetricsTab(QWidget):
             counts[lbl]=counts.get(lbl,0)+cnt
         sc=sorted(counts.items(),key=lambda x:-x[1])
         labels=[k for k,_ in sc]; values=[v for _,v in sc]
-        # Padrão de routing
+        # Pattern of routing
         n_direct  = sum(1 for p in self._packets if p[4] == 0)
         n_1hop    = sum(1 for p in self._packets if p[4] == 1)
         n_multi   = sum(1 for p in self._packets if p[4] is not None and p[4] >= 2)
@@ -692,8 +701,8 @@ class MetricsTab(QWidget):
             hw_counts[hw] = hw_counts.get(hw, 0) + 1
         hw_sorted = sorted(hw_counts.items(), key=lambda x: -x[1])
 
-        # Nós com GPS
-        # Contados da lista de pacotes únicos que tiveram um POSITION_APP
+        # Nodes with GPS
+        # Contados da lista de pacotes unique que tiveram um POSITION_APP
         n_gps = sum(1 for p in self._packets
                     if p[2] == 'POSITION_APP' and p[1])
         n_gps_unique = len(set(p[1] for p in self._packets
@@ -781,7 +790,7 @@ class MetricsTab(QWidget):
         ch_util_avg = round(sum(self._ch_util.values()) / len(self._ch_util), 1) if self._ch_util else None
         air_avg     = round(sum(self._air_tx.values()) / len(self._air_tx), 1) if self._air_tx else None
 
-        # Taxa de entrega
+        # Delivery rate
         total_r = self._msgs_acked + self._msgs_naked
         delivery = round(self._msgs_acked / total_r * 100, 1) if total_r > 0 else None
 
@@ -790,19 +799,19 @@ class MetricsTab(QWidget):
             return f'<div class="card"><h3>{label}</h3><div class="kpi {color}">{v}</div></div>'
 
         def ch_kpi(val):
-            if val is None: return kpi(None, "", "Utiliz. Canal (avg)")
+            if val is None: return kpi(None, "", "Channel Util. (avg)")
             color = "green" if val < self.CH_UTIL_OK else ("orange" if val < self.CH_UTIL_WARN else "red")
             bar_color = "#39d353" if val < self.CH_UTIL_OK else ("#f0883e" if val < self.CH_UTIL_WARN else "#f85149")
             pct = min(int(val), 100)
-            return f'''<div class="card"><h3>Utiliz. Canal (avg)</h3>
+            return f'''<div class="card"><h3>Channel Util. (avg)</h3>
               <div class="kpi {color}">{val}%</div>
               <div class="bar-wrap"><div class="bar-bg">
               <div class="bar-fill" style="width:{pct}%;background:{bar_color}"></div>
               </div></div>
-              <div class="kpi-sub">&lt;25% óptimo · &lt;50% aceitável · &gt;50% crítico</div>
+              <div class="kpi-sub">&lt;25% optimal · &lt;50% acceptable · &gt;50% critical</div>
             </div>'''
 
-        # Tabela top nós por pacotes
+        # Tabela top nodes por pacotes
         nid_counts = {}
         for p in self._packets:
             if p[1]: nid_counts[p[1]] = nid_counts.get(p[1], 0) + 1
@@ -812,35 +821,35 @@ class MetricsTab(QWidget):
             f"<td>{round(self._ch_util.get(nid, 0), 1)}%</td>"
             f"<td>{self._battery.get(nid, '—')}{'%' if self._battery.get(nid) is not None else ''}</td></tr>"
             for nid, cnt in top
-        ) or "<tr><td colspan='4' class='no-data'>Sem dados ainda</td></tr>"
+        ) or "<tr><td colspan='4' class='no-data'>No data yet</td></tr>"
 
         body = f"""
-<div class="subtitle">Resumo da sessão · Actualizado: {self._now_str()}</div>
+<div class="subtitle">Session summary · Updated: {self._now_str()}</div>
 <div class="grid-3">
-  {kpi(total_pkts, "", "Total Pacotes", "blue")}
-  {kpi(n_active, " nós", "Nós Activos (2h)", "green")}
-  {kpi(ppm, "/min", "Pacotes/min", "")}
+  {kpi(total_pkts, "", "Total Packets", "blue")}
+  {kpi(n_active, " nodes", "Active Nodes (2h)", "green")}
+  {kpi(ppm, "/min", "Packets/min", "")}
 </div>
 <div class="grid-3">
-  {kpi(snr_avg, " dB", "SNR Médio", "green" if snr_avg and snr_avg >= 0 else "orange")}
-  {kpi(hops_avg, " hops", "Hops Médio", "")}
-  {kpi(delivery, "%", "Taxa Entrega", "green" if delivery and delivery >= 80 else "orange")}
+  {kpi(snr_avg, " dB", "Avg SNR", "green" if snr_avg and snr_avg >= 0 else "orange")}
+  {kpi(hops_avg, " hops", "Avg Hops", "")}
+  {kpi(delivery, "%", "Delivery rate", "green" if delivery and delivery >= 80 else "orange")}
 </div>
 <div class="grid">
   {ch_kpi(ch_util_avg)}
   {kpi(air_avg, "%", "Airtime TX (avg)", "green" if air_avg and air_avg < 10 else "orange")}
 </div>
 <div class="card" style="margin-top:16px">
-  <h3>Top Nós por Pacotes</h3>
-  <table><tr><th>ID</th><th>Pacotes</th><th>Ch. Util.</th><th>Bateria</th></tr>{rows}</table>
+  <h3>Top Nodes by Packets</h3>
+  <table><tr><th>ID</th><th>Packets</th><th>Ch. Util.</th><th>Battery</th></tr>{rows}</table>
 </div>
-<div class="updated">Sessão iniciada · {datetime.fromtimestamp(self._start_time).strftime('%H:%M:%S %d/%m/%Y')}</div>
+<div class="updated">Session started · {datetime.fromtimestamp(self._start_time).strftime('%H:%M:%S %d/%m/%Y')}</div>
 <script>
 window._metricsUpdateData = function(d) {{
   function set(id, val) {{ var e=document.getElementById(id); if(e) e.textContent=val; }}
   function setClass(id, cls) {{ var e=document.getElementById(id); if(e) {{ e.className='kpi '+cls; }} }}
   set('kpi-pkts', d.total_pkts);
-  set('kpi-active', (d.n_active || '—') + (d.n_active !== null ? ' nós' : ''));
+  set('kpi-active', (d.n_active || '—') + (d.n_active !== null ? ' nodes' : ''));
   set('kpi-ppm', (d.ppm || 0) + '/min');
   set('kpi-snr', d.snr_avg !== null ? d.snr_avg + ' dB' : '—');
   set('kpi-hops', d.hops_avg !== null ? d.hops_avg + ' hops' : '—');
@@ -850,7 +859,7 @@ window._metricsUpdateData = function(d) {{
   set('updated-ts', 'Actualizado: ' + d.now);
 }};
 </script>"""
-        return self._base_html("📊 Visão Geral", body)
+        return self._base_html("📊 Overview", body)
 
     # ── 2. Canal & Airtime ────────────────────────────────────────────────
     # Limites de duty cycle horário (EU_433 / EU_868 — ETSI EN300.220)
@@ -859,11 +868,11 @@ window._metricsUpdateData = function(d) {{
 
     def _html_channel(self) -> str:
         if not self._ch_util and not self._ch_util_ts and not self._air_tx:
-            body = '<div class="no-data">⏳ Aguardando dados de telemetria (TELEMETRY_APP)...<br><br>Os nós devem ter o módulo de telemetria activado.</div>'
-            return self._base_html("📡 Canal & Airtime", body)
+            body = '<div class="no-data">⏳ Waiting for telemetry data (TELEMETRY_APP)...<br><br>Nodes must have the telemetry module enabled.</div>'
+            return self._base_html("📡 Channel & Airtime", body)
 
         # Hourly Duty Cycle estimado: airUtilTx (10 min) × 6 = estimativa 1h
-        # airUtilTx é uma métrica POR NÓ (tx daquele nó).
+        # airUtilTx é uma métrica POR NÓ (tx of that node).
         # channelUtilization é da REDE (rx+tx de todos os dispositivos no canal).
         # Mostramos o pior nó (mais alto duty cycle) como indicador de risco.
         # Fonte: ETSI EN300.220 — EU_433/EU_868 limite 10%/hora.
@@ -878,8 +887,8 @@ window._metricsUpdateData = function(d) {{
         ts_vals   = [v for _, v in self._ch_util_ts]
 
         def duty_status(dc):
-            if dc >= self.DUTY_CYCLE_LIMIT_EU: return "red",    "🚨 LIMITE EXCEDIDO"
-            if dc >= self.DUTY_CYCLE_WARN_EU:  return "orange", "⚠ Próximo do limite"
+            if dc >= self.DUTY_CYCLE_LIMIT_EU: return "red",    "🚨 LIMIT EXCEEDED"
+            if dc >= self.DUTY_CYCLE_WARN_EU:  return "orange", "⚠ Near limit"
             return "green", "✅ Normal"
 
         # Tabela por nó
@@ -906,27 +915,27 @@ window._metricsUpdateData = function(d) {{
                 f"<td style='font-size:11px'>{dc_label}</td></tr>"
             )
         if not rows:
-            rows = "<tr><td colspan='5' class='no-data'>Sem dados</td></tr>"
+            rows = "<tr><td colspan='5' class='no-data'>No data</td></tr>"
 
         # KPI: pior nó (mais relevante para conformidade EU)
-        # KPI principal: channelUtilization médio da rede
-        # (cada nó reporta o que VÊ no canal — é a métrica da rede, não do nó)
+        # KPI principal: channelUtilization average da rede
+        # (cada nó reporta o que VÊ no canal — é a métrica da rede, não do node)
         ch_net_avg = round(sum(self._ch_util.values()) / len(self._ch_util), 1) if self._ch_util else None
         if ch_net_avg is not None:
             ch_color = "green" if ch_net_avg < self.CH_UTIL_OK else ("orange" if ch_net_avg < self.CH_UTIL_WARN else "red")
             ch_bar_c = {"green": "#39d353", "orange": "#f0883e", "red": "#f85149"}[ch_color]
             ch_pct   = min(int(ch_net_avg), 100)
-            ch_label = "✅ Óptimo (<25%)" if ch_net_avg < self.CH_UTIL_OK else ("⚠ Aceitável (<50%)" if ch_net_avg < self.CH_UTIL_WARN else "🚨 Crítico (>50%)")
+            ch_label = "✅ Optimal (<25%)" if ch_net_avg < self.CH_UTIL_OK else ("⚠ Acceptable (<50%)" if ch_net_avg < self.CH_UTIL_WARN else "🚨 Critical (>50%)")
             ch_kpi = (
-                f'<div class="card"><h3>Channel Utilization da Rede</h3>'
+                f'<div class="card"><h3>Network Channel Utilization</h3>'
                 f'<div id="ch-net-val" class="kpi {ch_color}">{ch_net_avg}%</div>'
                 f'<div class="bar-wrap"><div class="bar-bg">'
                 f'<div class="bar-fill" style="width:{ch_pct}%;background:{ch_bar_c}"></div></div></div>'
-                f'<div class="kpi-sub"><b>Métrica da rede</b> — airtime observado por cada nó (RX+TX de todos) · {ch_label}<br>'
-                f'Firmware atrasa envios acima de 25% · Para GPS: limite 40%</div></div>'
+                f'<div class="kpi-sub"><b>Network metric</b> — observed airtime per node (RX+TX of all) · {ch_label}<br>'
+                f'Firmware delays above 25% · GPS limit: 40%</div></div>'
             )
         else:
-            ch_kpi = '<div class="card"><h3>Channel Utilization da Rede</h3><div class="kpi" style="color:#8b949e">—</div><div class="kpi-sub">Aguardando dados de telemetria...</div></div>'
+            ch_kpi = '<div class="card"><h3>Network Channel Utilization</h3><div class="kpi" style="color:#8b949e">—</div><div class="kpi-sub">Waiting for telemetry data...</div></div>'
 
         # KPI secundário: duty cycle do pior nó (airUtilTx por nó — conformidade EU)
         if worst_dc is not None:
@@ -935,14 +944,14 @@ window._metricsUpdateData = function(d) {{
             dc_pct_w = min(int(worst_dc / self.DUTY_CYCLE_LIMIT_EU * 100), 100)
             bar_c_w  = {"green": "#39d353", "orange": "#f0883e", "red": "#f85149"}[dc_color_w]
             duty_kpi = (
-                f'<div class="card"><h3>Duty Cycle/h — Pior Nó ({worst_name})</h3>'
+                f'<div class="card"><h3>Duty Cycle/h — Worst Node ({worst_name})</h3>'
                 f'<div id="dc-avg-val" class="kpi {dc_color_w}">{worst_dc}%</div>'
                 f'<div class="bar-wrap"><div class="bar-bg">'
                 f'<div class="bar-fill" style="width:{dc_pct_w}%;background:{bar_c_w}"></div></div></div>'
-                f'<div class="kpi-sub"><b>Métrica por nó</b> (TX daquele nó) · airUtilTx×6 · Limite EU: 10%/hora · {dc_label_w}</div></div>'
+                f'<div class="kpi-sub"><b>Per-node metric</b> (TX of that node) · airUtilTx×6 · EU limit: 10%/hour · {dc_label_w}</div></div>'
             )
         else:
-            duty_kpi = '<div class="card"><h3>Duty Cycle/h por Nó</h3><div class="kpi" style="color:#8b949e">—</div><div class="kpi-sub">Aguardando dados de airUtilTx...</div></div>'
+            duty_kpi = '<div class="card"><h3>Duty Cycle/h per Node</h3><div class="kpi" style="color:#8b949e">—</div><div class="kpi-sub">Waiting for airUtilTx data...</div></div>'
 
         air_avg = round(sum(self._air_tx.values()) / len(self._air_tx), 2) if self._air_tx else None
         air_color = "green" if air_avg and air_avg < 10 else ("orange" if air_avg else "")
@@ -950,25 +959,25 @@ window._metricsUpdateData = function(d) {{
             f'<div class="card"><h3>Airtime TX (10 min, avg)</h3>'
             f'<div class="kpi {air_color}">{air_avg if air_avg is not None else "—"}'
             f'{"%" if air_avg is not None else ""}</div>'
-            f'<div class="kpi-sub">Média de TX de todos os nós nos últimos 10 min</div></div>'
+            f'<div class="kpi-sub">Avg TX of all nodes in the last 10 min</div></div>'
         )
 
         n_ts = len(ts_vals) or 1
         body = f"""
-<div class="subtitle">Canal LoRa · Airtime TX · Hourly Duty Cycle · {self._now_str()}</div>
+<div class="subtitle">LoRa Channel · Airtime TX · Hourly Duty Cycle · {self._now_str()}</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
-  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
+  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Network Metric</span><span style="color:#8b949e;font-size:11px"> — data below is passively observed from all packets received by the local node. Reflects the state of the entire visible network, not just the local node.</span>
 </div>
 <div class="grid-3">{ch_kpi}{duty_kpi}{air_kpi}</div>
 <div class="card" style="margin-top:16px">
-  <h3>Channel Utilization ao Longo do Tempo</h3>
+  <h3>Channel Utilization Over Time</h3>
   <div class="chart-wrap-lg"><canvas id="chChart"></canvas></div>
 </div>
 <div class="card" style="margin-top:16px">
-  <h3>Por Nó — Ch. Util · Airtime TX · Duty Cycle/h</h3>
-  <table><tr><th>Nó</th><th>Ch. Util.</th><th>Air TX (10m)</th><th>Duty Cycle/h</th><th>Estado</th></tr>{rows}</table>
+  <h3>Per Node — Ch. Util · Airtime TX · Duty Cycle/h</h3>
+  <table><tr><th>Node</th><th>Ch. Util.</th><th>Air TX (10m)</th><th>Duty Cycle/h</th><th>Status</th></tr>{rows}</table>
   <div style="color:#8b949e;font-size:10px;margin-top:8px;padding-top:8px;border-top:1px solid #21262d">
-    ℹ️ Duty cycle horário estimado = airUtilTx × 6. Limite EU_433/EU_868: 10%/hora (ETSI EN300.220).
+    ⚙️ Estimated hourly duty cycle = airUtilTx × 6. EU limit433/EU_868: 10%/hora (ETSI EN300.220).
   </div>
 </div>
 <script>
@@ -980,9 +989,9 @@ window._chChart = new Chart(document.getElementById('chChart'), {{
       {{ label: 'Ch. Utilization (%)', data: {json.dumps(ts_vals)},
          borderColor: '#39d353', backgroundColor: 'rgba(57,211,83,0.08)',
          fill: true, tension: 0.3, pointRadius: 2 }},
-      {{ label: 'Limite óptimo (25%)', data: Array({n_ts}).fill(25),
+      {{ label: 'Optimal limit (25%)', data: Array({n_ts}).fill(25),
          borderColor: '#f0883e', borderDash: [4,4], pointRadius: 0, fill: false }},
-      {{ label: 'Limite crítico (50%)', data: Array({n_ts}).fill(50),
+      {{ label: 'Critical limit (50%)', data: Array({n_ts}).fill(50),
          borderColor: '#f85149', borderDash: [4,4], pointRadius: 0, fill: false }},
     ]
   }},
@@ -1015,13 +1024,13 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("📡 Canal & Airtime", body)
+        return self._base_html("📡 Channel & Airtime", body)
 
     # ── 3. Qualidade RF ───────────────────────────────────────────────────
     def _html_rf(self) -> str:
         if not self._snr_values and not self._hops_values:
-            body = '<div class="no-data">⏳ Aguardando pacotes RF...</div>'
-            return self._base_html("📶 Qualidade RF", body)
+            body = '<div class="no-data">⏳ Waiting for RF packets...</div>'
+            return self._base_html("📶 RF Quality", body)
 
         # Histograma SNR em buckets de 2dB
         def histogram(vals, bucket=2, mn=-20, mx=14):
@@ -1049,31 +1058,31 @@ window._metricsUpdateData = function(d) {{
         snr_p10  = round(snr_sorted[max(0, n//10)], 1)   if n else None  # percentil 10 (pior)
 
         body = f"""
-<div class="subtitle" id="snr-n">Distribuição de SNR e hops · {len(self._snr_values)} amostras</div>
+<div class="subtitle" id="snr-n">SNR and hop distribution · {len(self._snr_values)} samples</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
-  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
+  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Network Metric</span><span style="color:#8b949e;font-size:11px"> — data below is passively observed from all packets received by the local node. Reflects the state of the entire visible network, not just the local node.</span>
 </div>
 <div class="card" id="assessment-card" style="margin-bottom:16px;border-left:4px solid {
 '#39d353' if snr_avg and snr_avg >= 5 else '#f0883e' if snr_avg and snr_avg >= 0 else '#f85149'
 }">
-  <h3>Avaliação da Qualidade RF</h3>
+  <h3>RF Quality Assessment</h3>
   <div id="rf-assessment" style="font-size:13px;line-height:1.7;color:#e6edf3">{self._rf_assessment(snr_avg, snr_med, snr_p10, self._hops_values)}</div>
 </div>
 <div class="grid-3">
-  <div class="card"><h3>SNR Médio</h3>
+  <div class="card"><h3>Avg SNR</h3>
     <div class="kpi {'green' if snr_avg and snr_avg>=5 else 'orange' if snr_avg and snr_avg>=0 else 'red'}">{snr_avg if snr_avg is not None else '—'} dB</div></div>
-  <div class="card"><h3>SNR Mediano</h3>
+  <div class="card"><h3>Median SNR</h3>
     <div class="kpi">{snr_med if snr_med is not None else '—'} dB</div></div>
-  <div class="card"><h3>SNR P10 (pior 10%)</h3>
+  <div class="card"><h3>SNR P10 (worst 10%)</h3>
     <div class="kpi red">{snr_p10 if snr_p10 is not None else '—'} dB</div></div>
 </div>
 <div class="grid">
   <div class="card">
-    <h3>Distribuição SNR (dB)</h3>
+    <h3>Distribution SNR (dB)</h3>
     <div class="chart-wrap"><canvas id="snrChart"></canvas></div>
   </div>
   <div class="card">
-    <h3>Distribuição de Hops</h3>
+    <h3>Hop Distribution</h3>
     <div class="chart-wrap"><canvas id="hopsChart"></canvas></div>
   </div>
 </div>
@@ -1123,7 +1132,7 @@ window._metricsUpdateData = function(d) {{
   set('snr-avg', d.snr_avg !== null ? d.snr_avg + ' dB' : '—');
   set('snr-med', d.snr_med !== null ? d.snr_med + ' dB' : '—');
   set('snr-p10', d.snr_p10 !== null ? d.snr_p10 + ' dB' : '—');
-  set('snr-n', d.n + ' amostras');
+  set('snr-n', d.n + ' samples');
   if(d.assessment) setHtml('rf-assessment', d.assessment);
   if(window._snrChart && d.snr_counts.length > 0) {{
     window._snrChart.data.labels = d.snr_labels;
@@ -1137,19 +1146,19 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("📶 Qualidade RF", body)
+        return self._base_html("📶 RF Quality", body)
 
     # ── 4. Tráfego ────────────────────────────────────────────────────────
     def _html_traffic(self) -> str:
         now = time.time()
         if not self._packets:
-            body = '<div class="no-data">⏳ Aguardando pacotes...</div>'
-            return self._base_html("📦 Tráfego de Rede", body)
+            body = '<div class="no-data">⏳ Waiting for packets...</div>'
+            return self._base_html("📦 Network Traffic", body)
 
         label_map = {
             'TEXT_MESSAGE_APP':       '💬 Mensagem',
             'NODEINFO_APP':           '🆔 NodeInfo',
-            'POSITION_APP':           '📍 Posição',
+            'POSITION_APP':           '📍 Position',
             'TELEMETRY_APP':          '📊 Telemetria',
             'TRACEROUTE_APP':         '🔍 Traceroute',
             'ROUTING_APP':            '🔀 Routing',
@@ -1177,7 +1186,7 @@ window._metricsUpdateData = function(d) {{
         rf_pct   = round(n_rf   / total * 100) if total else 0
         mqtt_pct = round(n_mqtt / total * 100) if total else 0
 
-        # ── Padrão de routing ──────────────────────────────────────────
+        # ── Pattern of routing ──────────────────────────────────────────
         n_direct  = sum(1 for p in self._packets if p[4] == 0)
         n_1hop    = sum(1 for p in self._packets if p[4] == 1)
         n_multi   = sum(1 for p in self._packets if p[4] is not None and p[4] >= 2)
@@ -1188,7 +1197,7 @@ window._metricsUpdateData = function(d) {{
         m_pct = round(n_multi   / total_hop * 100) if total_hop else 0
         u_pct = round(n_unknown / total_hop * 100) if total_hop else 0
         routing_vals   = [n_direct, n_1hop, n_multi, n_unknown] if total_hop else [1,0,0,0]
-        routing_labels = ['🟢 Directo', '🔵 1 Hop', '🟠 Multi-hop', '⚫ Desconhecido']
+        routing_labels = ['🟢 Direct', '🔵 1 Hop', '🟠 Multi-hop', '⚫ Unknown']
         routing_colors = ['#39d353', '#58a6ff', '#f0883e', '#8b949e']
 
         # ── Série temporal ─────────────────────────────────────────────
@@ -1202,7 +1211,7 @@ window._metricsUpdateData = function(d) {{
         ppm_vals   = [b[1] for b in bins_60]
 
         body = f"""
-<div class="subtitle">Distribuição de tráfego da sessão</div>
+<div class="subtitle">Session traffic distribution</div>
 
 <!-- Linha 1: dois donuts em cima -->
 <div class="grid">
@@ -1217,28 +1226,28 @@ window._metricsUpdateData = function(d) {{
     </div>
   </div>
   <div class="card">
-    <h3>Padrão de Routing</h3>
+    <h3>Pattern of Routing</h3>
     <div style="display:flex;gap:16px;align-items:center;min-height:160px">
       <canvas id="routingChart" width="150" height="150" style="flex-shrink:0"></canvas>
       <div style="font-size:12px;color:#8b949e;line-height:2.2">
-        <div id="rd-direct"><span style="color:#39d353;font-size:15px">■</span> Directo &nbsp;<b style="color:#e6edf3">{n_direct}</b> ({d_pct}%)</div>
+        <div id="rd-direct"><span style="color:#39d353;font-size:15px">■</span> Direct &nbsp;<b style="color:#e6edf3">{n_direct}</b> ({d_pct}%)</div>
         <div id="rd-1hop"><span style="color:#58a6ff;font-size:15px">■</span> 1 Hop &nbsp;<b style="color:#e6edf3">{n_1hop}</b> ({h_pct}%)</div>
         <div id="rd-multi"><span style="color:#f0883e;font-size:15px">■</span> Multi-hop ≥2 &nbsp;<b style="color:#e6edf3">{n_multi}</b> ({m_pct}%)</div>
-        <div id="rd-unknown"><span style="color:#8b949e;font-size:15px">■</span> Desconhecido &nbsp;<b style="color:#e6edf3">{n_unknown}</b> ({u_pct}%)</div>
+        <div id="rd-unknown"><span style="color:#8b949e;font-size:15px">■</span> Unknown &nbsp;<b style="color:#e6edf3">{n_unknown}</b> ({u_pct}%)</div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Linha 2: barras por tipo -->
+<!-- Row 2: bars by type -->
 <div class="card" style="margin-top:16px">
-  <h3>Pacotes por Tipo — Sessão</h3>
+  <h3>Packets by Type — Session</h3>
   <div class="chart-wrap"><canvas id="typeChart"></canvas></div>
 </div>
 
 <!-- Linha 3: PPM -->
 <div class="card" style="margin-top:16px">
-  <h3>Pacotes por Minuto (últimos 30 min)</h3>
+  <h3>Packets per Minute (last 30 min)</h3>
   <div class="chart-wrap-lg"><canvas id="ppmChart"></canvas></div>
 </div>
 
@@ -1289,7 +1298,7 @@ window._ppmChart = new Chart(document.getElementById('ppmChart'), {{
   type: 'line',
   data: {{
     labels: {json.dumps(ppm_labels)},
-    datasets: [{{ label: 'Pacotes/min', data: {json.dumps(ppm_vals)},
+    datasets: [{{ label: 'Packets/min', data: {json.dumps(ppm_vals)},
       borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.1)',
       fill: true, tension: 0.3, pointRadius: 1 }}]
   }},
@@ -1322,10 +1331,10 @@ window._metricsUpdateData = function(d) {{
       window._routingChart.update('none');
     }}
     var tot = rs || 1;
-    setHtml('rd-direct',  '<span style="color:#39d353;font-size:15px">■</span> Directo &nbsp;<b style="color:#e6edf3">' + d.n_direct + '</b> (' + Math.round(d.n_direct/tot*100) + '%)');
+    setHtml('rd-direct',  '<span style="color:#39d353;font-size:15px">■</span> Direct &nbsp;<b style="color:#e6edf3">' + d.n_direct + '</b> (' + Math.round(d.n_direct/tot*100) + '%)');
     setHtml('rd-1hop',    '<span style="color:#58a6ff;font-size:15px">■</span> 1 Hop &nbsp;<b style="color:#e6edf3">' + d.n_1hop + '</b> (' + Math.round(d.n_1hop/tot*100) + '%)');
     setHtml('rd-multi',   '<span style="color:#f0883e;font-size:15px">■</span> Multi-hop ≥2 &nbsp;<b style="color:#e6edf3">' + d.n_multi + '</b> (' + Math.round(d.n_multi/tot*100) + '%)');
-    setHtml('rd-unknown', '<span style="color:#8b949e;font-size:15px">■</span> Desconhecido &nbsp;<b style="color:#e6edf3">' + d.n_unknown + '</b> (' + Math.round(d.n_unknown/tot*100) + '%)');
+    setHtml('rd-unknown', '<span style="color:#8b949e;font-size:15px">■</span> Unknown &nbsp;<b style="color:#e6edf3">' + d.n_unknown + '</b> (' + Math.round(d.n_unknown/tot*100) + '%)');
   }}
   // Barras por tipo
   if(window._typeChart && d.labels && d.labels.length > 0) {{
@@ -1341,7 +1350,7 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("📦 Tráfego de Rede", body)
+        return self._base_html("📦 Network Traffic", body)
 
     # ── 5. Nós & Bateria ──────────────────────────────────────────────────
     def _html_nodes(self) -> str:
@@ -1375,11 +1384,11 @@ window._metricsUpdateData = function(d) {{
         hw_labels = [h for h, _ in hw_sorted]
         hw_values = [c for _, c in hw_sorted]
 
-        # Nós únicos com GPS
+        # Nós unique with GPS
         n_gps_unique = len(set(p[1] for p in self._packets
                                if p[2] == 'POSITION_APP' and p[1]))
 
-        # Tabela de nós com bateria (tensão e uptime incluídos)
+        # Tabela de nodes com bateria (tensão e uptime incluídos)
         batt_rows = ""
         for nid, batt in sorted(self._battery.items(), key=lambda x: x[1]):
             if batt == 101:
@@ -1410,7 +1419,7 @@ window._metricsUpdateData = function(d) {{
                 f"<td style='color:#8b949e'>{uptm_str}</td></tr>"
             )
         if not batt_rows:
-            batt_rows = "<tr><td colspan='4' class='no-data'>Sem dados de bateria ainda</td></tr>"
+            batt_rows = "<tr><td colspan='4' class='no-data'>No battery data yet</td></tr>"
 
         hw_chart_js = ""
         if hw_labels:
@@ -1433,41 +1442,41 @@ window._hwChart = new Chart(document.getElementById('hwChart'), {{
 }});"""
 
         body = f"""
-<div class="subtitle">Saúde dos nós, baterias e hardware · {self._now_str()}</div>
+<div class="subtitle">Node health, batteries and hardware · {self._now_str()}</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
-  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
+  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Network Metric</span><span style="color:#8b949e;font-size:11px"> — data below is passively observed from all packets received by the local node. Reflects the state of the entire visible network, not just the local node.</span>
 </div>
 <div class="grid-3">
-  <div class="card"><h3>Nós Activos (2h)</h3>
+  <div class="card"><h3>Active Nodes (2h)</h3>
     <div class="kpi green" id="nodes-active">{n_active}</div></div>
-  <div class="card"><h3>Bateria / Powered</h3>
+  <div class="card"><h3>Battery / Powered</h3>
     <div class="kpi blue" id="nodes-batt-count">{n_battery}</div>
-    <div class="kpi-sub" id="nodes-powered">⚡ {n_powered} com alimentação externa · 📍 {n_gps_unique} com GPS</div></div>
-  <div class="card"><h3>Bateria Média</h3>
+    <div class="kpi-sub" id="nodes-powered">⚡ {n_powered} with external power · 📍 {n_gps_unique} with GPS</div></div>
+  <div class="card"><h3>Avg Battery</h3>
     <div class="kpi {'green' if batt_avg and batt_avg>60 else 'orange'}" id="nodes-batt-avg">
       {f'{batt_avg:.0f}%' if batt_avg is not None else '—'}</div></div>
 </div>
 <div class="grid" style="margin-top:16px">
   <div class="card">
-    <h3>Nós Activos ao Longo do Tempo</h3>
+    <h3>Active Nodes Over Time</h3>
     <div class="chart-wrap"><canvas id="nodesChart"></canvas></div>
   </div>
   <div class="card">
-    <h3>Distribuição de Bateria</h3>
+    <h3>Battery Distribution</h3>
     <div class="chart-wrap"><canvas id="battDistChart"></canvas></div>
   </div>
 </div>
-{f'<div class="card" style="margin-top:16px"><h3>Hardware por Modelo ({len(hw_model)} nós)</h3><div class="chart-wrap-lg"><canvas id="hwChart"></canvas></div></div>' if hw_labels else ''}
+{f'<div class="card" style="margin-top:16px"><h3>Hardware by Model ({len(hw_model)} nodes)</h3><div class="chart-wrap-lg"><canvas id="hwChart"></canvas></div></div>' if hw_labels else ''}
 <div class="card" style="margin-top:16px">
-  <h3>Bateria por Nó</h3>
-  <table><tr><th>Nó</th><th>Bateria</th><th>Tensão</th><th>Uptime</th></tr>{batt_rows}</table>
+  <h3>Battery per Node</h3>
+  <table><tr><th>Node</th><th>Battery</th><th>Voltage</th><th>Uptime</th></tr>{batt_rows}</table>
 </div>
 <script>
 window._nodesChart = new Chart(document.getElementById('nodesChart'), {{
   type: 'line',
   data: {{
     labels: {json.dumps(ts_labels)},
-    datasets: [{{ label: 'Nós activos', data: {json.dumps(ts_vals)},
+    datasets: [{{ label: 'Active nodes', data: {json.dumps(ts_vals)},
       borderColor: '#39d353', backgroundColor: 'rgba(57,211,83,0.1)',
       fill: true, tension: 0.3, pointRadius: 2 }}]
   }},
@@ -1505,7 +1514,7 @@ window._metricsUpdateData = function(d) {{
   set('nodes-active',    d.n_active);
   set('nodes-batt-count', d.n_battery);
   set('nodes-batt-avg',  d.batt_avg !== null ? d.batt_avg + '%' : '—');
-  set('nodes-powered',   '⚡ ' + (d.n_powered||0) + ' com alimentação externa · 📍 ' + (d.n_gps_unique||0) + ' com GPS');
+  set('nodes-powered',   '⚡ ' + (d.n_powered||0) + ' with external power · 📍 ' + (d.n_gps_unique||0) + ' with GPS');
   if(window._nodesChart && d.ts_vals && d.ts_vals.length > 0) {{
     window._nodesChart.data.labels = d.ts_labels;
     window._nodesChart.data.datasets[0].data = d.ts_vals;
@@ -1517,9 +1526,9 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("🔋 Nós & Bateria", body)
+        return self._base_html("🔋 Nodes & Battery", body)
 
-    # ── 6. Fiabilidade ────────────────────────────────────────────────────
+    # ── 6. Reliability ────────────────────────────────────────────────────
     def _data_latency(self) -> dict:
         n = len(self._rtt_values)
         if n == 0:
@@ -1552,10 +1561,10 @@ window._metricsUpdateData = function(d) {{
     def _html_latency(self) -> str:
         d = self._data_latency()
         if d["n"] == 0:
-            body = ('<div class="no-data">⏳ Sem dados de latência ainda.<br><br>'
-                    'Envie mensagens com wantAck=True para medir o RTT '
-                    '(tempo entre envio e ACK do destinatário).</div>')
-            return self._base_html("⏱ Latência (RTT)", body)
+            body = ('<div class="no-data">⏳ No latency data yet.<br><br>'
+                    'Send messages with wantAck=True to measure the RTT '
+                    '(time between send and recipient ACK).</div>')
+            return self._base_html("⏱ Latency (RTT)", body)
 
         def kpi(val, unit, label, color=""):
             v = f"{val}{unit}" if val is not None else "—"
@@ -1565,34 +1574,34 @@ window._metricsUpdateData = function(d) {{
                      else "orange" if d["avg"] and d["avg"] < 30 else "red")
 
         body = f"""
-<div class="subtitle">RTT (Round-Trip Time) — tempo entre envio e ACK · {d['n']} amostras · {d['now']}</div>
+<div class="subtitle">RTT (Round-Trip Time) — time between send and ACK · {d['n']} samples · {d['now']}</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #f0883e;padding:8px 14px">
-  <span style="color:#f0883e;font-size:12px;font-weight:bold">🏠 Métrica do Nó Local</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo referem-se exclusivamente ao nó local (mensagens enviadas e respectivos ACK/NAK). Os outros nós da rede não contribuem para estes valores.</span>
+  <span style="color:#f0883e;font-size:12px;font-weight:bold">🏠 Local Node Metric</span><span style="color:#8b949e;font-size:11px"> — data below refers exclusively to the local node (sent messages e respectivos ACK/NAK). Other network nodes do not contribute to these values.</span>
 </div>
 <div class="grid-3">
-  {kpi(d['avg'], 's', 'RTT Médio', avg_color)}
-  {kpi(d['med'], 's', 'RTT Mediana', '')}
-  {kpi(d['p90'], 's', 'RTT P90 (pior 10%)', 'orange')}
+  {kpi(d['avg'], 's', 'Avg RTT', avg_color)}
+  {kpi(d['med'], 's', 'RTT Median', '')}
+  {kpi(d['p90'], 's', 'RTT P90 (worst 10%)', 'orange')}
 </div>
 <div class="grid">
-  {kpi(d['min'], 's', 'RTT Mínimo', 'green')}
-  {kpi(d['max'], 's', 'RTT Máximo', '')}
+  {kpi(d['min'], 's', 'RTT Minimum', 'green')}
+  {kpi(d['max'], 's', 'RTT Maximum', '')}
 </div>
 <div class="card" style="margin-top:16px">
-  <h3>Distribuição de RTT</h3>
+  <h3>RTT Distribution</h3>
   <div class="chart-wrap-lg"><canvas id="rttChart"></canvas></div>
 </div>
 <div class="card" style="margin-top:16px">
-  <h3>Interpretação</h3>
+  <h3>Interpretation</h3>
   <p style="color:#8b949e;font-size:12px;line-height:1.8">
-    <b style="color:#e6edf3">RTT &lt; 5s:</b> Ligação directa excelente (0 hops).<br>
-    <b style="color:#e6edf3">RTT 5–15s:</b> Normal para 1–2 hops em LoRa.<br>
-    <b style="color:#e6edf3">RTT 15–30s:</b> Possível congestão ou 3+ hops.<br>
-    <b style="color:#e6edf3">RTT &gt; 30s:</b> Rede congestionada ou rota longa.<br>
+    <b style="color:#e6edf3">RTT &lt; 5s:</b> Excellent direct link (0 hops).<br>
+    <b style="color:#e6edf3">RTT 5–15s:</b> Normal for 1–2 hops in LoRa.<br>
+    <b style="color:#e6edf3">RTT 15–30s:</b> Possible congestion or 3+ hops.<br>
+    <b style="color:#e6edf3">RTT &gt; 30s:</b> Congested network or long route.<br>
     <br>
-    O RTT inclui: tempo de espera de slot · transmissão LoRa · retransmissões de relay
-    · processamento do destinatário · ACK de volta. Em LONG_FAST a transmissão de um
-    pacote demora ~300ms; cada hop acrescenta janela de contenção aleatória.
+    RTT includes: slot wait time · LoRa transmission · relay retransmissions
+    · recipient processing · ACK back. In LONG_FAST, the transmission of a
+    packet takes ~300ms; each hop adds a random contention window.
   </p>
 </div>
 <script>
@@ -1600,7 +1609,7 @@ window._rttChart = new Chart(document.getElementById('rttChart'), {{
   type: 'bar',
   data: {{
     labels: {json.dumps(d['hist_labels'])},
-    datasets: [{{ label: 'Nº de mensagens', data: {json.dumps(d['hist_counts'])},
+    datasets: [{{ label: 'Message count', data: {json.dumps(d['hist_counts'])},
       backgroundColor: '#58a6ff', borderRadius: 3 }}]
   }},
   options: {{
@@ -1621,7 +1630,7 @@ window._metricsUpdateData = function(d) {{
   // Actualização via dados do servidor — rtt chart actualizado no próximo reload
 }};
 </script>"""
-        return self._base_html("⏱ Latência (RTT)", body)
+        return self._base_html("⏱ Latency (RTT)", body)
 
     def _html_reliability(self) -> str:
         now = time.time()
@@ -1629,20 +1638,20 @@ window._metricsUpdateData = function(d) {{
         # ── Rede — observação passiva ──────────────────────────────────
         total_pkt      = len(self._pkt_ids)
         total_seen     = sum(v['count'] for v in self._pkt_ids.values()) if self._pkt_ids else 0
-        # Dup rate: % de pacotes únicos vistos mais de 1 vez (flood activo)
+        # Dup rate: % de pacotes unique vistos mais de 1 vez (flood activo)
         dup_rate       = round(self._duplicates / max(total_pkt, 1) * 100, 1) if total_pkt > 0 else None
         net_ack_total  = self._routing_acks + self._routing_naks
         net_nak_rate   = round(self._routing_naks / net_ack_total * 100, 1) if net_ack_total > 0 else None
         active_senders = len(set(v['from'] for v in self._pkt_ids.values()))
 
         if dup_rate is None:
-            dup_color, dup_label = "", "Sem dados"
+            dup_color, dup_label = "", "No data"
         elif dup_rate < 10:
-            dup_color, dup_label = "orange", "⚠ Flood reduzido"
+            dup_color, dup_label = "orange", "⚠ Reduced flood"
         elif dup_rate <= 60:
-            dup_color, dup_label = "green",  "✅ Flood saudável"
+            dup_color, dup_label = "green",  "✅ Healthy flood"
         else:
-            dup_color, dup_label = "red",    "🚨 Possível congestionamento"
+            dup_color, dup_label = "red",    "🚨 Possible congestion"
 
         nak_net_color = ("" if net_nak_rate is None else
                          "green" if net_nak_rate < 5 else
@@ -1665,14 +1674,14 @@ window._metricsUpdateData = function(d) {{
             p_col_corrected = round(p_col * 0.5, 1)
             col_color = ("green"  if p_col_corrected < 5  else
                          "orange" if p_col_corrected < 15 else "red")
-            col_label = ("✅ Risco baixo"    if p_col_corrected < 5  else
-                         "⚠ Risco moderado" if p_col_corrected < 15 else
+            col_label = ("✅ Low risk"    if p_col_corrected < 5  else
+                         "⚠ Moderate risk" if p_col_corrected < 15 else
                          "🚨 Risco elevado")
         else:
-            p_col_corrected, col_color, col_label = None, "", "Sem dados de Ch. Util."
+            p_col_corrected, col_color, col_label = None, "", "No data de Ch. Util."
 
         # ── Nó local ──────────────────────────────────────────────────
-        # ack       = ROUTING_APP de OUTRO nó → destinatário confirmou
+        # ack       = ROUTING_APP de OUTRO nó → recipient confirmed
         # ack_impl  = ROUTING_APP do próprio nó → retransmissão local
         #             NÃO é confirmação de entrega; não entra na taxa de entrega
         # nak       = errorReason != NONE → falha definitiva
@@ -1693,37 +1702,37 @@ window._metricsUpdateData = function(d) {{
         pie_local = [acked, naked, ack_impl, pending] if any([acked, naked, ack_impl, pending]) else [1, 0, 0, 0]
 
         no_net_data   = ("" if total_pkt > 0 else
-                         '<div class="no-data" style="margin-bottom:12px">⏳ Aguardando pacotes ROUTING_APP na rede…</div>')
+                         '<div class="no-data" style="margin-bottom:12px">⏳ Waiting for ROUTING_APP packets na rede…</div>')
         no_local_data = ("" if sent > 0 else
-                         '<div style="color:#8b949e;font-size:11px;margin-bottom:8px">⏳ Envie mensagens para ver métricas do nó local.</div>')
+                         '<div style="color:#8b949e;font-size:11px;margin-bottom:8px">⏳ Send messages to see local node metrics.</div>')
 
         body = f"""
-<div class="subtitle">Fiabilidade da rede Meshtastic — observação passiva + nó local</div>
+<div class="subtitle">Meshtastic network reliability — passive observation + local node</div>
 
-<h3 style="color:#58a6ff;font-size:13px;margin:0 0 10px 0">🌐 Fiabilidade da Rede (todos os nós)</h3>
+<h3 style="color:#58a6ff;font-size:13px;margin:0 0 10px 0">🌐 Reliability da Rede (todos os nodes)</h3>
 {no_net_data}
 <div class="grid" style="margin-bottom:12px">
   <div class="card">
-    <h3>Taxa de Flood (5 min)</h3>
+    <h3>Flood Rate (5 min)</h3>
     <div id="rel-dup" class="kpi {dup_color}">{dup_rate if dup_rate is not None else '—'}{'%' if dup_rate is not None else ''}</div>
-    <div id="rel-dup-label" class="kpi-sub">{dup_label}<br>% de pacotes únicos reencaminhados por ≥2 nós</div>
+    <div id="rel-dup-label" class="kpi-sub">{dup_label}<br>% of unique packets forwarded by ≥2 nodes</div>
   </div>
   <div class="card">
-    <h3>Colisões Estimadas (CAD)</h3>
+    <h3>Estimated Collisions (CAD)</h3>
     <div id="rel-col" class="kpi {col_color}">{p_col_corrected if p_col_corrected is not None else '—'}{'%' if p_col_corrected is not None else ''}</div>
-    <div id="rel-col-label" class="kpi-sub">{col_label}<br>Modelo Poisson × 0.5 (CAD mitiga) · base: Ch.Util {round(ch_util_avg,1) if ch_util_avg else '—'}%</div>
+    <div id="rel-col-label" class="kpi-sub">{col_label}<br>Poisson model × 0.5 (CAD mitigates) · base: Ch.Util {round(ch_util_avg,1) if ch_util_avg else '—'}%</div>
   </div>
 </div>
 <div class="grid">
   <div class="card">
-    <h3>NAK da Rede (ROUTING_APP)</h3>
+    <h3>Network NAK (ROUTING_APP)</h3>
     <div id="rel-net-nak" class="kpi {nak_net_color}">{net_nak_rate if net_nak_rate is not None else '—'}{'%' if net_nak_rate is not None else ''}</div>
-    <div id="rel-net-sub" class="kpi-sub">ACK: {self._routing_acks} · NAK: {self._routing_naks}<br>Inclui NO_ROUTE e MAX_RETRANSMIT</div>
+    <div id="rel-net-sub" class="kpi-sub">ACK: {self._routing_acks} · NAK: {self._routing_naks}<br>Includes NO_ROUTE and MAX_RETRANSMIT</div>
   </div>
   <div class="card">
-    <h3>Pacotes únicos (5 min)</h3>
+    <h3>Unique packets (5 min)</h3>
     <div id="rel-pkt" class="kpi blue">{total_pkt}</div>
-    <div id="rel-pkt-sub" class="kpi-sub">{active_senders} nós emissores · {self._duplicates} duplicados vistos</div>
+    <div id="rel-pkt-sub" class="kpi-sub">{active_senders} sender nodes · {self._duplicates} duplicates seen</div>
   </div>
 </div>
 <div class="grid" style="margin-top:14px">
@@ -1734,45 +1743,45 @@ window._metricsUpdateData = function(d) {{
     </div>
   </div>
   <div class="card">
-    <h3>Referências</h3>
+    <h3>References</h3>
     <table>
-      <tr><th>Métrica</th><th>Referência</th></tr>
-      <tr><td>Taxa de flood</td><td><span class='tag tag-orange'>&lt;10% Fraco</span> <span class='tag tag-green'>10-60% Normal</span> <span class='tag tag-red'>&gt;60% Congestionado</span></td></tr>
-      <tr><td>NAK da rede</td><td><span class='tag tag-green'>&lt;5% Normal</span> <span class='tag tag-orange'>5-20% Atenção</span> <span class='tag tag-red'>&gt;20% Crítico</span></td></tr>
-      <tr><td>Entrega local</td><td><span class='tag tag-green'>&ge;90% ACK real</span> <span class='tag tag-orange'>70-90%</span> <span class='tag tag-red'>&lt;70%</span></td></tr>
+      <tr><th>Metric</th><th>Reference</th></tr>
+      <tr><td>Flood rate</td><td><span class='tag tag-orange'>&lt;10% Weak</span> <span class='tag tag-green'>10-60% Normal</span> <span class='tag tag-red'>&gt;60% Congested</span></td></tr>
+      <tr><td>Network NAK</td><td><span class='tag tag-green'>&lt;5% Normal</span> <span class='tag tag-orange'>5-20% Warning</span> <span class='tag tag-red'>&gt;20% Critical</span></td></tr>
+      <tr><td>Local delivery</td><td><span class='tag tag-green'>&ge;90% Real ACK</span> <span class='tag tag-orange'>70-90%</span> <span class='tag tag-red'>&lt;70%</span></td></tr>
     </table>
   </div>
 </div>
 
-<h3 style="color:#58a6ff;font-size:13px;margin:16px 0 10px 0">📍 Nó Local (mensagens enviadas)</h3>
+<h3 style="color:#58a6ff;font-size:13px;margin:16px 0 10px 0">📍 Local Node (sent messages)</h3>
 {no_local_data}
 <div class="grid-3">
   <div class="card">
-    <h3>Taxa de Entrega Real</h3>
+    <h3>Real Delivery Rate</h3>
     <div id="rel-delivery" class="kpi {dr_color}">{delivery if delivery is not None else '—'}{'%' if delivery is not None else ''}</div>
-    <div class="kpi-sub">ACK do destinatário ÷ (ACK+NAK)<br><i>Não inclui retransmissões locais</i></div>
+    <div class="kpi-sub">Recipient ACK ÷ (ACK+NAK)<br><i>Does not include local retransmissions</i></div>
   </div>
   <div class="card">
-    <h3>Taxa NAK Local</h3>
+    <h3>Local NAK Rate</h3>
     <div id="rel-nak" class="kpi {'red' if nak_rate and nak_rate>20 else 'orange' if nak_rate else ''}">{nak_rate if nak_rate is not None else '—'}{'%' if nak_rate is not None else ''}</div>
-    <div class="kpi-sub">Falhas definitivas com errorReason</div>
+    <div class="kpi-sub">Definitive failures with errorReason</div>
   </div>
   <div class="card">
-    <h3>Mensagens Enviadas</h3>
+    <h3>Messages Sent</h3>
     <div id="rel-sent" class="kpi blue">{sent}</div>
     <div id="rel-sub" class="kpi-sub">ACK: {acked} · NAK: {naked} · Relay: {ack_impl} · Pend.: {pending}</div>
   </div>
 </div>
 <div style="margin-top:12px">
   <div class="card">
-    <h3>Distribuição — Nó Local</h3>
+    <h3>Distribution — Local Node</h3>
     <div style="display:flex;gap:16px;align-items:center;padding:8px 0">
       <canvas id="relChart" width="140" height="140"></canvas>
       <div style="font-size:11px;color:#8b949e;line-height:2">
-        <div><span style="color:#39d353">■</span> ACK real ({acked}) — destinatário confirmou</div>
+        <div><span style="color:#39d353">■</span> Real ACK ({acked}) — recipient confirmed</div>
         <div><span style="color:#f85149">■</span> NAK ({naked}) — falha definitiva</div>
-        <div><span style="color:#f0883e">■</span> Relay local ({ack_impl}) — retransmissão, sem confirm. de entrega</div>
-        <div><span style="color:#8b949e">■</span> Pendente ({pending}) — sem resposta ainda</div>
+        <div><span style="color:#f0883e">■</span> Local relay ({ack_impl}) — retransmit, no delivery confirm.</div>
+        <div><span style="color:#8b949e">■</span> Pending ({pending}) — no response yet</div>
       </div>
     </div>
   </div>
@@ -1793,7 +1802,7 @@ window._relNetChart = new Chart(document.getElementById('relNetChart'), {{
 window._relChart = new Chart(document.getElementById('relChart'), {{
   type: 'doughnut',
   data: {{
-    labels: ['ACK real ✓', 'NAK ✗', 'Relay local', 'Pendente'],
+    labels: ['Real ACK ✓', 'NAK ✗', 'Local relay', 'Pending'],
     datasets: [{{ data: {json.dumps(pie_local)},
       backgroundColor: ['#39d353','#f85149','#f0883e','#8b949e'], borderWidth: 0 }}]
   }},
@@ -1809,25 +1818,25 @@ window._metricsUpdateData = function(d) {{
   function setClass(id, cls) {{ var e=document.getElementById(id); if(e) e.className='kpi '+cls; }}
 
   // Rede
-  var dupLbl = d.dup_rate === null ? 'Sem dados' :
+  var dupLbl = d.dup_rate === null ? 'No data' :
                d.dup_rate < 10  ? '\u26a0\ufe0f Flood reduzido' :
-               d.dup_rate <= 60 ? '\u2705 Flood saudável' : '\U0001f6a8 Possível congestionamento';
+               d.dup_rate <= 60 ? '\u2705 Healthy flood' : '\U0001f6a8 Possible congestion';
   set('rel-dup',       d.dup_rate !== null ? d.dup_rate + '%' : '\u2014');
   setClass('rel-dup',  d.dup_rate === null ? '' : d.dup_rate < 10 ? 'orange' : d.dup_rate <= 60 ? 'green' : 'red');
-  set('rel-dup-label', dupLbl + '\n% de pacotes únicos reencaminhados por \u22652 nós');
-  var colLbl = d.p_col === null || d.p_col === undefined ? 'Sem dados de Ch.Util.' :
+  set('rel-dup-label', dupLbl + '\n% de pacotes unique reencaminhados por \u22652 nodes');
+  var colLbl = d.p_col === null || d.p_col === undefined ? 'No data de Ch.Util.' :
                d.p_col < 5  ? '\u2705 Risco baixo' :
-               d.p_col < 15 ? '\u26a0\ufe0f Risco moderado' : '\U0001f6a8 Risco elevado';
+               d.p_col < 15 ? '⚠️ Moderate risk' : '🚨 High risk';
   set('rel-col', d.p_col !== null && d.p_col !== undefined ? d.p_col + '%' : '\u2014');
   setClass('rel-col', d.p_col === null ? '' : d.p_col < 5 ? 'green' : d.p_col < 15 ? 'orange' : 'red');
-  set('rel-col-label', colLbl + '\nModelo Poisson \xd70.5 (CAD mitiga) \xb7 base: Ch.Util ' + (d.ch_util_avg !== null ? d.ch_util_avg + '%' : '\u2014'));
+  set('rel-col-label', colLbl + '\nPoisson model \xd70.5 (CAD mitiga) \xb7 base: Ch.Util ' + (d.ch_util_avg !== null ? d.ch_util_avg + '%' : '\u2014'));
   set('rel-net-nak',   d.net_nak_rate !== null ? d.net_nak_rate + '%' : '\u2014');
   setClass('rel-net-nak', d.net_nak_rate === null ? '' : d.net_nak_rate < 5 ? 'green' : d.net_nak_rate < 20 ? 'orange' : 'red');
-  set('rel-net-sub',   'ACK: ' + d.net_acks + ' \xb7 NAK: ' + d.net_naks + '\nInclui NO_ROUTE e MAX_RETRANSMIT');
+  set('rel-net-sub',   'ACK: ' + d.net_acks + ' \xb7 NAK: ' + d.net_naks + '\nIncludes NO_ROUTE and MAX_RETRANSMIT');
   set('rel-pkt',       d.total_pkt);
-  set('rel-pkt-sub',   d.active_senders + ' nós emissores \xb7 ' + d.duplicates + ' duplicados vistos');
+  set('rel-pkt-sub',   d.active_senders + ' sender nodes · ' + d.duplicates + ' duplicates seen');
 
-  // Nó local
+  // Local node
   set('rel-delivery',  d.delivery !== null ? d.delivery + '%' : '\u2014');
   setClass('rel-delivery', d.delivery === null ? '' : d.delivery >= 90 ? 'green' : d.delivery >= 70 ? 'orange' : 'red');
   set('rel-nak',       d.nak_rate !== null ? d.nak_rate + '%' : '\u2014');
@@ -1848,7 +1857,7 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("✅ Fiabilidade", body)
+        return self._base_html("✅ Reliability", body)
 
     # ── 8. Vizinhança ─────────────────────────────────────────────────────
     def _data_neighbors(self) -> dict:
@@ -1867,11 +1876,11 @@ window._metricsUpdateData = function(d) {{
 
     def _html_neighbors(self) -> str:
         if not self._nb_links:
-            body = ('<div class="no-data">⏳ Sem dados de NeighborInfo ainda.<br><br>'
-                    'Os nós da rede enviam automaticamente pacotes <b>NEIGHBORINFO_APP</b> '
-                    'com a lista de vizinhos directos e respectivo SNR.<br>'
-                    'Estes dados aparecem normalmente após 1–2 minutos de operação.</div>')
-            return self._base_html("🔗 Vizinhança", body)
+            body = ('<div class="no-data">⏳ No NeighborInfo data yet.<br><br>'
+                    'Network nodes automatically send packets <b>NEIGHBORINFO_APP</b> '
+                    'with the list of direct neighbours and their SNR.<br>'
+                    'This data typically appears after 1–2 minutes of operation.</div>')
+            return self._base_html("🔗 Neighbourhood", body)
 
         d = self._data_neighbors()
         rows_html = ""
@@ -1886,34 +1895,34 @@ window._metricsUpdateData = function(d) {{
                 f"<td><span class='tag tag-{color}'>{snr_str} dB</span></td></tr>"
             )
         if not rows_html:
-            rows_html = "<tr><td colspan='4' class='no-data'>Sem pares</td></tr>"
+            rows_html = "<tr><td colspan='4' class='no-data'>No pairs</td></tr>"
 
         body = f"""
-<div class="subtitle">Nós que se vêem mutuamente via LoRa · {d['n_nodes']} nós reportaram · {d['n_links']} pares únicos · {d['now']}</div>
+<div class="subtitle">Nodes that see each other via LoRa · {d['n_nodes']} nodes reportaram · {d['n_links']} unique pairs · {d['now']}</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #8b949e;padding:8px 14px">
   <span style="color:#8b949e;font-size:11px">
-    ℹ️ Estes dados provêm de pacotes <b>NEIGHBORINFO_APP</b> enviados pelos nós da rede —
-    representam ligações directas observadas por cada nó (não pelo nó local).
-    As linhas roxas pontilhadas no mapa mostram os mesmos pares.
+    ⚙️ This data comes from <b>NEIGHBORINFO_APP</b> packets seniados pelos nodes da rede —
+    representing direct links observed by each node (not the local node).
+    The purple dashed lines on the map show the same pairs.
   </span>
 </div>
 <div class="card">
-  <h3>Pares de Vizinhos Directos</h3>
+  <h3>Direct Neighbour Pairs</h3>
   <table>
-    <tr><th>Nó A</th><th></th><th>Nó B</th><th>SNR</th></tr>
+    <tr><th>Node A</th><th></th><th>Node B</th><th>SNR</th></tr>
     {rows_html}
   </table>
 </div>
 <script>
 window._metricsUpdateData = function(d) {{
-  // Tabela de vizinhos não tem update incremental — actualiza no próximo render
+  // Neighbour table: no incremental update — rerenders on next cycle
 }};
 </script>"""
-        return self._base_html("🔗 Vizinhança", body)
+        return self._base_html("🔗 Neighbourhood", body)
 
     # ── 9. Alcance & Links ────────────────────────────────────────────────
     def _data_range_links(self) -> dict:
-        """Calcula distância entre pares de nós vizinhos com GPS."""
+        """Calcula distância entre pares de nodes vizinhos with GPS."""
         import math as _m
         def haversine(lat1, lon1, lat2, lon2):
             R = 6371.0
@@ -1923,7 +1932,7 @@ window._metricsUpdateData = function(d) {{
                  _m.cos(_m.radians(lat1)) * _m.cos(_m.radians(lat2)) * _m.sin(dlon/2)**2)
             return R * 2 * _m.atan2(_m.sqrt(a), _m.sqrt(1-a))
 
-        # Usa posições dos nós nos pacotes recebidos
+        # Usa posições dos nodes nos pacotes recebidos
         node_pos = {}  # nid → (lat, lon)
         for p in self._packets:
             nid = p[1]
@@ -1974,11 +1983,26 @@ window._metricsUpdateData = function(d) {{
     def _html_range_links(self) -> str:
         d = self._data_range_links()
         if not d["rows"]:
-            body = ('<div class="no-data">⏳ Sem dados de alcance ainda.<br><br>'
-                    'Requer que os nós reportem posição GPS (<b>POSITION_APP</b>) '
-                    'e que os dados de vizinhança (<b>NEIGHBORINFO_APP</b>) estejam disponíveis.<br>'
-                    f'Nós com GPS conhecidos: {d["n_with_gps"]}</div>')
-            return self._base_html("📏 Alcance & Links", body)
+            n_gps   = d["n_with_gps"]
+            n_nb    = len(self._nb_links)
+            has_gps = n_gps > 0
+            has_nb  = n_nb > 0
+            if not has_gps and not has_nb:
+                detail = "⏳ Waiting for GPS positions (POSITION_APP) and neighbour data (NEIGHBORINFO_APP)."
+            elif not has_gps:
+                detail = (f"✅ Neighbour data received ({n_nb} nodes). "
+                          "⏳ Waiting for GPS positions (POSITION_APP).")
+            elif not has_nb:
+                detail = (f"✅ GPS positions known ({n_gps} nodes). "
+                          "⏳ Waiting for neighbour data (NEIGHBORINFO_APP).")
+            else:
+                detail = (f"✅ GPS: {n_gps} nodes · Neighbours: {n_nb} nodes. "
+                          "No pairs with GPS on both ends yet.")
+            body = (f'<div class="no-data">📏 Range & Links<br><br>{detail}<br><br>'
+                    'Both POSITION_APP and NEIGHBORINFO_APP data are required '
+                    '— both nodes in a neighbour pair must have GPS.'
+                    f'<br><br>GPS-equipped nodes known: {n_gps} · Neighbour pairs: {n_nb}</div>')
+            return self._base_html("📏 Range & Links", body)
 
         def kpi(val, unit, label, color=""):
             v = f"{val}{unit}" if val is not None else "—"
@@ -1998,31 +2022,31 @@ window._metricsUpdateData = function(d) {{
             )
 
         body = f"""
-<div class="subtitle">Alcance dos links LoRa directos (requer GPS + NeighborInfo) · {d['now']}</div>
+<div class="subtitle">Range of direct LoRa links (requires GPS + NeighborInfo) · {d['now']}</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #8b949e;padding:8px 14px">
   <span style="color:#8b949e;font-size:11px">
-    ℹ️ Métrica da rede — calcula a distância real entre nós vizinhos reportados via
-    <b>NEIGHBORINFO_APP</b>, usando as coordenadas GPS de cada nó (fórmula de Haversine).
-    Não envolve o nó local a não ser que ele também esteja nos pares.
+    ⚙️ Network metric — calculates the real distance between neighbouring nodes via
+    <b>NEIGHBORINFO_APP</b>, using each node's GPS coordinates (Haversine formula).
+    Does not involve the local node unless it is in the pairs.
   </span>
 </div>
 <div class="grid-3" style="margin-bottom:16px">
-  {kpi(f"{d['max_range']:.2f}" if d['max_range'] else None, " km", "Maior Alcance", "blue")}
-  <div class="card"><h3>Par de maior alcance</h3>
+  {kpi(f"{d['max_range']:.2f}" if d['max_range'] else None, " km", "Max Range", "blue")}
+  <div class="card"><h3>Longest range pair</h3>
     <div style="font-size:14px;font-weight:bold;color:#58a6ff">
       {d['max_pair'][0]} ↔ {d['max_pair'][1]}
     </div></div>
-  {kpi(d['n_with_gps'], " nós", "Nós com GPS", "")}
+  {kpi(d['n_with_gps'], " nodes", "Nodes with GPS", "")}
 </div>
 <div class="card">
-  <h3>Links por Alcance</h3>
+  <h3>Links by Range</h3>
   <table>
-    <tr><th>Nó A</th><th>Nó B</th><th>Distância</th><th>SNR</th></tr>
+    <tr><th>Node A</th><th>Node B</th><th>Distance</th><th>SNR</th></tr>
     {rows_html}
   </table>
 </div>
 <script>window._metricsUpdateData=function(d){{}};</script>"""
-        return self._base_html("📏 Alcance & Links", body)
+        return self._base_html("📏 Range & Links", body)
 
     # ── 10. Intervalos entre pacotes ─────────────────────────────────────
     def _data_intervals(self) -> dict:
@@ -2041,15 +2065,15 @@ window._metricsUpdateData = function(d) {{
     def _html_intervals(self) -> str:
         d = self._data_intervals()
         if not d["rows"]:
-            body = ('<div class="no-data">⏳ Sem dados de intervalos ainda.<br><br>'
-                    'Requer pelo menos 2 pacotes por nó para calcular o intervalo médio.</div>')
-            return self._base_html("⏰ Intervalos", body)
+            body = ('<div class="no-data">⏳ No interval data yet.<br><br>'
+                    'Requires at least 2 packets per node to calculate the average interval.</div>')
+            return self._base_html("⏰ Intervals", body)
 
         rows_html = ""
         for nid_n, avg, mn, mx, count in d["rows"]:
             # Cores: verde <60s (activo), laranja 60-300s, vermelho >300s
             color = "green" if avg < 60 else ("orange" if avg < 300 else "red")
-            freq_label = "Alta frequência" if avg < 30 else ("Normal" if avg < 180 else "Baixa frequência")
+            freq_label = "High frequency" if avg < 30 else ("Normal" if avg < 180 else "Low frequency")
             rows_html += (
                 f"<tr><td>{nid_n}</td>"
                 f"<td><span class='tag tag-{color}'>{avg}s</span></td>"
@@ -2060,25 +2084,25 @@ window._metricsUpdateData = function(d) {{
             )
 
         body = f"""
-<div class="subtitle">Intervalo real entre pacotes recebidos de cada nó · {d['now']}</div>
+<div class="subtitle">Real interval between packets per node · {d['now']}</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #8b949e;padding:8px 14px">
   <span style="color:#8b949e;font-size:11px">
-    ℹ️ Métrica da rede — mede o tempo real entre pacotes consecutivos de cada nó observado.
-    Um intervalo muito baixo pode indicar um nó mal configurado a congestionar o canal.
-    Um intervalo muito alto pode indicar um nó com problemas de cobertura ou bateria fraca.
-    Não envolve o nó local a não ser que ele também envie pacotes observáveis.
+    ℹ️ Network metric — measures the real time between consecutive packets from each observed node.
+    UA very low interval may indicate a misconfigured node congesting the channel.
+    A very high interval may indicate a node with coverage issues or low batteryraca.
+    Does not involve the local node unless it also sends observable packets.
   </span>
 </div>
 <div class="card">
-  <h3>Intervalo Médio entre Pacotes por Nó</h3>
+  <h3>Average Packet Interval per Node</h3>
   <table>
-    <tr><th>Nó</th><th>Média</th><th>Mín.</th><th>Máx.</th><th>Amostras</th><th>Frequência</th></tr>
+    <tr><th>Node</th><th>Average</th><th>Min.</th><th>Max.</th><th>Samples</th><th>Frequency</th></tr>
     {rows_html}
   </table>
   <div style="color:#8b949e;font-size:10px;margin-top:8px;padding-top:8px;border-top:1px solid #21262d">
-    ℹ️ Intervalos &lt;30s = alta frequência · 30–180s = normal · &gt;180s = baixa frequência
+    ⚙️ Intervals &lt;30s = high frequency · 30–180s = normal · &gt;180s = low frequency
   </div>
 </div>
 <script>window._metricsUpdateData=function(d){{}};</script>"""
-        return self._base_html("⏰ Intervalos", body)
+        return self._base_html("⏰ Intervals", body)
 

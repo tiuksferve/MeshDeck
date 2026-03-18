@@ -24,6 +24,7 @@ from constants import (
     ACCENT_ORANGE, ACCENT_RED, ACCENT_PURPLE, TEXT_PRIMARY, TEXT_MUTED,
     INPUT_BG, DM_BG, _is_broadcast
 )
+from i18n import tr
 
 class ConversationContext:
     CHANNEL = "channel"
@@ -91,7 +92,7 @@ class MessagesTab(QWidget):
         sep.setStyleSheet(f"color:{BORDER_COLOR};margin:2px 0;")
         lv.addWidget(sep)
 
-        dm_hdr = QLabel("📩  Mensagens Directas")
+        dm_hdr = QLabel("📩  " + tr("Direct Messages"))
         dm_hdr.setStyleSheet(
             f"color:{ACCENT_PURPLE};font-weight:bold;font-size:11px;"
             f"padding:3px 6px;background:{PANEL_BG};"
@@ -101,7 +102,7 @@ class MessagesTab(QWidget):
 
         self.dm_list = QTableWidget()
         self.dm_list.setColumnCount(2)
-        self.dm_list.setHorizontalHeaderLabels(["Short", "Nome Longo"])
+        self.dm_list.setHorizontalHeaderLabels(["Short", "Long Name"])
         self.dm_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.dm_list.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.dm_list.horizontalHeader().setDefaultAlignment(Qt.AlignLeft)
@@ -121,7 +122,7 @@ class MessagesTab(QWidget):
         rv.setContentsMargins(4, 0, 0, 0)
         rv.setSpacing(6)
 
-        self.conv_header = QLabel("Seleccione um canal ou nó")
+        self.conv_header = QLabel(tr("Select a channel or node to send a message…")[:26])
         self.conv_header.setStyleSheet(
             f"color:{ACCENT_GREEN};font-weight:bold;font-size:13px;"
             f"padding:6px 10px;background:{PANEL_BG};"
@@ -142,12 +143,12 @@ class MessagesTab(QWidget):
         sl.setSpacing(8)
 
         self.send_input = QLineEdit()
-        self.send_input.setPlaceholderText("Seleccione um canal ou nó para enviar mensagem…")
+        self.send_input.setPlaceholderText(tr("Select a channel or node to send a message…"))
         self.send_input.setEnabled(False)
         self.send_input.returnPressed.connect(self._on_send)
         sl.addWidget(self.send_input, stretch=1)
 
-        self.btn_send = QPushButton("📤  Enviar")
+        self.btn_send = QPushButton(tr("📤  Send"))
         self.btn_send.setObjectName("btn_send_channel")
         self.btn_send.setFixedWidth(130)
         self.btn_send.setEnabled(False)
@@ -232,10 +233,10 @@ class MessagesTab(QWidget):
                 col0.setForeground(QColor(ACCENT_PURPLE))
             elif has_key:
                 col0.setForeground(QColor(ACCENT_GREEN))
-                col0.setToolTip("Chave pública conhecida — DM PKI disponível (E2E)")
+                col0.setToolTip(tr("Public key known — PKI DM available (E2E)"))
             else:
                 col0.setForeground(QColor(TEXT_MUTED))
-                col0.setToolTip("Chave pública desconhecida — DM via PSK de canal")
+                col0.setToolTip(tr("Unknown public key — DM via channel PSK"))
 
             long_disp = long_ or short or nid
             col1      = QTableWidgetItem(long_disp)
@@ -254,7 +255,7 @@ class MessagesTab(QWidget):
         self.channel_list.clear()
         self.channel_map.clear()
         for idx, name, _ in channels:
-            self.channel_map[idx] = name or f"Canal {idx}"
+            self.channel_map[idx] = name or f"{tr('Channel')} {idx}"
             item = QListWidgetItem(self._fmt_channel(idx))
             item.setData(Qt.UserRole, idx)
             self.channel_list.addItem(item)
@@ -269,7 +270,7 @@ class MessagesTab(QWidget):
             self._activate_channel(first.data(Qt.UserRole))
 
     def _fmt_channel(self, idx: int) -> str:
-        name   = self.channel_map.get(idx, f"Canal {idx}")
+        name   = self.channel_map.get(idx, f"{tr('Channel')} {idx}")
         unread = self.unread_count.get(f"ch:{idx}", 0)
         prefix = f"🔴({unread}) " if unread > 0 else "  "
         return f"{prefix}#{idx}  {name}"
@@ -292,21 +293,21 @@ class MessagesTab(QWidget):
         self.unread_count[key] = 0
         self._refresh_channel_list()
 
-        name = self.channel_map.get(idx, f"Canal {idx}")
+        name = self.channel_map.get(idx, f"{tr('Channel')} {idx}")
         self.conv_header.setText(f"📻  # {idx}  ·  {name}")
         self.conv_header.setStyleSheet(
             f"color:{ACCENT_GREEN};font-weight:bold;font-size:13px;"
             f"padding:6px 10px;background:{PANEL_BG};"
             f"border:1px solid {BORDER_COLOR};border-radius:6px;"
         )
-        self.send_input.setPlaceholderText(f"Mensagem para #{idx} · {name}…")
+        self.send_input.setPlaceholderText(f"{tr('Message to')} #{idx} · {name}…")
         self.send_input.setEnabled(True)
         self.btn_send.setEnabled(True)
         self.btn_send.setObjectName("btn_send_channel")
         self.btn_send.setStyleSheet(
             f"background-color:#1a4a2e;color:{ACCENT_GREEN};border-color:{ACCENT_GREEN};"
         )
-        self.btn_send.setText("📤  Enviar")
+        self.btn_send.setText(tr("📤  Send"))
         self._display_conversation(key)
 
     def _on_dm_cell_clicked(self, row: int, _col: int):
@@ -342,14 +343,14 @@ class MessagesTab(QWidget):
             f"padding:6px 10px;background:{DM_BG};"
             f"border:1px solid {ACCENT_PURPLE};border-radius:6px;"
         )
-        self.send_input.setPlaceholderText(f"Mensagem directa para {label}…")
+        self.send_input.setPlaceholderText(f"{tr('Send DM to')} {label}…")
         self.send_input.setEnabled(True)
         self.btn_send.setEnabled(True)
         self.btn_send.setObjectName("btn_send_dm")
         self.btn_send.setStyleSheet(
             f"background-color:#2a1a4a;color:{ACCENT_PURPLE};border-color:{ACCENT_PURPLE};"
         )
-        self.btn_send.setText("📩  Enviar DM")
+        self.btn_send.setText(tr("📩  Send DM"))
         self._display_conversation(key)
         self.send_input.setFocus()
 
@@ -413,7 +414,7 @@ class MessagesTab(QWidget):
     def add_outgoing_channel_message(self, channel_index: int, text: str, packet_id: int = 0):
         key   = f"ch:{channel_index}"
         entry = self._build_entry(datetime.now(), self._my_node_id or "Eu", text,
-                                  label="📤 Enviado", is_dm=False, outgoing=True,
+                                  label=tr("📤 Sent"), is_dm=False, outgoing=True,
                                   packet_id=packet_id)
         self._store_and_display(key, entry)
 
@@ -517,13 +518,13 @@ class MessagesTab(QWidget):
         bg     = DM_BG if is_dm else DARK_BG
         color  = ACCENT_PURPLE if is_dm else ACCENT_BLUE
         icon   = "📩" if is_dm else "💬"
-        lbl    = f"DM: {self._ctx_dm_id}" if is_dm else f"Canal #{self._ctx_channel}"
+        lbl    = f"DM: {self._ctx_dm_id}" if is_dm else tr("Channel") + f" #{self._ctx_channel}"
         return (
             f"<html><meta charset='utf-8'><body style='background:{bg};color:{TEXT_MUTED};"
             "font-family:monospace;display:flex;align-items:center;"
             "justify-content:center;height:100vh;margin:0;text-align:center;font-size:14px;'>"
-            f"<div>{icon}<br><br>Nenhuma mensagem em<br>"
-            f"<b style='color:{color};'>{html.escape(lbl)}</b> ainda.</div>"
+            f"<div>{icon}<br><br>" + tr("No messages in") + "<br>"
+            f"<b style='color:{color};'>{html.escape(lbl)}</b> " + tr("yet") + ".</div>"
             "</body></html>"
         )
 
@@ -563,9 +564,9 @@ body{{background:{bg};color:{TEXT_PRIMARY};
         if prev_date is None or msg_date != prev_date:
             today = datetime.now().date()
             if msg_date == today:
-                ds = "&#8212; Hoje &#8212;"
+                ds = "&#8212; " + tr("Today") + " &#8212;"
             elif msg_date == today - timedelta(days=1):
-                ds = "&#8212; Ontem &#8212;"
+                ds = "&#8212; " + tr("Yesterday") + " &#8212;"
             else:
                 ds = f"&#8212; {msg_date.strftime('%d/%m/%Y')} &#8212;"
             parts.append(f'<div class="date-sep">{ds}</div>')
@@ -580,7 +581,7 @@ body{{background:{bg};color:{TEXT_PRIMARY};
         status_detail = msg.get('status_detail', '')
         if msg.get('outgoing'):
             if status == 'sending':
-                status_html = f'<span title="A enviar..." style="color:{TEXT_MUTED};font-size:11px;">&#9679;&#9679;&#9679;</span>'
+                status_html = f'<span title="Sending..." style="color:{TEXT_MUTED};font-size:11px;">&#9679;&#9679;&#9679;</span>'
             elif status == 'ack_implicit':
                 status_html = f'<span title="Recebido por relay" style="color:{ACCENT_ORANGE};font-size:12px;">&#10003;</span>'
             elif status == 'ack':

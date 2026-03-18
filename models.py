@@ -18,6 +18,7 @@ from constants import (
     ACCENT_GREEN, ACCENT_BLUE, ACCENT_ORANGE, ACCENT_RED,
     ACCENT_PURPLE, TEXT_MUTED, BORDER_COLOR
 )
+from i18n import tr
 
 logger = logging.getLogger("MeshtasticGUI")
 
@@ -171,14 +172,17 @@ def _safe_update(target: dict, source: dict) -> None:
 
 # ---------------------------------------------------------------------------
 # Modelo de dados — tabela de nós
-# ---------------------------------------------------------------------------
 class NodeTableModel(QAbstractTableModel):
-    HEADERS = [
-        "⭐", "📩", "🗺", "📡",
-        "ID String", "ID Num", "Nome Longo", "Nome Curto", "Último Contato",
-        "SNR (dB)", "Hops", "Via", "Latitude", "Longitude", "Altitude (m)",
-        "Bateria (%)", "Modelo", "Último Tipo",
-    ]
+    @staticmethod
+    def _make_headers():
+        return [
+            "⭐", "📩", "🗺", "📡",
+            "ID String", "ID Num", tr("Long Name"), tr("Short Name"),
+            tr("Last Contact"), "SNR (dB)", "Hops", "Via",
+            "Latitude", "Longitude", tr("Altitude (m)"),
+            tr("Battery (%)"), tr("Model"), tr("Last Type"),
+        ]
+    HEADERS = []   # populated in __init__
 
     COL_FAV        = 0
     COL_DM         = 1
@@ -192,8 +196,17 @@ class NodeTableModel(QAbstractTableModel):
         super().__init__(parent)
         self._nodes: List[Dict[str, Any]] = []
         self._node_index: Dict[str, int] = {}
-        self._local_node_id:  Optional[str] = None   # ID canónico !hex
-        self._local_node_num: Optional[int] = None   # FIX-4: nodeNum int bloqueado cedo
+        self._local_node_id:  Optional[str] = None
+        self._local_node_num: Optional[int] = None
+        self.HEADERS = self._make_headers()
+
+    def retranslate(self):
+        """Rebuild column headers in current language and notify view."""
+        self.HEADERS = self._make_headers()
+        self.headerDataChanged.emit(
+            __import__('PyQt5.QtCore', fromlist=['Qt']).Qt.Horizontal,
+            0, len(self.HEADERS) - 1
+        )
 
     def rowCount(self, parent=QModelIndex()):
         return len(self._nodes)
@@ -264,19 +277,19 @@ class NodeTableModel(QAbstractTableModel):
 
         if role == Qt.ToolTipRole:
             if is_local:
-                return f"🏠 Este é o seu nó local · {node_id}"
+                return f"🏠 " + tr("🏠 This is your local node") + f" · {node_id}"
             if col == self.COL_FAV:
-                return "Clique para remover dos favoritos" if _FAVORITES.is_favorite(node_id) \
-                       else "Clique para adicionar aos favoritos"
+                return tr("Click to remove from favourites") if _FAVORITES.is_favorite(node_id) \
+                       else tr("Click to add to favourites")
             if col == self.COL_MAP:
                 has_gps = (node.get('latitude') is not None and node.get('longitude') is not None)
-                return "Ver no mapa" if has_gps else "Sem dados de posição"
+                return tr("View on map") if has_gps else tr("No position data")
             if col == self.COL_DM:
                 if not isinstance(node.get("last_heard"), datetime):
                     return "DM indisponível — nó nunca contactado"
                 has_key = bool(node.get('public_key', ''))
-                return "Enviar DM 🔒 PKI (chave pública conhecida)" if has_key \
-                       else "Enviar DM 🔓 PSK (chave de canal)"
+                return tr("Send DM 🔒 PKI (public key known)") if has_key \
+                       else tr("Send DM 🔓 PSK (channel key)")
 
         return None
 
@@ -436,7 +449,6 @@ class NodeTableModel(QAbstractTableModel):
 
 # ---------------------------------------------------------------------------
 # Proxy de pesquisa
-# ---------------------------------------------------------------------------
 class NodeFilterProxyModel(QSortFilterProxyModel):
     def __init__(self, parent=None):
         super().__init__(parent)
