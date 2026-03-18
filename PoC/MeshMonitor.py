@@ -7876,7 +7876,7 @@ class MainWindow(QMainWindow):
         )
         te.setLineWrapMode(QTextEdit.NoWrap)
 
-        # Calcula dimensões exactas para mostrar todo o conteúdo sem scroll
+        # Calcula dimensões exactas para mostrar ttodo o conteúdo sem scroll
         fm        = te.fontMetrics()
         n_lines   = body.count('\n') + 1
         max_chars = max((len(l) for l in body.splitlines()), default=60)
