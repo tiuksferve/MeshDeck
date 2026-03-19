@@ -163,4 +163,4 @@ data (name, GPS, public key) so they appear even when not in the firmware NodeDB
 
 **CT7BRA — Tiago Veiga**  
 Python 3 · PyQt5 · Meshtastic · Leaflet · Chart.js  
-Optimised for ClockworkPi uConsole CM4
+Optimised for ClockworkPi uConsole CM4 

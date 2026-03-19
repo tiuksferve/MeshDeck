@@ -121,4 +121,4 @@ completos do nó (nome, GPS, chave pública).
 
 **CT7BRA — Tiago Veiga**  
 Python 3 · PyQt5 · Meshtastic · Leaflet · Chart.js  
-Optimizado para ClockworkPi uConsole CM4
+Optimizado para ClockworkPi uConsole CM4 
