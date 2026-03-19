@@ -57,6 +57,13 @@ class MainWindow(QMainWindow):
         self._countdown_timer.setInterval(1000)
         self._countdown_timer.timeout.connect(self._on_countdown_tick)
 
+        # Reconexão automática — contagem regressiva na status bar
+        self._reconnect_seconds  = 0
+        self._reconnect_attempt  = 0
+        self._reconnect_bar_timer = QTimer(self)
+        self._reconnect_bar_timer.setInterval(1000)
+        self._reconnect_bar_timer.timeout.connect(self._on_reconnect_tick)
+
         self.source_model = NodeTableModel(self)
         self.proxy_model  = NodeFilterProxyModel(self)
         self.proxy_model.setSourceModel(self.source_model)
@@ -318,45 +325,10 @@ class MainWindow(QMainWindow):
 
     def _on_map_traceroute_request(self, node_id: str):
         """Chamado quando o utilizador clica em 'Traceroute' no popup do mapa."""
-        if not self.worker or not self.worker._connected:
-            QMessageBox.warning(self, "Desconectado",
-                                "Conecte-se primeiro para enviar traceroute.")
-            return
-        # Bloqueia novo envio enquanto countdown activo
-        if self._countdown_seconds > 0:
-            QMessageBox.information(
-                self, "Traceroute em curso",
-                f"Aguarde {self._countdown_seconds}s até o traceroute anterior terminar."
-            )
-            return
         all_nodes = self.source_model.get_all_nodes()
         node = next((n for n in all_nodes if n.get("id_string") == node_id), None)
         name = (node.get('long_name') or node_id) if node else node_id
-
-        # Verifica duplicado na lista
-        local_id = getattr(self, '_local_node_id_str', None) or ''
-        existing = next(
-            (rec for rec in self.map_widget._tr_records
-             if (rec.get('origin_id') == local_id and rec.get('dest_id') == node_id)
-             or (rec.get('origin_id') == node_id and rec.get('dest_id') == local_id)),
-            None
-        )
-        if existing:
-            reply = QMessageBox.question(
-                self, "Traceroute já existente",
-                f"Já existe um traceroute para {name} na lista.\n\n"
-                f"Deseja enviar um novo traceroute mesmo assim?",
-                QMessageBox.Yes | QMessageBox.Cancel,
-                QMessageBox.Cancel,
-            )
-            if reply != QMessageBox.Yes:
-                return
-
-        self._pending_traceroute_dest = (node_id, name)
-        self.worker.send_traceroute(node_id)
-        self._show_countdown_message(
-            f"📡 Traceroute enviado para {name} — aguardando resposta…", 30
-        )
+        self._send_traceroute(node_id, name)
 
     # ------------------------------------------------------------------
     # Conexão / desconexão
@@ -462,6 +434,7 @@ class MainWindow(QMainWindow):
         self.worker.neighbor_info_received.connect(
             lambda nid, nbs: self.metrics_tab.ingest_neighbor_info(nid, nbs)
         )
+        self.worker.reconnect_status.connect(self._on_reconnect_status)
         self.source_model.node_inserted.connect(self.messages_tab._refresh_dm_list)
         self.worker.start()
 
@@ -759,43 +732,57 @@ class MainWindow(QMainWindow):
                 )
 
         elif col == NodeTableModel.COL_TRACEROUTE:
-            if node_id and self.worker and self.worker._connected:
-                # Bloqueia novo envio enquanto countdown de traceroute anterior está activo
-                if self._countdown_seconds > 0:
-                    QMessageBox.information(
-                        self, "Traceroute em curso",
-                        f"Aguarde {self._countdown_seconds}s até o traceroute anterior terminar."
-                    )
-                    return
+            if node_id:
                 name = node.get('long_name') or node_id
+                self._send_traceroute(node_id, name)
 
-                # Verifica se já existe um traceroute para este destino na lista
-                local_id = getattr(self, '_local_node_id_str', None) or ''
-                existing = next(
-                    (rec for rec in self.map_widget._tr_records
-                     if (rec.get('origin_id') == local_id and rec.get('dest_id') == node_id)
-                     or (rec.get('origin_id') == node_id and rec.get('dest_id') == local_id)),
-                    None
-                )
-                if existing:
-                    reply = QMessageBox.question(
-                        self, "Traceroute já existente",
-                        f"Já existe um traceroute para {name} na lista.\n\n"
-                        f"Deseja enviar um novo traceroute mesmo assim?",
-                        QMessageBox.Yes | QMessageBox.Cancel,
-                        QMessageBox.Cancel,
-                    )
-                    if reply != QMessageBox.Yes:
-                        return
+    def _send_traceroute(self, node_id: str, name: str) -> None:
+        """Valida pré-condições e envia traceroute para node_id.
 
-                self._pending_traceroute_dest = (node_id, name)
-                self.worker.send_traceroute(node_id)
-                self._show_countdown_message(
-                    f"📡 Traceroute enviado para {name} — aguardando resposta…", 30
-                )
-            elif not self.worker or not self.worker._connected:
-                QMessageBox.warning(self, "Desconectado",
-                                    "Conecte-se primeiro para enviar traceroute.")
+        Centraliza toda a lógica partilhada entre o clique na tabela
+        (_on_table_clicked) e o clique no popup do mapa
+        (_on_map_traceroute_request), eliminando duplicação.
+
+        Verifica, por ordem:
+          1. Ligação activa ao daemon
+          2. Countdown de traceroute anterior ainda em curso
+          3. Traceroute duplicado já presente na lista (pede confirmação)
+        """
+        if not self.worker or not self.worker._connected:
+            QMessageBox.warning(self, "Desconectado",
+                                "Conecte-se primeiro para enviar traceroute.")
+            return
+
+        if self._countdown_seconds > 0:
+            QMessageBox.information(
+                self, "Traceroute em curso",
+                f"Aguarde {self._countdown_seconds}s até o traceroute anterior terminar."
+            )
+            return
+
+        local_id = getattr(self, '_local_node_id_str', None) or ''
+        existing = next(
+            (rec for rec in self.map_widget._tr_records
+             if (rec.get('origin_id') == local_id and rec.get('dest_id') == node_id)
+             or (rec.get('origin_id') == node_id and rec.get('dest_id') == local_id)),
+            None
+        )
+        if existing:
+            reply = QMessageBox.question(
+                self, "Traceroute já existente",
+                f"Já existe um traceroute para {name} na lista.\n\n"
+                f"Deseja enviar um novo traceroute mesmo assim?",
+                QMessageBox.Yes | QMessageBox.Cancel,
+                QMessageBox.Cancel,
+            )
+            if reply != QMessageBox.Yes:
+                return
+
+        self._pending_traceroute_dest = (node_id, name)
+        self.worker.send_traceroute(node_id)
+        self._show_countdown_message(
+            f"📡 Traceroute enviado para {name} — aguardando resposta…", 30
+        )
 
     def _on_traceroute_result(self, forward_edges: list, back_edges: list,
                               origin_id: str, dest_id: str):
@@ -1192,10 +1179,43 @@ class MainWindow(QMainWindow):
     def _on_channel_sent(self, channel_index: int, text: str, packet_id: int):
         self.messages_tab.add_outgoing_channel_message(channel_index, text, packet_id=packet_id)
 
+    def _on_reconnect_status(self, attempt: int, delay_s: int):
+        """Slot do sinal reconnect_status do worker.
+        attempt=0 → reconectado; attempt>0 → a aguardar próxima tentativa.
+        """
+        if attempt == 0:
+            # Reconectado — para o ticker e limpa a status bar
+            self._reconnect_bar_timer.stop()
+            self._reconnect_seconds = 0
+            self.statusBar().clearMessage()
+        else:
+            # Inicia contagem regressiva visível
+            self._reconnect_attempt  = attempt
+            self._reconnect_seconds  = delay_s
+            self._reconnect_bar_timer.start()
+            self._update_reconnect_bar()
+
+    def _on_reconnect_tick(self):
+        """Decrementa o contador de reconexão a cada segundo."""
+        self._reconnect_seconds -= 1
+        if self._reconnect_seconds <= 0:
+            self._reconnect_bar_timer.stop()
+            self.statusBar().showMessage(
+                f"🔄 A tentar reconectar… (tentativa {self._reconnect_attempt})"
+            )
+        else:
+            self._update_reconnect_bar()
+
+    def _update_reconnect_bar(self):
+        self.statusBar().showMessage(
+            f"🔌 Ligação perdida — a reconectar em {self._reconnect_seconds}s (tentativa {self._reconnect_attempt})…"
+        )
+
     def closeEvent(self, event):
         if self.worker:
             self.worker.stop()
         event.accept()
+
 
 # ---------------------------------------------------------------------------
 # Ponto de entrada
