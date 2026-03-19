@@ -24,6 +24,8 @@ from constants import (
     ACCENT_ORANGE, ACCENT_RED, TEXT_PRIMARY, TEXT_MUTED, INPUT_BG
 )
 
+
+
 class MapWidget(QWidget):
     node_deselected = pyqtSignal()
 

@@ -21,6 +21,8 @@ from constants import (
     ACCENT_ORANGE, ACCENT_RED, TEXT_PRIMARY, TEXT_MUTED
 )
 
+
+
 class MetricsTab(QWidget):
     """
     Aba de métricas em tempo real da rede Meshtastic.

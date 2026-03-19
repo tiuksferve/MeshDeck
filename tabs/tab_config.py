@@ -280,6 +280,7 @@ class _ChannelRow(QWidget):
         name_val  = getattr(settings, 'name', '') if settings else ''
         self.w_name = QLineEdit(name_val or "")
         self.w_name.setPlaceholderText("Nome do canal")
+        self.w_name.setFixedWidth(240)
         form.addRow(mk_lbl("Nome"), self.w_name)
 
         self.w_role = QComboBox()
@@ -296,10 +297,9 @@ class _ChannelRow(QWidget):
         self.w_psk = QLineEdit(psk_display)
         self.w_psk.setPlaceholderText("Base64 (ex: AQ==)  ou  default / none / random")
 
-        # Selector de tipo + botão de geração
         self.w_psk_type = QComboBox()
         self.w_psk_type.addItems(["256-bit (32 bytes)", "128-bit (16 bytes)", "Default (AQ==)"])
-        self.w_psk_type.setFixedWidth(155)
+        self.w_psk_type.setFixedWidth(180)
         self.w_psk_type.setStyleSheet(
             f"background:{DARK_BG};color:{TEXT_PRIMARY};"
             f"border:1px solid {BORDER_COLOR};border-radius:4px;padding:2px 4px;font-size:11px;"
