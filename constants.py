@@ -4,7 +4,6 @@ Importado por todos os outros módulos.
 """
 import logging
 from meshtastic import BROADCAST_NUM
-from i18n import tr, set_language, get_language, register_retranslate
 
 logging.getLogger().setLevel(logging.INFO)
 for _h in logging.root.handlers[:]:

@@ -748,6 +748,14 @@ _PT: dict = {
     "Today": "Hoje",
     "Yesterday": "Ontem",
     "Normal for 1–2 hops in LoRa.": "Normal para 1–2 hops em LoRa.",
+    "Total nodes on network (excluding local node)": "Total de nós na rede (excluindo o nó local)",
+
+    "💬 Message": "💬 Mensagem",
+
+    "📍 Position": "📍 Posição",
+
+    "  Metrics": "  Métricas",
+
 }
 
 # ── Public API ──────────────────────────────────────────────────────

@@ -145,7 +145,7 @@ class MeshtasticWorker(QObject):
 
     def send_message(self, channel_index: int, text: str):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Not connected — cannot send message.")
+            self.error_occurred.emit("Não conectado — impossível enviar mensagem.")
             return
         try:
             result = self.iface.sendText(text, channelIndex=channel_index, wantAck=True)
@@ -157,7 +157,7 @@ class MeshtasticWorker(QObject):
 
     def reset_nodedb(self):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Not connected — cannot reset NodeDB.")
+            self.error_occurred.emit("Não conectado — impossível resetar NodeDB.")
             return
         try:
             local_node = self.iface.localNode
@@ -176,7 +176,7 @@ class MeshtasticWorker(QObject):
 
     def send_traceroute(self, dest_id: str, hop_limit: int = 3):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Not connected — cannot send traceroute.")
+            self.error_occurred.emit("Não conectado — impossível enviar traceroute.")
             return
         try:
             r = mesh_pb2.RouteDiscovery()
@@ -324,7 +324,7 @@ class MeshtasticWorker(QObject):
 
     def send_direct_message(self, dest_id: str, text: str):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Not connected — cannot send DM.")
+            self.error_occurred.emit("Não conectado — impossível enviar DM.")
             return
         try:
 

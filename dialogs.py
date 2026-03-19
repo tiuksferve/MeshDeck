@@ -10,11 +10,10 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import (
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QSpinBox, QPushButton, QFrame, QFormLayout, QTextEdit,
-    QProgressBar, QSizePolicy, QRadioButton, QButtonGroup, QComboBox
+    QProgressBar, QSizePolicy
 )
 from PyQt5.QtGui import QFont
 
-from i18n import tr, register_retranslate, get_language, set_language
 from constants import (
     logger, ACCENT_GREEN, ACCENT_BLUE, ACCENT_ORANGE, ACCENT_RED,
     TEXT_PRIMARY, TEXT_MUTED, PANEL_BG, DARK_BG, BORDER_COLOR, INPUT_BG
@@ -23,15 +22,15 @@ from constants import (
 class ConnectionDialog(QDialog):
     def __init__(self, current_host="localhost", current_port=4403, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("Configure Connection"))
-        self.setFixedWidth(500)
+        self.setWindowTitle("Configurar Conexão")
+        self.setFixedWidth(420)
         self.setModal(True)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(16)
+        layout.setContentsMargins(20, 20, 20, 20)
 
-        title = QLabel("📡  " + tr("Meshtastic Server Connection"))
+        title = QLabel("📡  Conexão ao Servidor Meshtastic")
         title.setStyleSheet(
             f"color:{ACCENT_GREEN};font-size:14px;font-weight:bold;padding-bottom:4px;"
         )
@@ -43,37 +42,23 @@ class ConnectionDialog(QDialog):
         layout.addWidget(sep)
 
         form = QFormLayout()
-        form.setSpacing(10)
+        form.setSpacing(12)
         form.setLabelAlignment(Qt.AlignRight)
-        form.setFormAlignment(Qt.AlignLeft | Qt.AlignTop)
-        form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
-        form.setHorizontalSpacing(12)
-        form.setVerticalSpacing(10)
 
         self.host_edit = QLineEdit(current_host)
-        self.host_edit.setPlaceholderText("ex: localhost  or  192.168.1.1")
-        form.addRow(tr("Address:"), self.host_edit)
+        self.host_edit.setPlaceholderText("ex: localhost  ou  192.168.1.1")
+        form.addRow("Endereço:", self.host_edit)
 
         self.port_spin = QSpinBox()
         self.port_spin.setRange(1, 65535)
         self.port_spin.setValue(current_port)
-        form.addRow(tr("Port:"), self.port_spin)
-
-        # Language selector
-        self.lang_combo = QComboBox()
-        self.lang_combo.addItem("🇬🇧  English", "en")
-        self.lang_combo.addItem("🇵🇹  Português", "pt")
-        self.lang_combo.setMinimumWidth(200)
-        self.lang_combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
-        cur_idx = 0 if get_language() == "en" else 1
-        self.lang_combo.setCurrentIndex(cur_idx)
-        form.addRow(tr("Interface Language:"), self.lang_combo)
+        form.addRow("Porta:", self.port_spin)
 
         layout.addLayout(form)
 
-        note = QLabel(tr("💡 Default address for local daemon is <b>localhost</b> port <b>4403</b>."))
-        note.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;padding:2px 0;")
-        note.setWordWrap(False)
+        note = QLabel("💡 O endereço padrão para o daemon local é <b>localhost</b> porta <b>4403</b>.")
+        note.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
+        note.setWordWrap(True)
         layout.addWidget(note)
 
         layout.addStretch()
@@ -81,13 +66,13 @@ class ConnectionDialog(QDialog):
         btns = QHBoxLayout()
         btns.setSpacing(8)
 
-        btn_cancel = QPushButton(tr("Cancel"))
+        btn_cancel = QPushButton("Cancelar")
         btn_cancel.clicked.connect(self.reject)
         btns.addWidget(btn_cancel)
 
         btns.addStretch()
 
-        self.btn_connect = QPushButton(tr("🔌  Connect"))
+        self.btn_connect = QPushButton("🔌  Conectar")
         self.btn_connect.setObjectName("btn_connect")
         self.btn_connect.setDefault(True)
         self.btn_connect.clicked.connect(self.accept)
@@ -103,17 +88,14 @@ class ConnectionDialog(QDialog):
     def port(self) -> int:
         return self.port_spin.value()
 
-    @property
-    def language(self) -> str:
-        return self.lang_combo.currentData() if hasattr(self, "lang_combo") else get_language()
-
 
 # ---------------------------------------------------------------------------
 # Diálogo de detalhes do pacote
+# ---------------------------------------------------------------------------
 class PacketDetailDialog(QDialog):
     def __init__(self, node_info, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("Details of Last Packet"))
+        self.setWindowTitle("Detalhes do Último Pacote")
         self.resize(640, 480)
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
@@ -130,10 +112,10 @@ class PacketDetailDialog(QDialog):
             f"background-color:{DARK_BG};color:{ACCENT_GREEN};"
             f"border:1px solid {BORDER_COLOR};border-radius:6px;padding:12px;"
         )
-        te.setText(str(node_info.get("last_packet", "No packet stored")))
+        te.setText(str(node_info.get("last_packet", "Nenhum pacote armazenado")))
         layout.addWidget(te)
 
-        btn = QPushButton(tr("Close"))
+        btn = QPushButton("Fechar")
         btn.clicked.connect(self.accept)
         layout.addWidget(btn, alignment=Qt.AlignRight)
 
@@ -158,7 +140,7 @@ class ConsoleWindow(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.Window)
-        self.setWindowTitle(tr("🖥  Log Console"))
+        self.setWindowTitle("🖥  Consola de Logs")
         self.resize(860, 420)
         self.setAttribute(Qt.WA_DeleteOnClose, False)  # reutilizar
 
@@ -253,6 +235,7 @@ class ConsoleWindow(QWidget):
 
 # ---------------------------------------------------------------------------
 # RebootWaitDialog — aguarda reinício do nó e libera reconexão
+# ---------------------------------------------------------------------------
 class RebootWaitDialog(QDialog):
     """Diálogo modal que desliga do nó, faz a contagem de 15s obrigatória
     (tempo mínimo recomendado pela documentação Meshtastic para aguardar
@@ -264,7 +247,7 @@ class RebootWaitDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("Rebooting node…"))
+        self.setWindowTitle("A reiniciar nó…")
         self.setModal(True)
         self.setMinimumWidth(400)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
@@ -274,7 +257,7 @@ class RebootWaitDialog(QDialog):
         root.setContentsMargins(24, 20, 24, 20)
 
         # Ícone + título
-        lbl_title = QLabel("🔄  " + tr("Rebooting node…"))
+        lbl_title = QLabel("🔄  Nó a reiniciar")
         lbl_title.setStyleSheet(
             f"color:{ACCENT_GREEN};font-size:15px;font-weight:bold;"
         )
@@ -282,10 +265,10 @@ class RebootWaitDialog(QDialog):
         root.addWidget(lbl_title)
 
         lbl_info = QLabel(
-            tr("The settings have been sent to the node.") + "\n"
-            + tr("The node is restarting to apply them.") + "\n\n"
-            + tr("Wait before reconnecting to ensure") + "\n"
-            + tr("the TCP service will be available again.")
+            "As configurações foram enviadas ao nó.\n"
+            "O nó está a reiniciar para as aplicar.\n\n"
+            "Aguarde antes de reconectar para garantir\n"
+            "que o serviço TCP está novamente disponível."
         )
         lbl_info.setStyleSheet(f"color:{TEXT_PRIMARY};font-size:12px;")
         lbl_info.setAlignment(Qt.AlignCenter)
@@ -305,7 +288,7 @@ class RebootWaitDialog(QDialog):
         root.addWidget(self._progress)
 
         # Botão de reconexão (bloqueado durante a contagem)
-        self._btn = QPushButton(f"🔌  {tr('Wait')} {self.WAIT_SECONDS}s…")
+        self._btn = QPushButton(f"🔌  Aguarde {self.WAIT_SECONDS}s…")
         self._btn.setEnabled(False)
         self._btn.setObjectName("btn_connect")
         self._btn.setMinimumHeight(38)
@@ -327,11 +310,11 @@ class RebootWaitDialog(QDialog):
         self._remaining -= 1
         self._progress.setValue(self._remaining)
         if self._remaining > 0:
-            self._btn.setText(f"🔌  {tr('Wait')} {self._remaining}s…")
+            self._btn.setText(f"🔌  Aguarde {self._remaining}s…")
         else:
             self._timer.stop()
             self._btn.setEnabled(True)
-            self._btn.setText(tr("🔌  Reconnect now"))
+            self._btn.setText("🔌  Reconectar agora")
             self._done = True
 
     def _on_reconnect(self):
@@ -345,66 +328,3 @@ class RebootWaitDialog(QDialog):
         else:
             self._timer.stop()
             super().closeEvent(event)
-
-class LanguageDialog(QDialog):
-    """Dialog for selecting the interface language."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle(tr("Select Language"))
-        self.setFixedWidth(320)
-        self.setModal(True)
-        self._selected = get_language()
-
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-        layout.setContentsMargins(20, 18, 20, 18)
-
-        title = QLabel("🌐  " + tr("Select Language"))
-        title.setStyleSheet(
-            f"color:{ACCENT_BLUE};font-size:14px;font-weight:bold;"
-        )
-        layout.addWidget(title)
-
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet(f"color:{BORDER_COLOR};")
-        layout.addWidget(sep)
-
-        lbl = QLabel(tr("Choose the interface language:"))
-        lbl.setStyleSheet(f"color:{TEXT_PRIMARY};font-size:12px;")
-        layout.addWidget(lbl)
-
-        from PyQt5.QtWidgets import QButtonGroup, QRadioButton
-        self._btn_en = QRadioButton("🇬🇧  English")
-        self._btn_pt = QRadioButton("🇵🇹  Português")
-        self._btn_en.setStyleSheet(f"color:{TEXT_PRIMARY};font-size:13px;padding:4px;")
-        self._btn_pt.setStyleSheet(f"color:{TEXT_PRIMARY};font-size:13px;padding:4px;")
-
-        if get_language() == "en":
-            self._btn_en.setChecked(True)
-        else:
-            self._btn_pt.setChecked(True)
-
-        self._btn_en.toggled.connect(lambda c: setattr(self, '_selected', 'en') if c else None)
-        self._btn_pt.toggled.connect(lambda c: setattr(self, '_selected', 'pt') if c else None)
-
-        layout.addWidget(self._btn_en)
-        layout.addWidget(self._btn_pt)
-        layout.addStretch()
-
-        btns = QHBoxLayout()
-        btn_cancel = QPushButton(tr("Cancel"))
-        btn_cancel.clicked.connect(self.reject)
-        btns.addWidget(btn_cancel)
-        btns.addStretch()
-        btn_apply = QPushButton(tr("Apply"))
-        btn_apply.setObjectName("btn_connect")
-        btn_apply.setDefault(True)
-        btn_apply.clicked.connect(self.accept)
-        btns.addWidget(btn_apply)
-        layout.addLayout(btns)
-
-    @property
-    def selected_language(self) -> str:
-        return self._selected
-
