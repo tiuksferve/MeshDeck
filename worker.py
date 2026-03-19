@@ -673,6 +673,7 @@ class MeshtasticWorker(QObject):
         A biblioteca publica este tópico específico com o protobuf já decodificado.
         Garante que publicKey e hwModel são extraídos mesmo antes do batch completo.
         """
+
         try:
             from_id_num    = packet.get('from')
             from_id_string = packet.get('fromId', '')

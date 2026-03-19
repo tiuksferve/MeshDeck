@@ -276,7 +276,6 @@ QDialog {{ background-color: {PANEL_BG}; }}
 
 _BROADCAST_NUMS = {BROADCAST_NUM, 0xFFFFFFFF, 4294967295, -1}
 
-
 def _is_broadcast(to_num) -> bool:
     try:
         n = int(to_num)
