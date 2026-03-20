@@ -409,19 +409,13 @@ window._metricsUpdateData = function(d) {{
 <div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
   <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
 </div>
-<div class="card" id="assessment-card" style="margin-bottom:16px;border-left:4px solid {
-'#39d353' if snr_avg and snr_avg >= 5 else '#f0883e' if snr_avg and snr_avg >= 0 else '#f85149'
-}">
-  <h3>Avaliação da Qualidade RF</h3>
-  <div id="rf-assessment" style="font-size:13px;line-height:1.7;color:#e6edf3">{self._rf_assessment(snr_avg, snr_med, snr_p10, self._hops_values)}</div>
-</div>
 <div class="grid-3">
   <div class="card"><h3>SNR Médio</h3>
-    <div class="kpi {'green' if snr_avg and snr_avg>=5 else 'orange' if snr_avg and snr_avg>=0 else 'red'}">{snr_avg if snr_avg is not None else '—'} dB</div></div>
+    <div id="snr-avg" class="kpi {'green' if snr_avg and snr_avg>=5 else 'orange' if snr_avg and snr_avg>=0 else 'red'}">{snr_avg if snr_avg is not None else '—'} dB</div></div>
   <div class="card"><h3>SNR Mediano</h3>
-    <div class="kpi">{snr_med if snr_med is not None else '—'} dB</div></div>
+    <div id="snr-med" class="kpi">{snr_med if snr_med is not None else '—'} dB</div></div>
   <div class="card"><h3>SNR P10 (pior 10%)</h3>
-    <div class="kpi red">{snr_p10 if snr_p10 is not None else '—'} dB</div></div>
+    <div id="snr-p10" class="kpi red">{snr_p10 if snr_p10 is not None else '—'} dB</div></div>
 </div>
 <div class="grid">
   <div class="card">
@@ -432,6 +426,12 @@ window._metricsUpdateData = function(d) {{
     <h3>Distribuição de Hops</h3>
     <div class="chart-wrap"><canvas id="hopsChart"></canvas></div>
   </div>
+</div>
+<div class="card" id="assessment-card" style="margin-top:16px;border-left:4px solid {
+'#39d353' if snr_avg and snr_avg >= 5 else '#f0883e' if snr_avg and snr_avg >= 0 else '#f85149'
+}">
+  <h3>Avaliação da Qualidade RF</h3>
+  <div id="rf-assessment" style="font-size:13px;line-height:1.7;color:#e6edf3">{self._rf_assessment(snr_avg, snr_med, snr_p10, self._hops_values)}</div>
 </div>
 <script>
 window._snrChart = new Chart(document.getElementById('snrChart'), {{
@@ -1139,19 +1139,19 @@ window._metricsUpdateData = function(d) {{
   // Rede
   var dupLbl = d.dup_rate === null ? 'Sem dados' :
                d.dup_rate < 10  ? '\u26a0\ufe0f Flood reduzido' :
-               d.dup_rate <= 60 ? '\u2705 Flood saudável' : '\ud83d\udea8 Poss\u00edvel congestionamento';
+               d.dup_rate <= 60 ? '\u2705 Flood saudável' : '[!] Possível congestionamento';
   set('rel-dup',       d.dup_rate !== null ? d.dup_rate + '%' : '\u2014');
   setClass('rel-dup',  d.dup_rate === null ? '' : d.dup_rate < 10 ? 'orange' : d.dup_rate <= 60 ? 'green' : 'red');
-  set('rel-dup-label', dupLbl + '\n% de pacotes únicos reencaminhados por \u22652 nós');
+  set('rel-dup-label', dupLbl);
   var colLbl = d.p_col === null || d.p_col === undefined ? 'Sem dados de Ch.Util.' :
                d.p_col < 5  ? '\u2705 Risco baixo' :
-               d.p_col < 15 ? '\u26a0\ufe0f Risco moderado' : '\ud83d\udea8 Risco elevado';
+               d.p_col < 15 ? '\u26a0\ufe0f Risco moderado' : '[!] Risco elevado';
   set('rel-col', d.p_col !== null && d.p_col !== undefined ? d.p_col + '%' : '\u2014');
   setClass('rel-col', d.p_col === null ? '' : d.p_col < 5 ? 'green' : d.p_col < 15 ? 'orange' : 'red');
-  set('rel-col-label', colLbl + '\nModelo Poisson \xd70.5 (CAD mitiga) \xb7 base: Ch.Util ' + (d.ch_util_avg !== null ? d.ch_util_avg + '%' : '\u2014'));
+  set('rel-col-label', colLbl + ' · Ch.Util: ' + (d.ch_util_avg !== null ? d.ch_util_avg + '%' : '—'));
   set('rel-net-nak',   d.net_nak_rate !== null ? d.net_nak_rate + '%' : '\u2014');
   setClass('rel-net-nak', d.net_nak_rate === null ? '' : d.net_nak_rate < 5 ? 'green' : d.net_nak_rate < 20 ? 'orange' : 'red');
-  set('rel-net-sub',   'ACK: ' + d.net_acks + ' \xb7 NAK: ' + d.net_naks + '\nInclui NO_ROUTE e MAX_RETRANSMIT');
+  set('rel-net-sub',   'ACK: ' + d.net_acks + ' · NAK: ' + d.net_naks + ' (incl. NO_ROUTE/MAX_RETRANSMIT)');
   set('rel-pkt',       d.total_pkt);
   set('rel-pkt-sub',   d.active_senders + ' nós emissores \xb7 ' + d.duplicates + ' duplicados vistos');
 
@@ -1181,10 +1181,24 @@ window._metricsUpdateData = function(d) {{
     # ── 8. Vizinhança ─────────────────────────────────────────────────────
     def _html_neighbors(self) -> str:
         if not self._nb_links:
-            body = ('<div class="no-data">⏳ Sem dados de NeighborInfo ainda.<br><br>'
-                    'Os nós da rede enviam automaticamente pacotes <b>NEIGHBORINFO_APP</b> '
-                    'com a lista de vizinhos directos e respectivo SNR.<br>'
-                    'Estes dados aparecem normalmente após 1–2 minutos de operação.</div>')
+            body = (
+                '<div style="padding:20px 24px;max-width:660px;margin:0 auto">'
+                '<p style="color:#8b949e;font-size:13px;margin-bottom:16px">⏳ Sem dados de NeighborInfo ainda.<br><br>'
+                'Os nós da rede enviam automaticamente pacotes <b>NEIGHBORINFO_APP</b> '
+                'com a lista de vizinhos directos e respectivo SNR.<br>'
+                'Estes dados aparecem normalmente após 1–2 minutos de operação se o módulo estiver activo.</p>'
+                '<hr style="border:none;border-top:1px solid #30363d;margin:16px 0">'
+                '<p style="font-size:13px;color:#e6edf3;font-weight:bold;margin-bottom:8px">⚙ Como activar o NeighborInfo</p>'
+                '<p style="color:#8b949e;font-size:12px;margin-bottom:8px">Os pacotes de vizinhança <b>não são enviados por defeito</b> via LoRa. Para activar em cada nó:</p>'
+                '<ol style="color:#8b949e;font-size:12px;padding-left:20px;line-height:2.0">'
+                '<li>Módulo <b>Neighbor Info</b> → <b>Enabled: ON</b></li>'
+                '<li>Activar <b>Transmit Over LoRa</b> (firmware ≥ 2.5.13)</li>'
+                '<li>Canal primário deve ser <b>privado</b> — canal público (LongFast/ShortFast com chave padrão) bloqueia este tráfego desde o firmware 2.5.13</li>'
+                '<li>Intervalo mínimo: <b>4 horas</b> (14 400 s) — os primeiros dados podem demorar</li>'
+                '</ol>'
+                '<p style="margin-top:10px;color:#8b949e;font-size:11px">ℹ O módulo deteta vizinhos mesmo que o nó vizinho não o tenha activo (firmware ≥ 2.3.2).</p>'
+                '</div>'
+            )
             return self._base_html("🔗 Vizinhança", body)
 
         d = self._data_neighbors()
@@ -1230,10 +1244,26 @@ window._metricsUpdateData = function(d) {{
     def _html_range_links(self) -> str:
         d = self._data_range_links()
         if not d["rows"]:
-            body = ('<div class="no-data">⏳ Sem dados de alcance ainda.<br><br>'
-                    'Requer que os nós reportem posição GPS (<b>POSITION_APP</b>) '
-                    'e que os dados de vizinhança (<b>NEIGHBORINFO_APP</b>) estejam disponíveis.<br>'
-                    f'Nós com GPS conhecidos: {d["n_with_gps"]}</div>')
+            body = (
+                f'<div style="padding:20px 24px;max-width:660px;margin:0 auto">'
+                f'<p style="color:#8b949e;font-size:13px;margin-bottom:16px">⏳ Sem dados de alcance ainda.<br><br>'
+                'Requer que os nós reportem posição GPS (<b>POSITION_APP</b>) '
+                'e que os dados de vizinhança (<b>NEIGHBORINFO_APP</b>) estejam disponíveis.<br>'
+                f'Nós com GPS conhecidos até agora: <b>{d["n_with_gps"]}</b></p>'
+                '<hr style="border:none;border-top:1px solid #30363d;margin:16px 0">'
+                '<p style="font-size:13px;color:#e6edf3;font-weight:bold;margin-bottom:8px">⚙ Como activar o NeighborInfo</p>'
+                '<p style="color:#8b949e;font-size:12px;margin-bottom:8px">Os pacotes de vizinhança <b>não são enviados por defeito</b> via LoRa. Para activar em cada nó:</p>'
+                '<ol style="color:#8b949e;font-size:12px;padding-left:20px;line-height:2.0">'
+                '<li>Módulo <b>Neighbor Info</b> → <b>Enabled: ON</b></li>'
+                '<li>Activar <b>Transmit Over LoRa</b> (firmware ≥ 2.5.13)</li>'
+                '<li>Canal primário deve ser <b>privado</b> — canal público (LongFast/ShortFast com chave padrão) bloqueia este tráfego desde o firmware 2.5.13</li>'
+                '<li>Intervalo mínimo de envio: <b>4 horas</b> (14 400 s) — os primeiros dados podem demorar</li>'
+                '</ol>'
+                '<p style="margin-top:10px;color:#8b949e;font-size:11px">ℹ O módulo deteta vizinhos mesmo que o nó vizinho não o tenha activo (firmware ≥ 2.3.2).<br>'
+                '⚠ A partir do firmware 2.5.13, o envio via LoRa no canal público foi bloqueado para reduzir tráfego. Por defeito, os dados chegam apenas via MQTT.</p>'
+                '<p style="margin-top:8px;color:#8b949e;font-size:11px">ℹ O cálculo de alcance usa a fórmula de Haversine sobre as coordenadas GPS de cada par de vizinhos reportados.</p>'
+                '</div>'
+            )
             return self._base_html("📏 Alcance & Links", body)
 
         def kpi(val, unit, label, color="", kid=""):

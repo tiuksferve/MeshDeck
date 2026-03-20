@@ -214,12 +214,9 @@ class MetricsDataMixin:
         self._refresh_if_reliability()
 
     def _refresh_if_reliability(self):
-        """Dispara refresh imediato se a secção activa for Fiabilidade e a página está pronta."""
+        """Dispara refresh imediato se a secção activa for Fiabilidade."""
         if getattr(self, '_current_key', None) != 'reliability':
             return
-        if not getattr(self, '_page_ready', False):
-            return   # página ainda a carregar — o timer vai actualizar quando pronta
-        # Chama directamente sem singleShot para minimizar latência
         self._refresh_current()
 
 
@@ -475,7 +472,7 @@ class MetricsDataMixin:
 
         return {
             "n_active": n_active,
-            "n_battery": len(self._battery), "n_powered": len(batt_power),
+            "n_battery": len(batt_real), "n_powered": len(batt_power),
             "batt_avg": batt_avg,
             "ts_labels": ts_labels, "ts_vals": ts_vals,
             "batt_buckets": batt_buckets, "batt_rows": batt_rows,

@@ -166,6 +166,7 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
     def _mark_page_ready(self):
         self._page_ready = True
         self._update_refresh_label()
+        self._refresh_current()   # refresh imediato ao carregar
 
     def _on_clear(self):
         reply = QMessageBox.question(
@@ -178,7 +179,11 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
             self._render_section(self._section_list.currentRow())
 
     def _refresh_current(self):
-        """Actualiza os dados da secção activa sem recarregar o HTML (sem flash)."""
+        """Actualiza os dados da secção activa sem recarregar o HTML (sem flash).
+        Só corre se a página estiver pronta — mas o timer nunca para.
+        """
+        if not self._page_ready:
+            return
         key = getattr(self, '_current_key', None)
         if not key:
             return
