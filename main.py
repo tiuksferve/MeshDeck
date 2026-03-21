@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QByteArray
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QByteArray, QSettings
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QTableView, QHeaderView, QSplitter, QFrame,
@@ -29,7 +29,7 @@ from constants import (
     TEXT_PRIMARY, TEXT_MUTED, INPUT_BG, HOVER_BG
 )
 from models import (
-    NodeTableModel, NodeFilterProxyModel, FavoritesStore, _FAVORITES
+    NodeTableModel, NodeFilterProxyModel, _FAVORITES
 )
 from worker import MeshtasticWorker
 from dialogs import ConnectionDialog, ConsoleWindow, RebootWaitDialog, PacketDetailDialog
@@ -37,6 +37,70 @@ from tabs.tab_nodes import MapWidget
 from tabs.tab_messages import MessagesTab
 from tabs.tab_config import ConfigTab
 from tabs.tab_metrics import MetricsTab
+
+def _play_notification_sound():
+    """Toca som de notificação cross-platform.
+    Tenta em cascata: aplay (ALSA/Linux) → paplay (PulseAudio) →
+    afplay (macOS) → winsound (Windows) → QApplication.beep() (fallback).
+    """
+    import sys, subprocess
+    if sys.platform.startswith("linux"):
+        # Gera tom de 880 Hz por 200ms via aplay (ALSA — funciona no uConsole)
+        try:
+            import struct, math
+            rate = 22050
+            freq = 880
+            dur  = 0.2
+            n    = int(rate * dur)
+            # WAV header + PCM mono 16-bit
+            pcm  = bytes(struct.pack('<h', int(32767 * math.sin(2 * math.pi * freq * i / rate)))
+                         for i in range(n))
+            # RIFF header
+            data_size = len(pcm)
+            header = struct.pack('<4sI4s4sIHHIIHH4sI',
+                b'RIFF', 36 + data_size, b'WAVE',
+                b'fmt ', 16, 1, 1, rate, rate * 2, 2, 16,
+                b'data', data_size)
+            wav = header + pcm
+            subprocess.Popen(
+                ['aplay', '-q', '-'],
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            ).communicate(wav)
+            return
+        except Exception:
+            pass
+        # Fallback: paplay com ficheiro de som do sistema
+        for cmd in [
+            ['paplay', '/usr/share/sounds/freedesktop/stereo/message.oga'],
+            ['paplay', '/usr/share/sounds/ubuntu/stereo/message-new-instant.ogg'],
+        ]:
+            try:
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            except Exception:
+                continue
+    elif sys.platform == "darwin":
+        try:
+            subprocess.Popen(['afplay', '/System/Library/Sounds/Tink.aiff'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except Exception:
+            pass
+    elif sys.platform == "win32":
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_OK)
+            return
+        except Exception:
+            pass
+    # Último recurso: beep Qt (pode não funcionar em todos os sistemas)
+    try:
+        from PyQt5.QtWidgets import QApplication
+        QApplication.beep()
+    except Exception:
+        pass
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -62,7 +126,9 @@ class MainWindow(QMainWindow):
         # Contador de pacotes para calcular pkt/min
         self._pkt_timestamps: list = []
 
-        self._sound_enabled      = True    # default: som ligado
+        # Som — persiste entre sessões via QSettings
+        _qs = QSettings("CT7BRA", "MeshtasticMonitor")
+        self._sound_enabled = _qs.value("sound_enabled", True, type=bool)
         self._countdown_seconds  = 0
         self._countdown_base_msg = ""
         self._countdown_timer    = QTimer(self)
@@ -410,6 +476,7 @@ class MainWindow(QMainWindow):
         self._poll_timer.stop()
         self._pkt_timestamps.clear()
         self._stats_label.setText("📶 —")
+        _FAVORITES.set_interface(None)
         if self.worker:
             self.worker.stop()
         self.config_tab.clear_interface()
@@ -569,12 +636,6 @@ class MainWindow(QMainWindow):
             if was_new:
                 new_nodes.append((nid, data))
 
-        # Injecta favoritos ausentes do NodeDB em passagem única
-        node_idx = self.source_model._node_index
-        for fav_data in _FAVORITES.get_all_nodes_data():
-            fav_id = fav_data.get("id_string")
-            if fav_id and node_idx.get(fav_id) is None:
-                self.source_model.update_node_silent(fav_id, fav_data)
 
         self.source_model.refresh_all()
         self.proxy_model.invalidateFilter()
@@ -627,6 +688,13 @@ class MainWindow(QMainWindow):
     def _on_worker_error(self, message: str):
         QMessageBox.critical(self, "Erro no Meshtastic", message)
 
+    def _sync_firmware_favorites(self):
+        """Lê favoritos do firmware após ligação estabelecida."""
+        if self.worker and self.worker.iface:
+            _FAVORITES.set_interface(self.worker.iface)
+            self.source_model.refresh_all()
+            self.proxy_model.invalidateFilter()
+
     def _on_local_node_ready(self, long_name: str, short_name: str, node_id: str,
                              gps_enabled: bool, has_position: bool):
         self._local_long_name  = long_name
@@ -634,6 +702,8 @@ class MainWindow(QMainWindow):
         self._local_node_id_str = node_id
         self._local_gps_enabled = gps_enabled
         self._update_local_node_label(has_position)
+        # Sincronizar favoritos do firmware (iface pronta neste ponto)
+        QTimer.singleShot(500, self._sync_firmware_favorites)
 
         # Insere / actualiza o nó local na tabela para que fique sempre visível
         if node_id and self.worker and self.worker.iface:
@@ -993,6 +1063,7 @@ class MainWindow(QMainWindow):
 
     def _on_sound_toggled(self, enabled: bool):
         self._sound_enabled = enabled
+        QSettings("CT7BRA", "MeshtasticMonitor").setValue("sound_enabled", enabled)
         state = "activado" if enabled else "silenciado"
         self.statusBar().showMessage(f"🔔 Som de notificação {state}", 3000)
 
@@ -1001,11 +1072,7 @@ class MainWindow(QMainWindow):
         if self.tab_widget.currentIndex() != self.MSG_TAB_INDEX:
             self.tab_widget.setTabText(self.MSG_TAB_INDEX, self.MSG_TAB_UNREAD)
             if self._sound_enabled:
-                try:
-                    from PyQt5.QtWidgets import QApplication
-                    QApplication.beep()
-                except Exception:
-                    pass
+                _play_notification_sound()
 
     def _clear_messages_badge(self):
         """Remove o indicador da aba Mensagens."""
