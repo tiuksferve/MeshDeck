@@ -93,10 +93,11 @@ class MetricsRenderMixin:
         total_r = self._msgs_acked + self._msgs_naked
         delivery = round(self._msgs_acked / total_r * 100, 1) if total_r > 0 else None
 
-        def kpi(val, unit, label, color="", kid=""):
+        def kpi(val, unit, label, color="", kid="", note=""):
             v = f"{val}{unit}" if val is not None else "—"
             id_attr = f' id="{kid}"' if kid else ""
-            return f'<div class="card"><h3>{label}</h3><div{id_attr} class="kpi {color}">{v}</div></div>'
+            note_html = f'<div class="kpi-sub" style="font-size:10px">{note}</div>' if note else ""
+            return f'<div class="card"><h3>{label}</h3><div{id_attr} class="kpi {color}">{v}</div>{note_html}</div>'
 
         def ch_kpi(val):
             if val is None: return kpi(None, "", "Utiliz. Canal (avg)")
@@ -133,7 +134,7 @@ class MetricsRenderMixin:
 <div class="grid-3">
   {kpi(snr_avg, " dB", "SNR Médio", "green" if snr_avg and snr_avg >= 0 else "orange", "ov-snr")}
   {kpi(hops_avg, " hops", "Hops Médio", "", "ov-hops")}
-  {kpi(delivery, "%", "Taxa Entrega", "green" if delivery and delivery >= 80 else "orange", "ov-delivery")}
+  {kpi(delivery, "%", "Taxa Entrega", "green" if delivery and delivery >= 80 else "orange", "ov-delivery", "Só mensagens enviadas pelo nó local")}
 </div>
 <div class="grid">
   {ch_kpi(ch_util_avg)}
@@ -884,10 +885,11 @@ window._metricsUpdateData = function(d) {{
                     '(tempo entre envio e ACK do destinatário).</div>')
             return self._base_html("⏱ Latência (RTT)", body)
 
-        def kpi(val, unit, label, color="", kid=""):
+        def kpi(val, unit, label, color="", kid="", note=""):
             v = f"{val}{unit}" if val is not None else "—"
             id_attr = f' id="{kid}"' if kid else ""
-            return f'<div class="card"><h3>{label}</h3><div{id_attr} class="kpi {color}">{v}</div></div>'
+            note_html = f'<div class="kpi-sub" style="font-size:10px">{note}</div>' if note else ""
+            return f'<div class="card"><h3>{label}</h3><div{id_attr} class="kpi {color}">{v}</div>{note_html}</div>'
 
         avg_color = ("green" if d["avg"] and d["avg"] < 10
                      else "orange" if d["avg"] and d["avg"] < 30 else "red")
@@ -1266,10 +1268,11 @@ window._metricsUpdateData = function(d) {{
             )
             return self._base_html("📏 Alcance & Links", body)
 
-        def kpi(val, unit, label, color="", kid=""):
+        def kpi(val, unit, label, color="", kid="", note=""):
             v = f"{val}{unit}" if val is not None else "—"
             id_attr = f' id="{kid}"' if kid else ""
-            return f'<div class="card"><h3>{label}</h3><div{id_attr} class="kpi {color}">{v}</div></div>'
+            note_html = f'<div class="kpi-sub" style="font-size:10px">{note}</div>' if note else ""
+            return f'<div class="card"><h3>{label}</h3><div{id_attr} class="kpi {color}">{v}</div>{note_html}</div>'
 
         rows_html = ""
         for from_id, from_n, nb_id, nb_n, dist, snr_str, snr_val in d["rows"]:

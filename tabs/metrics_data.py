@@ -116,6 +116,8 @@ class MetricsDataMixin:
         # Hops
         if hops is not None:
             self._hops_values.append(int(hops))
+            if len(self._hops_values) > 2000:
+                self._hops_values = self._hops_values[-1500:]
 
         # Portnum counts
         self._portnum_counts[portnum] = self._portnum_counts.get(portnum, 0) + 1

@@ -24,7 +24,7 @@ from PyQt5.QtGui import QFont, QColor, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 
 from constants import (
-    logger, APP_STYLESHEET, DARK_BG, PANEL_BG, BORDER_COLOR,
+    logger, APP_STYLESHEET, APP_VERSION, APP_NAME, DARK_BG, PANEL_BG, BORDER_COLOR,
     ACCENT_GREEN, ACCENT_BLUE, ACCENT_ORANGE, ACCENT_RED, ACCENT_PURPLE,
     TEXT_PRIMARY, TEXT_MUTED, INPUT_BG, HOVER_BG
 )
@@ -51,6 +51,18 @@ class MainWindow(QMainWindow):
             f"QStatusBar {{ background:{PANEL_BG}; color:{ACCENT_GREEN}; font-size:11px; }}"
         )
 
+        # Indicador permanente de SNR/pacotes na status bar (canto direito)
+        self._stats_label = QLabel("📶 —")
+        self._stats_label.setStyleSheet(
+            f"color:{TEXT_MUTED};font-size:11px;padding:0 8px;"
+        )
+        self._stats_label.setToolTip("SNR do último pacote recebido · Pacotes/min da rede")
+        self.statusBar().addPermanentWidget(self._stats_label)
+
+        # Contador de pacotes para calcular pkt/min
+        self._pkt_timestamps: list = []
+
+        self._sound_enabled      = True    # default: som ligado
         self._countdown_seconds  = 0
         self._countdown_base_msg = ""
         self._countdown_timer    = QTimer(self)
@@ -88,7 +100,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(100, self._open_connection_dialog)
 
     def _init_ui(self):
-        self.setWindowTitle("Meshtastic Monitor")
+        self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.resize(1440, 760)
 
         menu_bar = self.menuBar()
@@ -135,6 +147,15 @@ class MainWindow(QMainWindow):
         act_console.setShortcut("Ctrl+L")
         act_console.triggered.connect(self._show_console_window)
         config_menu.addAction(act_console)
+
+        config_menu.addSeparator()
+
+        self.act_sound = QAction("🔔  Som em nova mensagem", self)
+        self.act_sound.setCheckable(True)
+        self.act_sound.setChecked(True)    # default: ligado
+        self.act_sound.setToolTip("Activa beep do sistema ao receber mensagem não lida")
+        self.act_sound.toggled.connect(self._on_sound_toggled)
+        config_menu.addAction(self.act_sound)
 
         # ── Menu Sobre ─────────────────────────────────────────────────────
         about_menu = menu_bar.addMenu("ℹ️  Sobre")
@@ -387,6 +408,8 @@ class MainWindow(QMainWindow):
 
     def _disconnect(self):
         self._poll_timer.stop()
+        self._pkt_timestamps.clear()
+        self._stats_label.setText("📶 —")
         if self.worker:
             self.worker.stop()
         self.config_tab.clear_interface()
@@ -406,6 +429,7 @@ class MainWindow(QMainWindow):
         self.worker.raw_packet_received.connect(
             lambda pkt: self.metrics_tab.ingest_raw_packet(pkt)
         )
+        self.worker.raw_packet_received.connect(self._on_packet_stats)
         self.worker.nodes_batch.connect(self._on_nodes_batch)
         self.worker.error_occurred.connect(self._on_worker_error)
         self.worker.dm_sent.connect(self._on_dm_sent)
@@ -967,10 +991,21 @@ class MainWindow(QMainWindow):
     MSG_TAB_NORMAL  = "💬  Mensagens"
     MSG_TAB_UNREAD  = "💬  Mensagens  🔴"
 
+    def _on_sound_toggled(self, enabled: bool):
+        self._sound_enabled = enabled
+        state = "activado" if enabled else "silenciado"
+        self.statusBar().showMessage(f"🔔 Som de notificação {state}", 3000)
+
     def _on_messages_unread(self):
-        """Mostra indicador vermelho na aba Mensagens quando há msg não lida."""
+        """Mostra indicador vermelho na aba Mensagens e beep se som activo."""
         if self.tab_widget.currentIndex() != self.MSG_TAB_INDEX:
             self.tab_widget.setTabText(self.MSG_TAB_INDEX, self.MSG_TAB_UNREAD)
+            if self._sound_enabled:
+                try:
+                    from PyQt5.QtWidgets import QApplication
+                    QApplication.beep()
+                except Exception:
+                    pass
 
     def _clear_messages_badge(self):
         """Remove o indicador da aba Mensagens."""
@@ -1011,7 +1046,7 @@ class MainWindow(QMainWindow):
         lbl_title.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_title)
 
-        lbl_version = QLabel("Versão Gold Rev.2  ·  2025")
+        lbl_version = QLabel(f"Versão {APP_VERSION}  ·  2025")
         lbl_version.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         lbl_version.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_version)
@@ -1178,6 +1213,39 @@ class MainWindow(QMainWindow):
 
     def _on_channel_sent(self, channel_index: int, text: str, packet_id: int):
         self.messages_tab.add_outgoing_channel_message(channel_index, text, packet_id=packet_id)
+
+    def _on_packet_stats(self, pkt: dict):
+        """Actualiza o indicador de SNR/pkt·min na status bar a cada pacote recebido."""
+        import time
+        now = time.time()
+
+        # SNR do pacote (pode não existir em pacotes MQTT ou sem rádio)
+        snr = pkt.get("rxSnr")
+
+        if snr is None:
+            snr_str  = "—"
+            snr_color = TEXT_MUTED
+        elif snr >= 5:
+            snr_str  = f"{snr:+.1f} dB"
+            snr_color = ACCENT_GREEN    # sinal forte
+        elif snr >= 0:
+            snr_str  = f"{snr:+.1f} dB"
+            snr_color = ACCENT_ORANGE   # sinal mediano
+        else:
+            snr_str  = f"{snr:+.1f} dB"
+            snr_color = ACCENT_RED      # sinal fraco
+
+        # Pacotes/min — janela deslizante de 60s
+        self._pkt_timestamps.append(now)
+        cutoff = now - 60
+        self._pkt_timestamps = [t for t in self._pkt_timestamps if t >= cutoff]
+        ppm = len(self._pkt_timestamps)
+
+        self._stats_label.setText(
+            f"📶 SNR <span style='color:{snr_color};font-weight:bold'>"
+            f"{snr_str}</span>  ·  {ppm} pkt/min"
+        )
+        self._stats_label.setTextFormat(2)   # Qt.RichText
 
     def _on_reconnect_status(self, attempt: int, delay_s: int):
         """Slot do sinal reconnect_status do worker.

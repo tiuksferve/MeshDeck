@@ -3,6 +3,9 @@ constants.py — Paleta de cores, estilos Qt, constantes globais e temas de mapa
 Importado por todos os outros módulos.
 """
 import logging
+
+APP_VERSION = "1.0.beta"
+APP_NAME    = "Meshtastic Monitor"
 from meshtastic import BROADCAST_NUM
 
 logging.getLogger().setLevel(logging.INFO)
@@ -275,6 +278,7 @@ QDialog {{ background-color: {PANEL_BG}; }}
 """
 
 _BROADCAST_NUMS = {BROADCAST_NUM, 0xFFFFFFFF, 4294967295, -1}
+
 
 def _is_broadcast(to_num) -> bool:
     try:
