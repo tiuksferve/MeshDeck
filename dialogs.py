@@ -23,12 +23,12 @@ class ConnectionDialog(QDialog):
     def __init__(self, current_host="localhost", current_port=4403, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Configurar Conexão")
-        self.setFixedWidth(420)
+        self.setFixedSize(420, 240)
         self.setModal(True)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 16, 20, 16)
 
         title = QLabel("📡  Conexão ao Servidor Meshtastic")
         title.setStyleSheet(
@@ -42,7 +42,7 @@ class ConnectionDialog(QDialog):
         layout.addWidget(sep)
 
         form = QFormLayout()
-        form.setSpacing(12)
+        form.setSpacing(10)
         form.setLabelAlignment(Qt.AlignRight)
 
         self.host_edit = QLineEdit(current_host)
@@ -56,9 +56,8 @@ class ConnectionDialog(QDialog):
 
         layout.addLayout(form)
 
-        note = QLabel("💡 O endereço padrão para o daemon local é <b>localhost</b> porta <b>4403</b>.")
+        note = QLabel("💡 Endereço padrão: <b>localhost</b> · porta <b>4403</b>")
         note.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
-        note.setWordWrap(True)
         layout.addWidget(note)
 
         layout.addStretch()

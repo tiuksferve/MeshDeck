@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QByteArray
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QByteArray, QSettings
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QTableView, QHeaderView, QSplitter, QFrame,
@@ -24,12 +24,12 @@ from PyQt5.QtGui import QFont, QColor, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 
 from constants import (
-    logger, APP_STYLESHEET, DARK_BG, PANEL_BG, BORDER_COLOR,
+    logger, APP_STYLESHEET, APP_VERSION, APP_NAME, DARK_BG, PANEL_BG, BORDER_COLOR,
     ACCENT_GREEN, ACCENT_BLUE, ACCENT_ORANGE, ACCENT_RED, ACCENT_PURPLE,
     TEXT_PRIMARY, TEXT_MUTED, INPUT_BG, HOVER_BG
 )
 from models import (
-    NodeTableModel, NodeFilterProxyModel, FavoritesStore, _FAVORITES
+    NodeTableModel, NodeFilterProxyModel, _FAVORITES
 )
 from worker import MeshtasticWorker
 from dialogs import ConnectionDialog, ConsoleWindow, RebootWaitDialog, PacketDetailDialog
@@ -37,6 +37,70 @@ from tabs.tab_nodes import MapWidget
 from tabs.tab_messages import MessagesTab
 from tabs.tab_config import ConfigTab
 from tabs.tab_metrics import MetricsTab
+
+def _play_notification_sound():
+    """Toca som de notificação cross-platform.
+    Tenta em cascata: aplay (ALSA/Linux) → paplay (PulseAudio) →
+    afplay (macOS) → winsound (Windows) → QApplication.beep() (fallback).
+    """
+    import sys, subprocess
+    if sys.platform.startswith("linux"):
+        # Gera tom de 880 Hz por 200ms via aplay (ALSA — funciona no uConsole)
+        try:
+            import struct, math
+            rate = 22050
+            freq = 880
+            dur  = 0.2
+            n    = int(rate * dur)
+            # WAV header + PCM mono 16-bit
+            pcm  = bytes(struct.pack('<h', int(32767 * math.sin(2 * math.pi * freq * i / rate)))
+                         for i in range(n))
+            # RIFF header
+            data_size = len(pcm)
+            header = struct.pack('<4sI4s4sIHHIIHH4sI',
+                b'RIFF', 36 + data_size, b'WAVE',
+                b'fmt ', 16, 1, 1, rate, rate * 2, 2, 16,
+                b'data', data_size)
+            wav = header + pcm
+            subprocess.Popen(
+                ['aplay', '-q', '-'],
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            ).communicate(wav)
+            return
+        except Exception:
+            pass
+        # Fallback: paplay com ficheiro de som do sistema
+        for cmd in [
+            ['paplay', '/usr/share/sounds/freedesktop/stereo/message.oga'],
+            ['paplay', '/usr/share/sounds/ubuntu/stereo/message-new-instant.ogg'],
+        ]:
+            try:
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            except Exception:
+                continue
+    elif sys.platform == "darwin":
+        try:
+            subprocess.Popen(['afplay', '/System/Library/Sounds/Tink.aiff'],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except Exception:
+            pass
+    elif sys.platform == "win32":
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_OK)
+            return
+        except Exception:
+            pass
+    # Último recurso: beep Qt (pode não funcionar em todos os sistemas)
+    try:
+        from PyQt5.QtWidgets import QApplication
+        QApplication.beep()
+    except Exception:
+        pass
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -51,11 +115,32 @@ class MainWindow(QMainWindow):
             f"QStatusBar {{ background:{PANEL_BG}; color:{ACCENT_GREEN}; font-size:11px; }}"
         )
 
+        # Indicador permanente de SNR/pacotes na status bar (canto direito)
+        self._stats_label = QLabel("📶 —")
+        self._stats_label.setStyleSheet(
+            f"color:{TEXT_MUTED};font-size:11px;padding:0 8px;"
+        )
+        self._stats_label.setToolTip("SNR do último pacote recebido · Pacotes/min da rede")
+        self.statusBar().addPermanentWidget(self._stats_label)
+
+        # Contador de pacotes para calcular pkt/min
+        self._pkt_timestamps: list = []
+
+        # Som — persiste entre sessões via QSettings
+        _qs = QSettings("CT7BRA", "MeshtasticMonitor")
+        self._sound_enabled = _qs.value("sound_enabled", True, type=bool)
         self._countdown_seconds  = 0
         self._countdown_base_msg = ""
         self._countdown_timer    = QTimer(self)
         self._countdown_timer.setInterval(1000)
         self._countdown_timer.timeout.connect(self._on_countdown_tick)
+
+        # Reconexão automática — contagem regressiva na status bar
+        self._reconnect_seconds  = 0
+        self._reconnect_attempt  = 0
+        self._reconnect_bar_timer = QTimer(self)
+        self._reconnect_bar_timer.setInterval(1000)
+        self._reconnect_bar_timer.timeout.connect(self._on_reconnect_tick)
 
         self.source_model = NodeTableModel(self)
         self.proxy_model  = NodeFilterProxyModel(self)
@@ -81,7 +166,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(100, self._open_connection_dialog)
 
     def _init_ui(self):
-        self.setWindowTitle("Meshtastic Monitor")
+        self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.resize(1440, 760)
 
         menu_bar = self.menuBar()
@@ -128,6 +213,15 @@ class MainWindow(QMainWindow):
         act_console.setShortcut("Ctrl+L")
         act_console.triggered.connect(self._show_console_window)
         config_menu.addAction(act_console)
+
+        config_menu.addSeparator()
+
+        self.act_sound = QAction("🔔  Som em nova mensagem", self)
+        self.act_sound.setCheckable(True)
+        self.act_sound.setChecked(True)    # default: ligado
+        self.act_sound.setToolTip("Activa beep do sistema ao receber mensagem não lida")
+        self.act_sound.toggled.connect(self._on_sound_toggled)
+        config_menu.addAction(self.act_sound)
 
         # ── Menu Sobre ─────────────────────────────────────────────────────
         about_menu = menu_bar.addMenu("ℹ️  Sobre")
@@ -318,45 +412,10 @@ class MainWindow(QMainWindow):
 
     def _on_map_traceroute_request(self, node_id: str):
         """Chamado quando o utilizador clica em 'Traceroute' no popup do mapa."""
-        if not self.worker or not self.worker._connected:
-            QMessageBox.warning(self, "Desconectado",
-                                "Conecte-se primeiro para enviar traceroute.")
-            return
-        # Bloqueia novo envio enquanto countdown activo
-        if self._countdown_seconds > 0:
-            QMessageBox.information(
-                self, "Traceroute em curso",
-                f"Aguarde {self._countdown_seconds}s até o traceroute anterior terminar."
-            )
-            return
         all_nodes = self.source_model.get_all_nodes()
         node = next((n for n in all_nodes if n.get("id_string") == node_id), None)
         name = (node.get('long_name') or node_id) if node else node_id
-
-        # Verifica duplicado na lista
-        local_id = getattr(self, '_local_node_id_str', None) or ''
-        existing = next(
-            (rec for rec in self.map_widget._tr_records
-             if (rec.get('origin_id') == local_id and rec.get('dest_id') == node_id)
-             or (rec.get('origin_id') == node_id and rec.get('dest_id') == local_id)),
-            None
-        )
-        if existing:
-            reply = QMessageBox.question(
-                self, "Traceroute já existente",
-                f"Já existe um traceroute para {name} na lista.\n\n"
-                f"Deseja enviar um novo traceroute mesmo assim?",
-                QMessageBox.Yes | QMessageBox.Cancel,
-                QMessageBox.Cancel,
-            )
-            if reply != QMessageBox.Yes:
-                return
-
-        self._pending_traceroute_dest = (node_id, name)
-        self.worker.send_traceroute(node_id)
-        self._show_countdown_message(
-            f"📡 Traceroute enviado para {name} — aguardando resposta…", 30
-        )
+        self._send_traceroute(node_id, name)
 
     # ------------------------------------------------------------------
     # Conexão / desconexão
@@ -415,6 +474,9 @@ class MainWindow(QMainWindow):
 
     def _disconnect(self):
         self._poll_timer.stop()
+        self._pkt_timestamps.clear()
+        self._stats_label.setText("📶 —")
+        _FAVORITES.set_interface(None)
         if self.worker:
             self.worker.stop()
         self.config_tab.clear_interface()
@@ -434,6 +496,7 @@ class MainWindow(QMainWindow):
         self.worker.raw_packet_received.connect(
             lambda pkt: self.metrics_tab.ingest_raw_packet(pkt)
         )
+        self.worker.raw_packet_received.connect(self._on_packet_stats)
         self.worker.nodes_batch.connect(self._on_nodes_batch)
         self.worker.error_occurred.connect(self._on_worker_error)
         self.worker.dm_sent.connect(self._on_dm_sent)
@@ -462,6 +525,7 @@ class MainWindow(QMainWindow):
         self.worker.neighbor_info_received.connect(
             lambda nid, nbs: self.metrics_tab.ingest_neighbor_info(nid, nbs)
         )
+        self.worker.reconnect_status.connect(self._on_reconnect_status)
         self.source_model.node_inserted.connect(self.messages_tab._refresh_dm_list)
         self.worker.start()
 
@@ -572,12 +636,6 @@ class MainWindow(QMainWindow):
             if was_new:
                 new_nodes.append((nid, data))
 
-        # Injecta favoritos ausentes do NodeDB em passagem única
-        node_idx = self.source_model._node_index
-        for fav_data in _FAVORITES.get_all_nodes_data():
-            fav_id = fav_data.get("id_string")
-            if fav_id and node_idx.get(fav_id) is None:
-                self.source_model.update_node_silent(fav_id, fav_data)
 
         self.source_model.refresh_all()
         self.proxy_model.invalidateFilter()
@@ -630,6 +688,13 @@ class MainWindow(QMainWindow):
     def _on_worker_error(self, message: str):
         QMessageBox.critical(self, "Erro no Meshtastic", message)
 
+    def _sync_firmware_favorites(self):
+        """Lê favoritos do firmware após ligação estabelecida."""
+        if self.worker and self.worker.iface:
+            _FAVORITES.set_interface(self.worker.iface)
+            self.source_model.refresh_all()
+            self.proxy_model.invalidateFilter()
+
     def _on_local_node_ready(self, long_name: str, short_name: str, node_id: str,
                              gps_enabled: bool, has_position: bool):
         self._local_long_name  = long_name
@@ -637,6 +702,8 @@ class MainWindow(QMainWindow):
         self._local_node_id_str = node_id
         self._local_gps_enabled = gps_enabled
         self._update_local_node_label(has_position)
+        # Sincronizar favoritos do firmware (iface pronta neste ponto)
+        QTimer.singleShot(500, self._sync_firmware_favorites)
 
         # Insere / actualiza o nó local na tabela para que fique sempre visível
         if node_id and self.worker and self.worker.iface:
@@ -759,43 +826,57 @@ class MainWindow(QMainWindow):
                 )
 
         elif col == NodeTableModel.COL_TRACEROUTE:
-            if node_id and self.worker and self.worker._connected:
-                # Bloqueia novo envio enquanto countdown de traceroute anterior está activo
-                if self._countdown_seconds > 0:
-                    QMessageBox.information(
-                        self, "Traceroute em curso",
-                        f"Aguarde {self._countdown_seconds}s até o traceroute anterior terminar."
-                    )
-                    return
+            if node_id:
                 name = node.get('long_name') or node_id
+                self._send_traceroute(node_id, name)
 
-                # Verifica se já existe um traceroute para este destino na lista
-                local_id = getattr(self, '_local_node_id_str', None) or ''
-                existing = next(
-                    (rec for rec in self.map_widget._tr_records
-                     if (rec.get('origin_id') == local_id and rec.get('dest_id') == node_id)
-                     or (rec.get('origin_id') == node_id and rec.get('dest_id') == local_id)),
-                    None
-                )
-                if existing:
-                    reply = QMessageBox.question(
-                        self, "Traceroute já existente",
-                        f"Já existe um traceroute para {name} na lista.\n\n"
-                        f"Deseja enviar um novo traceroute mesmo assim?",
-                        QMessageBox.Yes | QMessageBox.Cancel,
-                        QMessageBox.Cancel,
-                    )
-                    if reply != QMessageBox.Yes:
-                        return
+    def _send_traceroute(self, node_id: str, name: str) -> None:
+        """Valida pré-condições e envia traceroute para node_id.
 
-                self._pending_traceroute_dest = (node_id, name)
-                self.worker.send_traceroute(node_id)
-                self._show_countdown_message(
-                    f"📡 Traceroute enviado para {name} — aguardando resposta…", 30
-                )
-            elif not self.worker or not self.worker._connected:
-                QMessageBox.warning(self, "Desconectado",
-                                    "Conecte-se primeiro para enviar traceroute.")
+        Centraliza toda a lógica partilhada entre o clique na tabela
+        (_on_table_clicked) e o clique no popup do mapa
+        (_on_map_traceroute_request), eliminando duplicação.
+
+        Verifica, por ordem:
+          1. Ligação activa ao daemon
+          2. Countdown de traceroute anterior ainda em curso
+          3. Traceroute duplicado já presente na lista (pede confirmação)
+        """
+        if not self.worker or not self.worker._connected:
+            QMessageBox.warning(self, "Desconectado",
+                                "Conecte-se primeiro para enviar traceroute.")
+            return
+
+        if self._countdown_seconds > 0:
+            QMessageBox.information(
+                self, "Traceroute em curso",
+                f"Aguarde {self._countdown_seconds}s até o traceroute anterior terminar."
+            )
+            return
+
+        local_id = getattr(self, '_local_node_id_str', None) or ''
+        existing = next(
+            (rec for rec in self.map_widget._tr_records
+             if (rec.get('origin_id') == local_id and rec.get('dest_id') == node_id)
+             or (rec.get('origin_id') == node_id and rec.get('dest_id') == local_id)),
+            None
+        )
+        if existing:
+            reply = QMessageBox.question(
+                self, "Traceroute já existente",
+                f"Já existe um traceroute para {name} na lista.\n\n"
+                f"Deseja enviar um novo traceroute mesmo assim?",
+                QMessageBox.Yes | QMessageBox.Cancel,
+                QMessageBox.Cancel,
+            )
+            if reply != QMessageBox.Yes:
+                return
+
+        self._pending_traceroute_dest = (node_id, name)
+        self.worker.send_traceroute(node_id)
+        self._show_countdown_message(
+            f"📡 Traceroute enviado para {name} — aguardando resposta…", 30
+        )
 
     def _on_traceroute_result(self, forward_edges: list, back_edges: list,
                               origin_id: str, dest_id: str):
@@ -980,10 +1061,18 @@ class MainWindow(QMainWindow):
     MSG_TAB_NORMAL  = "💬  Mensagens"
     MSG_TAB_UNREAD  = "💬  Mensagens  🔴"
 
+    def _on_sound_toggled(self, enabled: bool):
+        self._sound_enabled = enabled
+        QSettings("CT7BRA", "MeshtasticMonitor").setValue("sound_enabled", enabled)
+        state = "activado" if enabled else "silenciado"
+        self.statusBar().showMessage(f"🔔 Som de notificação {state}", 3000)
+
     def _on_messages_unread(self):
-        """Mostra indicador vermelho na aba Mensagens quando há msg não lida."""
+        """Mostra indicador vermelho na aba Mensagens e beep se som activo."""
         if self.tab_widget.currentIndex() != self.MSG_TAB_INDEX:
             self.tab_widget.setTabText(self.MSG_TAB_INDEX, self.MSG_TAB_UNREAD)
+            if self._sound_enabled:
+                _play_notification_sound()
 
     def _clear_messages_badge(self):
         """Remove o indicador da aba Mensagens."""
@@ -1024,7 +1113,7 @@ class MainWindow(QMainWindow):
         lbl_title.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_title)
 
-        lbl_version = QLabel("Versão Gold Rev.2  ·  2025")
+        lbl_version = QLabel(f"Versão {APP_VERSION}  ·  2025")
         lbl_version.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         lbl_version.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_version)
@@ -1191,6 +1280,71 @@ class MainWindow(QMainWindow):
 
     def _on_channel_sent(self, channel_index: int, text: str, packet_id: int):
         self.messages_tab.add_outgoing_channel_message(channel_index, text, packet_id=packet_id)
+
+    def _on_packet_stats(self, pkt: dict):
+        """Actualiza o indicador de SNR/pkt·min na status bar a cada pacote recebido."""
+        import time
+        now = time.time()
+
+        # SNR do pacote (pode não existir em pacotes MQTT ou sem rádio)
+        snr = pkt.get("rxSnr")
+
+        if snr is None:
+            snr_str  = "—"
+            snr_color = TEXT_MUTED
+        elif snr >= 5:
+            snr_str  = f"{snr:+.1f} dB"
+            snr_color = ACCENT_GREEN    # sinal forte
+        elif snr >= 0:
+            snr_str  = f"{snr:+.1f} dB"
+            snr_color = ACCENT_ORANGE   # sinal mediano
+        else:
+            snr_str  = f"{snr:+.1f} dB"
+            snr_color = ACCENT_RED      # sinal fraco
+
+        # Pacotes/min — janela deslizante de 60s
+        self._pkt_timestamps.append(now)
+        cutoff = now - 60
+        self._pkt_timestamps = [t for t in self._pkt_timestamps if t >= cutoff]
+        ppm = len(self._pkt_timestamps)
+
+        self._stats_label.setText(
+            f"📶 SNR <span style='color:{snr_color};font-weight:bold'>"
+            f"{snr_str}</span>  ·  {ppm} pkt/min"
+        )
+        self._stats_label.setTextFormat(2)   # Qt.RichText
+
+    def _on_reconnect_status(self, attempt: int, delay_s: int):
+        """Slot do sinal reconnect_status do worker.
+        attempt=0 → reconectado; attempt>0 → a aguardar próxima tentativa.
+        """
+        if attempt == 0:
+            # Reconectado — para o ticker e limpa a status bar
+            self._reconnect_bar_timer.stop()
+            self._reconnect_seconds = 0
+            self.statusBar().clearMessage()
+        else:
+            # Inicia contagem regressiva visível
+            self._reconnect_attempt  = attempt
+            self._reconnect_seconds  = delay_s
+            self._reconnect_bar_timer.start()
+            self._update_reconnect_bar()
+
+    def _on_reconnect_tick(self):
+        """Decrementa o contador de reconexão a cada segundo."""
+        self._reconnect_seconds -= 1
+        if self._reconnect_seconds <= 0:
+            self._reconnect_bar_timer.stop()
+            self.statusBar().showMessage(
+                f"🔄 A tentar reconectar… (tentativa {self._reconnect_attempt})"
+            )
+        else:
+            self._update_reconnect_bar()
+
+    def _update_reconnect_bar(self):
+        self.statusBar().showMessage(
+            f"🔌 Ligação perdida — a reconectar em {self._reconnect_seconds}s (tentativa {self._reconnect_attempt})…"
+        )
 
     def closeEvent(self, event):
         if self.worker:

@@ -10,7 +10,7 @@ import time
 from typing import Optional, Dict, Any, Set, List
 from datetime import datetime
 
-from PyQt5.QtCore import pyqtSignal, QObject, QTimer
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject, QTimer, QMetaObject, Qt
 from pubsub import pub
 from meshtastic.tcp_interface import TCPInterface
 from meshtastic import BROADCAST_ADDR, BROADCAST_NUM
@@ -42,6 +42,8 @@ class MeshtasticWorker(QObject):
     position_sent           = pyqtSignal(bool, str)
     # Pacote raw para métricas — emitido para TODOS os pacotes recebidos
     raw_packet_received     = pyqtSignal(dict)
+    # Reconexão automática: (tentativa, delay_s)  |  tentativa=0 → reconectado
+    reconnect_status        = pyqtSignal(int, int)
 
     NODE_POLL_INTERVAL_MS = 30_000   # 30s — safety-net para CM4; pubsub cobre updates em tempo real
 
@@ -58,6 +60,12 @@ class MeshtasticWorker(QObject):
         self._reconnect_timer    = QTimer(self)
         self._reconnect_timer.setSingleShot(True)
         self._reconnect_timer.timeout.connect(self._do_reconnect)
+        # Watchdog: se após 12s de _do_reconnect _connected ainda for False,
+        # o TCPInterface ficou pendurado sem lançar excepção nem evento pubsub.
+        # Força nova tentativa via _schedule_reconnect.
+        self._connect_watchdog   = QTimer(self)
+        self._connect_watchdog.setSingleShot(True)
+        self._connect_watchdog.timeout.connect(self._on_connect_watchdog)
         # ID do nó local — usado por _emit_node para evitar inserção na tabela
         self._local_id_known:  Optional[str] = None
         self._local_num_known: Optional[int] = None
@@ -85,6 +93,7 @@ class MeshtasticWorker(QObject):
 
     def stop(self):
         self._reconnect_timer.stop()
+        self._connect_watchdog.stop()
         for topic, handler in [
             ("meshtastic.connection.established", self._on_connection_established),
             ("meshtastic.connection.lost",        self._on_connection_lost),
@@ -109,23 +118,35 @@ class MeshtasticWorker(QObject):
                 self.connection_changed.emit(False)
 
     def _on_connection_lost(self, interface=None):
-        """Chamado pela biblioteca quando a ligação TCP é perdida."""
-        logger.warning("Ligação perdida — a tentar reconectar…")
-        self._connected = False
-        self.connection_changed.emit(False)
+        """Chamado pela thread interna do TCPInterface — delega para thread Qt."""
+        logger.warning("Ligação perdida — a delegar para thread Qt…")
+        QMetaObject.invokeMethod(self, "_handle_connection_lost", Qt.QueuedConnection)
+
+    @pyqtSlot()
+    def _handle_connection_lost(self):
+        """Executado na thread Qt — seguro para QTimer e sinais."""
+        if self._connected:
+            self._connected = False
+            self.connection_changed.emit(False)
         self._schedule_reconnect()
 
     def _schedule_reconnect(self):
-        """Backoff exponencial: 5s → 10s → 30s → 60s (máx)."""
-        delays = [5_000, 10_000, 30_000, 60_000]
+        """Backoff exponencial: 15s → 30s → 60s → 120s (máx)."""
+        delays = [15_000, 30_000, 60_000, 120_000]
         idx    = min(self._reconnect_attempts, len(delays) - 1)
         delay  = delays[idx]
         self._reconnect_attempts += 1
         logger.info(f"Reconexão #{self._reconnect_attempts} em {delay//1000}s…")
+        self.reconnect_status.emit(self._reconnect_attempts, delay // 1000)
         self._reconnect_timer.start(delay)
 
     def _do_reconnect(self):
-        """Tenta fechar a interface antiga e criar uma nova."""
+        """Tenta fechar a interface antiga e criar uma nova.
+        Re-subscreve os handlers pubsub antes de criar o TCPInterface.
+        Após criar a interface arranca um watchdog de 12s: se _connected
+        ainda for False no timeout, o TCPInterface ficou pendurado sem
+        lançar excepção nem disparar o evento pubsub — forçamos nova tentativa.
+        """
         if self._connected:
             return
         try:
@@ -137,11 +158,44 @@ class MeshtasticWorker(QObject):
                 self.iface = None
             self._known_nodes.clear()
             self._poll_last_seen.clear()
+            # Re-subscreve handlers pubsub
+            for topic, handler in [
+                ("meshtastic.connection.established", self._on_connection_established),
+                ("meshtastic.connection.lost",        self._on_connection_lost),
+                ("meshtastic.node.updated",           self._on_node_updated),
+                ("meshtastic.receive.text",           self._on_text_message),
+                ("meshtastic.receive.user",           self._on_receive_user),
+                ("meshtastic.receive",                self._on_packet_received),
+            ]:
+                try:
+                    pub.unsubscribe(handler, topic)
+                except Exception:
+                    pass
+                pub.subscribe(handler, topic)
             logger.info(f"A reconectar a {self.hostname}:{self.port}…")
             self.iface = TCPInterface(self.hostname, self.port)
+            # Watchdog: 12s para o evento pubsub chegar; caso contrário tenta de novo
+            self._connect_watchdog.start(12_000)
         except Exception as e:
             logger.warning(f"Reconexão falhada: {e}")
+            self._connect_watchdog.stop()
             self._schedule_reconnect()
+
+    def _on_connect_watchdog(self):
+        """Chamado 12s após _do_reconnect se _connected ainda for False.
+        O TCPInterface criou o socket mas o handshake Meshtastic não completou
+        (daemon lento, rede instável). Fecha e agenda nova tentativa.
+        """
+        if self._connected:
+            return
+        logger.warning("Watchdog: sem conexão após 12s — a reagendar tentativa…")
+        if self.iface:
+            try:
+                self.iface.close()
+            except Exception:
+                pass
+            self.iface = None
+        self._schedule_reconnect()
 
     def send_message(self, channel_index: int, text: str):
         if not self.iface or not self._connected:
@@ -538,12 +592,20 @@ class MeshtasticWorker(QObject):
             logger.debug(f"Erro no poll NodeDB: {e}")
 
     def _on_connection_established(self, interface=None):
-        logger.info("Conexão estabelecida.")
+        """Chamado pela thread interna do TCPInterface — delega para thread Qt."""
+        logger.info("Conexão estabelecida — a delegar para thread Qt…")
+        QMetaObject.invokeMethod(self, "_handle_connection_established", Qt.QueuedConnection)
+
+    @pyqtSlot()
+    def _handle_connection_established(self):
+        """Executado na thread Qt — seguro para QTimer e sinais."""
         self._connected          = True
         self._reconnect_attempts = 0
         self._reconnect_timer.stop()
+        self._connect_watchdog.stop()
         self._known_nodes.clear()
         self._poll_last_seen.clear()
+        self.reconnect_status.emit(0, 0)   # 0 = reconectado com sucesso
         self.connection_changed.emit(True)
 
         # FIX-4: bloqueia inserção do nó local ANTES do batch inicial

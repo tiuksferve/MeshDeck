@@ -32,7 +32,7 @@ qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
 ### 💬 Mensagens
 - Múltiplos canais (Primary + Secondary, índices 0-7)
 - DMs com suporte a PKI (E2E) e PSK (fallback automático)
-- Indicador de leitura por canal e por DM
+- Indicador de leitura por canal e por DM (🔴)
 - ACK/NAK por mensagem enviada
 
 ### ⚙️ Configuração Completa do Nó
@@ -41,23 +41,35 @@ qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
 - Mensagens pré-definidas com área de texto (separadas por |)
 - Transacção atómica — firmware reinicia só uma vez
 
+### 🔌 Ligação & Robustez
+- Ligação TCP ao daemon `meshtasticd` (por defeito `localhost:4403`)
+- **Reconexão automática** com backoff exponencial (15s → 30s → 60s → 120s)
+- Watchdog de 12s por tentativa — detecta ligações TCP pendentes sem resposta
+- Contagem regressiva visível na status bar durante o processo de reconexão
+- Polling de segurança a cada 30s para manter o NodeDB sincronizado
+
 ### 📊 Métricas em Tempo Real (10 secções)
 
+Actualizadas automaticamente a cada **5 segundos** via JavaScript incremental (sem redesenho).
+
 | Secção | Tipo | O que mede |
-|--------|------|-----------|
-| 📊 Visão Geral | Misto | Resumo: pacotes, nós, SNR, taxa entrega |
-| 📡 Canal & Airtime | 🌐 Rede | Channel utilization, airtime TX, duty cycle EU |
-| 📶 Qualidade RF | 🌐 Rede | Histograma SNR, hops, avaliação automática |
+|--------|------|------------|
+| 📊 Visão Geral | Misto | Resumo: pacotes, nós, SNR, taxa de entrega |
+| 📡 Canal & Airtime | 🌐 Rede | Channel utilization, airtime TX, duty cycle EU (10%/h) |
+| 📶 Qualidade RF | 🌐 Rede | SNR médio/mediano/P10, histograma SNR, hops, avaliação automática |
 | 📦 Tráfego | 🌐 Rede | Pacotes por tipo, pacotes/min, RF vs MQTT |
-| 🔋 Nós & Bateria | 🌐 Rede | Bateria, tensão, uptime, hardware model, GPS |
-| ✅ Fiabilidade | 🏠 Local | ACK/NAK, taxa entrega, duplicados, colisões |
+| 🔋 Nós & Bateria | 🌐 Rede | Bateria (⚡ Powered), tensão, uptime, hardware, GPS |
+| ✅ Fiabilidade | 🏠 Local + 🌐 Rede | ACK/NAK, taxa entrega, duplicados, probabilidade de colisão |
 | ⏱ Latência (RTT) | 🏠 Local | RTT médio/mín/máx/P90 (envio→ACK) |
-| 🔗 Vizinhança | 🌐 Rede | Pares vizinhos directos com SNR |
-| 📏 Alcance & Links | 🌐 Rede | Distância km entre vizinhos com GPS |
-| ⏰ Intervalos | 🌐 Rede | Intervalo entre pacotes por nó |
+| 🔗 Vizinhança | 🌐 Rede | Pares vizinhos directos com SNR (requer NEIGHBORINFO_APP) |
+| 📏 Alcance & Links | 🌐 Rede | Distância km entre vizinhos com GPS (Haversine) |
+| ⏰ Intervalos | 🌐 Rede | Intervalo médio entre pacotes por nó |
 
 > **🏠 Métrica do Nó Local** — exclusivo ao nó ligado  
 > **🌐 Métrica da Rede** — todos os pacotes observados
+
+#### ⚠ Vizinhança e Alcance & Links
+Estas métricas requerem o módulo **Neighbor Info** activo com **Transmit Over LoRa** habilitado (firmware ≥ 2.5.13) e um **canal privado** — o canal público (LongFast/ShortFast com chave padrão) bloqueia este tráfego desde o firmware 2.5.13. O intervalo mínimo é de **4 horas**, pelo que os primeiros dados podem demorar a aparecer.
 
 ---
 
@@ -65,16 +77,18 @@ qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
 
 ```
 meshtastic_monitor/
-├── main.py              ← Ponto de entrada
-├── constants.py         ← Cores e estilos Qt
-├── models.py            ← Modelos de dados e favoritos
-├── worker.py            ← Comunicação TCP com o daemon
-├── dialogs.py           ← Diálogos auxiliares
+├── main.py                ← Ponto de entrada · MainWindow · ligação de sinais
+├── constants.py           ← Cores, estilos Qt, APP_STYLESHEET
+├── models.py              ← FavoritesStore, NodeTableModel, NodeFilterProxyModel
+├── worker.py              ← MeshtasticWorker — TCP/pubsub/pacotes/reconexão
+├── dialogs.py             ← ConnectionDialog, ConsoleWindow, RebootWaitDialog
 ├── tabs/
-│   ├── tab_nodes.py     ← Mapa Leaflet e lista de traceroutes
-│   ├── tab_messages.py  ← Canais e DMs
-│   ├── tab_config.py    ← Configuração completa do nó
-│   └── tab_metrics.py   ← 10 secções de métricas
+│   ├── tab_nodes.py       ← MapWidget (Leaflet, traceroutes, vizinhança)
+│   ├── tab_messages.py    ← MessagesTab (canais, DMs PKI/PSK)
+│   ├── tab_config.py      ← ConfigTab, configuração completa do nó
+│   ├── tab_metrics.py     ← MetricsTab (orquestração UI, timer 5s)
+│   ├── metrics_data.py    ← MetricsDataMixin — ingestão e cálculo de dados
+│   └── metrics_render.py  ← MetricsRenderMixin — geração HTML/JS por secção
 └── requirements.txt
 ```
 
@@ -113,7 +127,8 @@ O diálogo de ligação pede o endereço/porta do daemon (`localhost:4403` por d
 ## 🗂 Ficheiro de Favoritos
 
 Os favoritos são guardados em `~/.meshtastic_monitor_favorites.json` com dados
-completos do nó (nome, GPS, chave pública).
+completos do nó (nome, GPS, chave pública), permanecendo visíveis mesmo quando
+o nó não está no NodeDB do firmware.
 
 ---
 

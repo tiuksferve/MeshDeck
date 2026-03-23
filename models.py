@@ -23,106 +23,82 @@ logger = logging.getLogger("MeshtasticGUI")
 
 
 
-class FavoritesStore:
+class FirmwareFavorites:
     """
-    Guarda os dados completos de nós favoritos num ficheiro JSON local.
-    Ao conectar, os favoritos são injectados na lista mesmo que o NodeDB
-    do firmware não os inclua (ex: nós de outras redes já vistos).
+    Gestão de favoritos directamente no firmware do nó local.
+    Lê isFavorite do nodesByNum (preenchido pelo daemon ao conectar).
+    Escreve via localNode.setFavorite() / removeFavorite() (AdminMessage).
+    Não usa ficheiro local — a fonte de verdade é sempre o firmware.
     """
-    _PATH = os.path.join(
-        os.path.expanduser("~"), ".meshtastic_monitor_favorites.json"
-    )
-    _FIELDS = [
-        "id_string", "id_num", "long_name", "short_name", "hw_model",
-        "public_key", "latitude", "longitude", "altitude",
-        "battery_level", "snr", "hops_away", "via_mqtt", "last_heard",
-    ]
 
     def __init__(self):
-        self._nodes: Dict[str, Dict] = {}   # id_string → dados completos
-        self._load()
+        self._iface = None          # definido em set_interface() após ligação
+        self._favorites: Set[str] = set()   # cache em memória (id_string)
 
-    # ── persistência ────────────────────────────────────────────────────
-    def _load(self):
+    def set_interface(self, iface):
+        """Chamado após ligação — carrega favoritos do nodesByNum do firmware."""
+        self._iface = iface
+        self._favorites = set()
+        if iface is None:
+            return
         try:
-            if not os.path.exists(self._PATH):
-                return
-            with open(self._PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            raw = data.get("nodes", data.get("favorites", []))
-            if isinstance(raw, list):          # formato antigo (lista de IDs)
-                for item in raw:
-                    if isinstance(item, str):
-                        self._nodes[item] = {"id_string": item}
-                    elif isinstance(item, dict) and item.get("id_string"):
-                        self._nodes[item["id_string"]] = item
-            elif isinstance(raw, dict):
-                self._nodes = raw
-            # Reconverte last_heard guardado como string ISO
-            for nd in self._nodes.values():
-                lh = nd.get("last_heard")
-                if isinstance(lh, str):
-                    try:
-                        nd["last_heard"] = datetime.fromisoformat(lh)
-                    except Exception:
-                        nd["last_heard"] = None
+            nodes = getattr(iface, 'nodesByNum', {}) or {}
+            for num, node in nodes.items():
+                if node.get('isFavorite'):
+                    uid = node.get('user', {}).get('id', '')
+                    if uid:
+                        self._favorites.add(uid)
         except Exception as e:
-            logger.warning(f"FavoritesStore.load: {e}")
-            self._nodes = {}
+            logger.warning(f"FirmwareFavorites.load: {e}")
 
-    def _save(self):
-        try:
-            def _serial(v):
-                return v.isoformat() if isinstance(v, datetime) else v
-            out = {nid: {k: _serial(v) for k, v in nd.items()}
-                   for nid, nd in self._nodes.items()}
-            with open(self._PATH, "w", encoding="utf-8") as f:
-                json.dump({"nodes": out}, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            logger.warning(f"FavoritesStore.save: {e}")
-
-    # ── API pública ──────────────────────────────────────────────────────
     def is_favorite(self, node_id: str) -> bool:
-        return node_id in self._nodes
+        return node_id in self._favorites
 
     def toggle(self, node_id: str, node_data: Optional[Dict] = None) -> bool:
-        """Alterna favorito. Retorna True se agora é favorito."""
-        if node_id in self._nodes:
-            del self._nodes[node_id]
-            self._save()
+        """Alterna favorito no firmware. Retorna True se agora é favorito."""
+        if node_id in self._favorites:
+            self._favorites.discard(node_id)
+            self._send_to_firmware(node_id, favorite=False)
             return False
-        entry: Dict = {"id_string": node_id}
-        if node_data:
-            for f in self._FIELDS:
-                v = node_data.get(f)
-                if v is not None:
-                    entry[f] = v
-        self._nodes[node_id] = entry
-        self._save()
-        return True
+        else:
+            self._favorites.add(node_id)
+            self._send_to_firmware(node_id, favorite=True)
+            return True
+
+    def _send_to_firmware(self, node_id: str, favorite: bool):
+        """Envia setFavorite ou removeFavorite ao nó local via AdminMessage."""
+        if not self._iface:
+            logger.warning("FirmwareFavorites: sem interface — não foi possível persistir")
+            return
+        try:
+            local = self._iface.localNode
+            if favorite:
+                local.setFavorite(node_id)
+                logger.info(f"Favorito adicionado no firmware: {node_id}")
+            else:
+                local.removeFavorite(node_id)
+                logger.info(f"Favorito removido do firmware: {node_id}")
+        except Exception as e:
+            logger.warning(f"FirmwareFavorites._send_to_firmware: {e}")
+
+    def sync_from_firmware(self):
+        """Re-lê os favoritos do firmware (útil após reconexão)."""
+        self.set_interface(self._iface)
+
+    # Compatibilidade com código antigo que chamava get_all_nodes_data()
+    def get_all(self) -> Set[str]:
+        return set(self._favorites)
+
+    def get_all_nodes_data(self) -> list:
+        """Retorna lista vazia — já não injectamos nós do ficheiro local."""
+        return []
 
     def update_node_data(self, node_id: str, node_data: Dict):
-        """Actualiza os campos persistidos de um favorito já existente."""
-        if node_id not in self._nodes:
-            return
-        nd = self._nodes[node_id]
-        for f in self._FIELDS:
-            v = node_data.get(f)
-            if v is not None:
-                nd[f] = v
-        self._save()
-
-    def get_all(self) -> Set[str]:
-        return set(self._nodes.keys())
-
-    def get_node_data(self, node_id: str) -> Optional[Dict]:
-        return dict(self._nodes[node_id]) if node_id in self._nodes else None
-
-    def get_all_nodes_data(self) -> List[Dict]:
-        return [dict(nd) for nd in self._nodes.values()]
+        """No-op — não guardamos dados localmente."""
+        pass
 
 
-_FAVORITES = FavoritesStore()
+_FAVORITES = FirmwareFavorites()
 
 def _safe_update(target: dict, source: dict) -> None:
     """
