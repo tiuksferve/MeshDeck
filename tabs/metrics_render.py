@@ -6,6 +6,7 @@ Separado de tab_metrics.py para facilitar manutenção.
 Importado exclusivamente por MetricsTab (tabs/tab_metrics.py).
 """
 import json
+from i18n import tr
 import math
 import time
 from datetime import datetime
@@ -100,7 +101,7 @@ class MetricsRenderMixin:
             return f'<div class="card"><h3>{label}</h3><div{id_attr} class="kpi {color}">{v}</div>{note_html}</div>'
 
         def ch_kpi(val):
-            if val is None: return kpi(None, "", "Utiliz. Canal (avg)")
+            if val is None: return kpi(None, "", tr("Utiliz. Canal (avg)"))
             color = "green" if val < self.CH_UTIL_OK else ("orange" if val < self.CH_UTIL_WARN else "red")
             bar_color = "#39d353" if val < self.CH_UTIL_OK else ("#f0883e" if val < self.CH_UTIL_WARN else "#f85149")
             pct = min(int(val), 100)
@@ -127,18 +128,18 @@ class MetricsRenderMixin:
         body = f"""
 <div class="subtitle">Resumo da sessão · Actualizado: {self._now_str()}</div>
 <div class="grid-3">
-  {kpi(total_pkts, "", "Total Pacotes", "blue", "ov-pkts")}
-  {kpi(n_active, " nós", "Nós Activos (2h)", "green", "ov-active")}
-  {kpi(ppm, "/min", "Pacotes/min", "", "ov-ppm")}
+  {kpi(total_pkts, "", tr("Total Pacotes"), "blue", "ov-pkts")}
+  {kpi(n_active, " nós", tr("Nós Activos (2h)"), "green", "ov-active")}
+  {kpi(ppm, "/min", tr("Pacotes/min"), "", "ov-ppm")}
 </div>
 <div class="grid-3">
-  {kpi(snr_avg, " dB", "SNR Médio", "green" if snr_avg and snr_avg >= 0 else "orange", "ov-snr")}
-  {kpi(hops_avg, " hops", "Hops Médio", "", "ov-hops")}
-  {kpi(delivery, "%", "Taxa Entrega", "green" if delivery and delivery >= 80 else "orange", "ov-delivery", "Só mensagens enviadas pelo nó local")}
+  {kpi(snr_avg, " dB", tr("SNR Médio"), "green" if snr_avg and snr_avg >= 0 else "orange", "ov-snr")}
+  {kpi(hops_avg, " hops", tr("Hops Médio"), "", "ov-hops")}
+  {kpi(delivery, "%", tr("Taxa Entrega"), "green" if delivery and delivery >= 80 else "orange", "ov-delivery", tr("Só mensagens enviadas pelo nó local"))}
 </div>
 <div class="grid">
   {ch_kpi(ch_util_avg)}
-  {kpi(air_avg, "%", "Airtime TX (avg)", "green" if air_avg and air_avg < 10 else "orange", "ov-air")}
+  {kpi(air_avg, "%", tr("Airtime TX (avg)"), "green" if air_avg and air_avg < 10 else "orange", "ov-air")}
 </div>
 <div class="card" style="margin-top:16px">
   <h3>Top Nós por Pacotes</h3>
@@ -212,8 +213,8 @@ window._metricsUpdateData = function(d) {{
         ts_vals   = [v for _, v in self._ch_util_ts]
 
         def duty_status(dc):
-            if dc >= self.DUTY_CYCLE_LIMIT_EU: return "red",    "🚨 LIMITE EXCEDIDO"
-            if dc >= self.DUTY_CYCLE_WARN_EU:  return "orange", "⚠ Próximo do limite"
+            if dc >= self.DUTY_CYCLE_LIMIT_EU: return "red",    tr("🚨 LIMITE EXCEDIDO")
+            if dc >= self.DUTY_CYCLE_WARN_EU:  return "orange", tr("⚠ Próximo do limite")
             return "green", "✅ Normal"
 
         # Tabela por nó
@@ -250,7 +251,7 @@ window._metricsUpdateData = function(d) {{
             ch_color = "green" if ch_net_avg < self.CH_UTIL_OK else ("orange" if ch_net_avg < self.CH_UTIL_WARN else "red")
             ch_bar_c = {"green": "#39d353", "orange": "#f0883e", "red": "#f85149"}[ch_color]
             ch_pct   = min(int(ch_net_avg), 100)
-            ch_label = "✅ Óptimo (<25%)" if ch_net_avg < self.CH_UTIL_OK else ("⚠ Aceitável (<50%)" if ch_net_avg < self.CH_UTIL_WARN else "🚨 Crítico (>50%)")
+            ch_label = tr("✅ Óptimo (<25%)") if ch_net_avg < self.CH_UTIL_OK else ("⚠ Aceitável (<50%)" if ch_net_avg < self.CH_UTIL_WARN else "🚨 Crítico (>50%)")
             ch_kpi = (
                 f'<div class="card"><h3>Channel Utilization da Rede</h3>'
                 f'<div id="ch-net-val" class="kpi {ch_color}">{ch_net_avg}%</div>'
@@ -966,11 +967,11 @@ window._metricsUpdateData = function(d) {{
         active_senders = len(set(v['from'] for v in self._pkt_ids.values()))
 
         if dup_rate is None:
-            dup_color, dup_label = "", "Sem dados"
+            dup_color, dup_label = "", tr("Sem dados")
         elif dup_rate < 10:
             dup_color, dup_label = "orange", "⚠ Flood reduzido"
         elif dup_rate <= 60:
-            dup_color, dup_label = "green",  "✅ Flood saudável"
+            dup_color, dup_label = "green",  tr("✅ Flood saudável")
         else:
             dup_color, dup_label = "red",    "🚨 Possível congestionamento"
 
@@ -1298,12 +1299,12 @@ window._metricsUpdateData = function(d) {{
   </span>
 </div>
 <div class="grid-3" style="margin-bottom:16px">
-  {kpi(f"{d['max_range']:.2f}" if d['max_range'] else None, " km", "Maior Alcance", "blue")}
+  {kpi(f"{d['max_range']:.2f}" if d['max_range'] else None, " km", tr("Maior Alcance"), "blue")}
   <div class="card"><h3>Par de maior alcance</h3>
     <div style="font-size:14px;font-weight:bold;color:#58a6ff">
       {d['max_pair'][0]} ↔ {d['max_pair'][1]}
     </div></div>
-  {kpi(d['n_with_gps'], " nós", "Nós com GPS", "")}
+  {kpi(d['n_with_gps'], " nós", tr("Nós com GPS"), "")}
 </div>
 <div class="card">
   <h3>Links por Alcance</h3>
@@ -1327,7 +1328,7 @@ window._metricsUpdateData = function(d) {{
         for nid, nid_n, avg, mn, mx, count in d["rows"]:
             # Cores: verde <60s (activo), laranja 60-300s, vermelho >300s
             color = "green" if avg < 60 else ("orange" if avg < 300 else "red")
-            freq_label = "Alta frequência" if avg < 30 else ("Normal" if avg < 180 else "Baixa frequência")
+            freq_label = tr("Alta frequência") if avg < 30 else ("Normal" if avg < 180 else tr("Baixa frequência"))
             rows_html += (
                 f"<tr><td>{nid}</td><td>{nid_n}</td>"
                 f"<td><span class='tag tag-{color}'>{avg}s</span></td>"
@@ -1359,3 +1360,4 @@ window._metricsUpdateData = function(d) {{
 </div>
 <script>window._metricsUpdateData=function(d){{}};</script>"""
         return self._base_html("⏰ Intervalos", body)
+

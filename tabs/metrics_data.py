@@ -9,6 +9,7 @@ import math
 import time
 from collections import deque
 from datetime import datetime
+from i18n import tr
 
 
 class MetricsDataMixin:
@@ -319,7 +320,7 @@ class MetricsDataMixin:
     def _rf_assessment(self, snr_avg, snr_med, snr_p10, hops_values) -> str:
         """Avaliação da qualidade RF da rede baseada em distribuição de pacotes por faixa de SNR."""
         if snr_avg is None or not self._snr_values:
-            return "⏳ Aguardando dados suficientes para avaliação..."
+            return tr("⏳ Aguardando dados suficientes para avaliação...")
 
         n = len(self._snr_values)
         # Distribuição por faixa — igual às apps iOS/Android
@@ -369,9 +370,9 @@ class MetricsDataMixin:
                 f"<b>Topologia:</b> {pct_direct}% directos · {pct_1hop}% a 1 hop · média {avg_hops:.1f} hops · máximo {max_hops} hops."
             )
             if avg_hops > 2.5:
-                lines.append("⚠️ Média de hops elevada — a rede depende muito de repetidores. Pode aumentar latência e congestionamento.")
+                lines.append(tr("⚠️ Média de hops elevada"))
             if max_hops >= 6:
-                lines.append(f"⚠️ Máximo de {max_hops} hops detectado — próximo do limite do firmware (7). Considere rever o hop limit configurado.")
+                lines.append(tr("⚠️ Máximo de hops", max_hops=max_hops))
 
         # ── Conclusão ────────────────────────────────────────────────────
         if pct_ok >= 70 and (not hops_values or sum(hops_values)/len(hops_values) < 2):
@@ -406,8 +407,8 @@ class MetricsDataMixin:
 
     def _data_traffic(self) -> dict:
         now = time.time()
-        label_map={"TEXT_MESSAGE_APP":"💬 Mensagem","NODEINFO_APP":"🆔 NodeInfo",
-                   "POSITION_APP":"📍 Posição","TELEMETRY_APP":"📊 Telemetria",
+        label_map={"TEXT_MESSAGE_APP":tr("💬 Mensagem"),"NODEINFO_APP":"🆔 NodeInfo",
+                   "POSITION_APP":tr("📍 Posição"),"TELEMETRY_APP":"📊 Telemetria",
                    "TRACEROUTE_APP":"🔍 Traceroute","ROUTING_APP":"🔀 Routing",
                    "NEIGHBORINFO_APP":"🔗 NeighborInfo","ADMIN_APP":"⚙ Admin",
                    "RANGE_TEST_APP":"📏 Range Test","STORE_AND_FORWARD_APP":"📦 S&F"}

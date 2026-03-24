@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QByteArray, QSettings
+from i18n import tr, get_language
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QTableView, QHeaderView, QSplitter, QFrame,
@@ -120,14 +121,19 @@ class MainWindow(QMainWindow):
         self._stats_label.setStyleSheet(
             f"color:{TEXT_MUTED};font-size:11px;padding:0 8px;"
         )
-        self._stats_label.setToolTip("SNR do último pacote recebido · Pacotes/min da rede")
+        self._stats_label.setToolTip(tr("SNR tooltip"))
         self.statusBar().addPermanentWidget(self._stats_label)
 
         # Contador de pacotes para calcular pkt/min
         self._pkt_timestamps: list = []
 
-        # Som — persiste entre sessões via QSettings
+        # Idioma — carrega preferência guardada (default: English)
         _qs = QSettings("CT7BRA", "MeshtasticMonitor")
+        _saved_lang = _qs.value("language", "en")
+        from i18n import set_language as _set_lang
+        _set_lang(_saved_lang)
+
+        # Som — persiste entre sessões via QSettings
         self._sound_enabled = _qs.value("sound_enabled", True, type=bool)
         self._countdown_seconds  = 0
         self._countdown_base_msg = ""
@@ -171,22 +177,24 @@ class MainWindow(QMainWindow):
 
         menu_bar = self.menuBar()
 
-        conn_menu = menu_bar.addMenu("🔌  Conexão")
+        self._conn_menu   = menu_bar.addMenu(tr("🔌  Conexão"))
+        conn_menu = self._conn_menu
 
-        act_connect = QAction("🔌  Conectar…", self)
-        act_connect.setShortcut("Ctrl+K")
-        act_connect.triggered.connect(self._open_connection_dialog)
-        conn_menu.addAction(act_connect)
+        self._act_connect = QAction(tr("🔌  Conectar…"), self)
+        self._act_connect.setShortcut("Ctrl+K")
+        self._act_connect.triggered.connect(self._open_connection_dialog)
+        conn_menu.addAction(self._act_connect)
 
         conn_menu.addSeparator()
 
-        act_disconnect = QAction("⏹  Desconectar", self)
-        act_disconnect.triggered.connect(self._disconnect)
-        conn_menu.addAction(act_disconnect)
+        self._act_disconnect = QAction(tr("⏹  Desconectar"), self)
+        self._act_disconnect.triggered.connect(self._disconnect)
+        conn_menu.addAction(self._act_disconnect)
 
-        node_menu = menu_bar.addMenu("📡  Nó")
+        self._node_menu   = menu_bar.addMenu(tr("📡  Nó"))
+        node_menu = self._node_menu
 
-        self.act_send_nodeinfo = QAction("📡  Enviar Info do Nó", self)
+        self.act_send_nodeinfo = QAction(tr("📡  Enviar Info do Nó"), self)
         self.act_send_nodeinfo.setShortcut("Ctrl+I")
         self.act_send_nodeinfo.setEnabled(False)
         self.act_send_nodeinfo.triggered.connect(self._on_send_nodeinfo)
@@ -194,40 +202,42 @@ class MainWindow(QMainWindow):
 
         node_menu.addSeparator()
 
-        self.act_send_position = QAction("📍  Enviar Posição Manual", self)
+        self.act_send_position = QAction(tr("📍  Enviar Posição Manual"), self)
         self.act_send_position.setShortcut("Ctrl+P")
         self.act_send_position.setEnabled(False)
         self.act_send_position.triggered.connect(self._on_send_position)
         node_menu.addAction(self.act_send_position)
 
-        config_menu = menu_bar.addMenu("🔧  Ferramentas")
+        self._config_menu = menu_bar.addMenu(tr("🔧  Ferramentas"))
+        config_menu = self._config_menu
 
-        self.act_reset_nodedb = QAction("🗑  Reset NodeDB", self)
+        self.act_reset_nodedb = QAction(tr("🗑  Reset NodeDB"), self)
         self.act_reset_nodedb.setEnabled(False)
         self.act_reset_nodedb.triggered.connect(self._on_reset_nodedb)
         config_menu.addAction(self.act_reset_nodedb)
 
         config_menu.addSeparator()
 
-        act_console = QAction("🖥  Consola de logs…", self)
-        act_console.setShortcut("Ctrl+L")
-        act_console.triggered.connect(self._show_console_window)
-        config_menu.addAction(act_console)
+        self._act_console = QAction(tr("🖥  Consola de logs…"), self)
+        self._act_console.setShortcut("Ctrl+L")
+        self._act_console.triggered.connect(self._show_console_window)
+        config_menu.addAction(self._act_console)
 
         config_menu.addSeparator()
 
-        self.act_sound = QAction("🔔  Som em nova mensagem", self)
+        self.act_sound = QAction(tr("🔔  Som em nova mensagem"), self)
         self.act_sound.setCheckable(True)
         self.act_sound.setChecked(True)    # default: ligado
-        self.act_sound.setToolTip("Activa beep do sistema ao receber mensagem não lida")
+        self.act_sound.setToolTip(tr("Activa beep do sistema ao receber mensagem não lida"))
         self.act_sound.toggled.connect(self._on_sound_toggled)
         config_menu.addAction(self.act_sound)
 
         # ── Menu Sobre ─────────────────────────────────────────────────────
-        about_menu = menu_bar.addMenu("ℹ️  Sobre")
-        act_info   = QAction("📋  Sobre Meshtastic Monitor", self)
-        act_info.triggered.connect(self._show_about_dialog)
-        about_menu.addAction(act_info)
+        self._about_menu  = menu_bar.addMenu(tr("ℹ️  Sobre"))
+        about_menu = self._about_menu
+        self._act_info = QAction(tr("📋  Sobre Meshtastic Monitor"), self)
+        self._act_info.triggered.connect(self._show_about_dialog)
+        about_menu.addAction(self._act_info)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -272,7 +282,7 @@ class MainWindow(QMainWindow):
         top.addWidget(lbl_search)
 
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Pesquisar por ID, nome longo ou curto…")
+        self.search_edit.setPlaceholderText(tr("Pesquisar por ID, nome longo ou curto…"))
         self.search_edit.setMinimumWidth(280)
         self.search_edit.textChanged.connect(self._on_search_text_changed)
         top.addWidget(self.search_edit)
@@ -280,16 +290,16 @@ class MainWindow(QMainWindow):
         top.addStretch()
 
         # FIX-8: label do contador — actualizado por source_model.get_visible_count()
-        self.node_count_label = QLabel("Nós: 0")
+        self.node_count_label = QLabel(tr("Nós: {total}", total=0))
         self.node_count_label.setStyleSheet(
             f"color:{ACCENT_BLUE};font-weight:bold;font-size:13px;"
             f"background:{PANEL_BG};padding:4px 12px;"
             f"border:1px solid {BORDER_COLOR};border-radius:12px;"
         )
-        self.node_count_label.setToolTip("Total de nós na rede (excluindo o nó local)")
+        self.node_count_label.setToolTip(tr("Total de nós na rede (excluindo o nó local)"))
         top.addWidget(self.node_count_label)
 
-        self.conn_indicator = QLabel("⚫  Desconectado")
+        self.conn_indicator = QLabel(tr("⚫  Desconectado"))
         self.conn_indicator.setStyleSheet(
             f"color:{ACCENT_RED};font-weight:bold;font-size:12px;"
             f"background:{PANEL_BG};padding:4px 12px;"
@@ -308,7 +318,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.tab_widget, stretch=1)
 
         self.list_tab = QWidget()
-        self.tab_widget.addTab(self.list_tab, "📋  Lista de Nós")
+        self.tab_widget.addTab(self.list_tab, tr("📋  Lista de Nós"))
         self._setup_list_tab()
 
         self.messages_tab = MessagesTab()
@@ -318,18 +328,30 @@ class MainWindow(QMainWindow):
         self.messages_tab.set_node_choices_provider(
             lambda: self.source_model.get_node_choices()
         )
-        self.tab_widget.addTab(self.messages_tab, "💬  Mensagens")
+        self.tab_widget.addTab(self.messages_tab, tr("💬  Mensagens"))
 
         self.map_tab = QWidget()
-        self.tab_widget.addTab(self.map_tab, "🗺  Mapa")
+        self.tab_widget.addTab(self.map_tab, tr("🗺  Mapa"))
         self._setup_map_tab()
 
         self.metrics_tab = MetricsTab()
-        self.tab_widget.addTab(self.metrics_tab, "📈 Métricas")
+        self.tab_widget.addTab(self.metrics_tab, tr("📈 Métricas"))
 
         self.config_tab = ConfigTab()
         self.config_tab.reboot_required.connect(self._on_reboot_required)
-        self.tab_widget.addTab(self.config_tab, "⚙ Configurações")
+        self.tab_widget.addTab(self.config_tab, tr("⚙ Configurações"))
+
+    def _refresh_hint_bar(self):
+        """Rebuilds the hint bar label with the current language."""
+        if not hasattr(self, '_hint_label'):
+            return
+        txt = (
+            tr("hint_bar")
+            + tr("Duplo clique → Detalhes") + "  &nbsp;&nbsp;|&nbsp;&nbsp;"
+            + f"<span style='color:#f5c518;'>{tr('hint_fav')}</span>"
+            + f"<span style='color:#8b949e;'>{tr('hint_nofav')}</span>"
+        )
+        self._hint_label.setText(txt)
 
     def _setup_list_tab(self):
         layout = QVBoxLayout(self.list_tab)
@@ -337,16 +359,13 @@ class MainWindow(QMainWindow):
 
         bar = QHBoxLayout()
         bar.setContentsMargins(6, 0, 6, 4)
-        hint = QLabel(
-            "💡 ⭐ → Favorito  ·  📩/🔒 → DM  ·  🗺 → Mapa  ·  📡 → Traceroute  ·  "
-            "Duplo clique → Detalhes  &nbsp;&nbsp;|&nbsp;&nbsp;"
-            "<span style='color:#f5c518;'>⭐</span> Favorito (fixo no topo)  &nbsp;"
-            "<span style='color:#8b949e;'>☆</span> Não favorito"
-        )
+        self._hint_label = QLabel()
+        self._refresh_hint_bar()
+        hint = self._hint_label
         hint.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;padding:2px 0;")
         bar.addWidget(hint)
         bar.addStretch()
-        self.local_node_label = QLabel("Nó local: —")
+        self.local_node_label = QLabel(tr("Nó local: —"))
         self.local_node_label.setStyleSheet(
             f"color:{ACCENT_GREEN};font-size:11px;padding:2px 8px;"
             f"background:{PANEL_BG};border:1px solid {BORDER_COLOR};border-radius:8px;"
@@ -422,6 +441,7 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     def _open_connection_dialog(self):
         dlg = ConnectionDialog(self._hostname, self._port, self)
+        dlg.language_changed.connect(self._on_language_changed)
         if dlg.exec_() == QDialog.Accepted:
             self._hostname = dlg.hostname
             self._port     = dlg.port
@@ -436,7 +456,7 @@ class MainWindow(QMainWindow):
         self.source_model.set_local_node_id("")
         self.source_model.clear_all_nodes()
         # FIX-8: reseta contador sem interferência do filtro
-        self.node_count_label.setText("Nós: 0"); self.node_count_label.setTextFormat(2)
+        self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
         self._init_worker()
 
@@ -460,9 +480,9 @@ class MainWindow(QMainWindow):
         # Limpa UI
         self.config_tab.clear_interface()
         self.source_model.clear_all_nodes()
-        self.node_count_label.setText("Nós: 0"); self.node_count_label.setTextFormat(2)
+        self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
-        self.local_node_label.setText("Nó local: —")
+        self.local_node_label.setText(tr("Nó local: —"))
         self.source_model.set_local_node_id("")
         self.proxy_model.set_local_node_id("")
         self._on_connection_changed(False)
@@ -481,9 +501,9 @@ class MainWindow(QMainWindow):
             self.worker.stop()
         self.config_tab.clear_interface()
         self.source_model.clear_all_nodes()
-        self.node_count_label.setText("Nós: 0"); self.node_count_label.setTextFormat(2)
+        self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
-        self.local_node_label.setText("Nó local: —")
+        self.local_node_label.setText(tr("Nó local: —"))
         self.source_model.set_local_node_id("")
         self.proxy_model.set_local_node_id("")
         self._on_connection_changed(False)
@@ -567,7 +587,7 @@ class MainWindow(QMainWindow):
             self._poll_timer.start()
         else:
             self._poll_timer.stop()
-            self.conn_indicator.setText("🔴  Desconectado")
+            self.conn_indicator.setText(tr("🔴  Desconectado"))
             self.conn_indicator.setStyleSheet(
                 f"color:{ACCENT_RED};font-weight:bold;font-size:12px;"
                 f"background:{PANEL_BG};padding:4px 12px;"
@@ -686,7 +706,7 @@ class MainWindow(QMainWindow):
             self.metrics_tab.ingest_node_position(node_id_string, lat, lon)
 
     def _on_worker_error(self, message: str):
-        QMessageBox.critical(self, "Erro no Meshtastic", message)
+        QMessageBox.critical(self, tr("Erro no Meshtastic"), message)
 
     def _sync_firmware_favorites(self):
         """Lê favoritos do firmware após ligação estabelecida."""
@@ -760,10 +780,10 @@ class MainWindow(QMainWindow):
 
         if gps_enabled and has_position:
             gps_icon = "📍"
-            gps_tip  = "GPS activo com posição conhecida"
+            gps_tip  = tr("GPS activo com posição conhecida")
         elif gps_enabled and not has_position:
             gps_icon = "🔍"
-            gps_tip  = "GPS activo mas posição ainda não disponível"
+            gps_tip  = tr("GPS activo mas posição ainda não disponível")
         else:
             gps_icon = "📵"
             gps_tip  = "GPS desactivado"
@@ -773,10 +793,10 @@ class MainWindow(QMainWindow):
         if short_name: parts.append(f"[{short_name}]")
         if node_id:    parts.append(node_id)
         parts.append(gps_icon)
-        label_text = "  🏠  " + "  ·  ".join(parts) if parts else "Nó local: —"
+        label_text = "  🏠  " + "  ·  ".join(parts) if parts else tr("Nó local: —")
         self.local_node_label.setText(label_text)
         self.local_node_label.setToolTip(
-            f"Nó local  ·  {long_name} [{short_name}]  ·  {node_id}\nGPS: {gps_tip}"
+            tr("nó local tooltip", long_name=long_name, short_name=short_name, node_id=node_id, gps_tip=gps_tip)
         )
 
     def _on_search_text_changed(self, text: str):
@@ -821,8 +841,8 @@ class MainWindow(QMainWindow):
                 self._highlight_node_on_map(node_id, node)
             else:
                 QMessageBox.information(
-                    self, "Sem Posição",
-                    f"O nó {node.get('long_name') or node_id} não tem dados de geolocalização."
+                    self, tr("Sem Posição"),
+                    tr("O nó {name} não tem dados de geolocalização.", name=node.get('long_name') or node_id)
                 )
 
         elif col == NodeTableModel.COL_TRACEROUTE:
@@ -843,14 +863,14 @@ class MainWindow(QMainWindow):
           3. Traceroute duplicado já presente na lista (pede confirmação)
         """
         if not self.worker or not self.worker._connected:
-            QMessageBox.warning(self, "Desconectado",
-                                "Conecte-se primeiro para enviar traceroute.")
+            QMessageBox.warning(self, tr("Desconectado"),
+                                tr("Conecte-se primeiro para enviar traceroute."))
             return
 
         if self._countdown_seconds > 0:
             QMessageBox.information(
-                self, "Traceroute em curso",
-                f"Aguarde {self._countdown_seconds}s até o traceroute anterior terminar."
+                self, tr("Traceroute em curso"),
+                tr("Aguarde {n}s até o traceroute anterior terminar.", n=self._countdown_seconds)
             )
             return
 
@@ -863,7 +883,7 @@ class MainWindow(QMainWindow):
         )
         if existing:
             reply = QMessageBox.question(
-                self, "Traceroute já existente",
+                self, tr("Traceroute já existente"),
                 f"Já existe um traceroute para {name} na lista.\n\n"
                 f"Deseja enviar um novo traceroute mesmo assim?",
                 QMessageBox.Yes | QMessageBox.Cancel,
@@ -875,7 +895,7 @@ class MainWindow(QMainWindow):
         self._pending_traceroute_dest = (node_id, name)
         self.worker.send_traceroute(node_id)
         self._show_countdown_message(
-            f"📡 Traceroute enviado para {name} — aguardando resposta…", 30
+            tr("📡 Traceroute enviado para {name} — aguardando resposta…", name=name), 30
         )
 
     def _on_traceroute_result(self, forward_edges: list, back_edges: list,
@@ -917,11 +937,11 @@ class MainWindow(QMainWindow):
             dest_name   = resolve_name(dest_id)
             reply = QMessageBox.question(
                 self,
-                "Traceroute de terceiro recebido",
-                f"Foi recebido um traceroute entre:\n\n"
-                f"  Origem:  {origin_name}\n"
-                f"  Destino: {dest_name}\n\n"
-                "Deseja visualizar o resultado?",
+                tr("Traceroute de terceiro recebido"),
+                (tr("Foi recebido um traceroute entre:\n\n")
+                 + f"  {tr('Origem:')}  {origin_name}\n"
+                 + f"  {tr('Destino:')} {dest_name}\n\n"
+                 + tr("Deseja visualizar o resultado?")),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
@@ -936,7 +956,7 @@ class MainWindow(QMainWindow):
         )
 
         if not forward_edges and not back_edges:
-            QMessageBox.information(self, "Traceroute", "Resposta recebida mas sem rota.")
+            QMessageBox.information(self, "Traceroute", tr("Resposta recebida mas sem rota."))
             return
 
         def build_section(edges, label):
@@ -944,23 +964,30 @@ class MainWindow(QMainWindow):
                 return []
             lines = [f"  {label}:"]
             for i, (a_id, b_id, snr) in enumerate(edges):
-                snr_str = f"{snr:+.1f} dB" if snr != 0.0 else "SNR desconhecido"
+                snr_str = f"{snr:+.1f} dB" if snr != 0.0 else tr("SNR desconhecido")
                 ca = "📍" if has_coords(a_id) else "❓"
                 cb = "📍" if has_coords(b_id) else "❓"
+                hop_lbl = tr("Hop")
                 lines.append(
-                    f"    Hop {i+1}/{len(edges)}: {ca}{resolve_name(a_id)}"
+                    f"    {hop_lbl} {i+1}/{len(edges)}: {ca}{resolve_name(a_id)}"
                     f"  →  {cb}{resolve_name(b_id)}  [{snr_str}]"
                 )
             return lines
 
+        # Use translated labels for both sent and received traceroutes.
+        # For received (is_mine=False): origin/dest are both remote nodes — show as-is.
+        name_a, name_b = origin_name, dest_name
+
         body = (
-            f"Origem:     {origin_name}\n"
-            f"Destino:    {dest_name}\n"
-            f"Hops ida:   {len(forward_edges)}\n"
-            f"Hops volta: {len(back_edges)}\n\n"
+            tr("Origem:") + f"     {name_a}\n"
+            + tr("Destino:") + f"    {name_b}\n"
+            + tr("Hops ida:   {n}", n=len(forward_edges)) + "\n"
+            + tr("Hops volta: {n}", n=len(back_edges)) + "\n\n"
             + "\n".join(
-                build_section(forward_edges, "Rota de ida  (origem → destino)") +
-                build_section(back_edges,    "Rota de volta (destino → origem)")
+                build_section(forward_edges,
+                    tr("Rota de ida") + "  (" + tr("origem") + " → " + tr("destino") + ")") +
+                build_section(back_edges,
+                    tr("Rota de volta") + " (" + tr("destino") + " → " + tr("origem") + ")")
             )
         )
 
@@ -971,17 +998,19 @@ class MainWindow(QMainWindow):
         can_show_map = has_coords(dest_id) and (any_drawable(forward_edges) or any_drawable(back_edges))
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("Resultado do Traceroute")
+        dlg.setWindowTitle(tr("Resultado do Traceroute"))
         dlg_layout = QVBoxLayout(dlg)
         dlg_layout.setSpacing(10)
         dlg_layout.setContentsMargins(16, 14, 16, 14)
 
-        lbl_title = QLabel(f"🔍  {origin_name}  →  {dest_name}")
+        lbl_title = QLabel(
+            f"🔍  {name_a}  →  {name_b}"
+        )
         lbl_title.setStyleSheet(f"color:{ACCENT_GREEN};font-size:13px;font-weight:bold;")
         dlg_layout.addWidget(lbl_title)
 
         legend = QLabel(
-            "📍 com localização  ❓ sem localização"
+            tr("📍 com localização  ❓ sem localização")
         )
         legend.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         dlg_layout.addWidget(legend)
@@ -1016,7 +1045,7 @@ class MainWindow(QMainWindow):
 
         btn_row = QHBoxLayout()
         if can_show_map:
-            btn_map = QPushButton("🗺  Mostrar no Mapa")
+            btn_map = QPushButton(tr("🗺  Mostrar no Mapa"))
             _fwd   = list(forward_edges)
             _bck   = list(back_edges)
             _nodes = list(all_nodes)
@@ -1032,12 +1061,12 @@ class MainWindow(QMainWindow):
             btn_map.clicked.connect(_show_on_map)
             btn_row.addWidget(btn_map)
         else:
-            lbl_no_map = QLabel("⚠ Nenhum nó da rota tem localização — mapa indisponível.")
+            lbl_no_map = QLabel(tr("⚠ Nenhum nó da rota tem localização — mapa indisponível."))
             lbl_no_map.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
             btn_row.addWidget(lbl_no_map)
 
         btn_row.addStretch()
-        btn_close = QPushButton("Fechar")
+        btn_close = QPushButton(tr("Fechar"))
         btn_close.clicked.connect(dlg.accept)
         btn_row.addWidget(btn_close)
         dlg_layout.addLayout(btn_row)
@@ -1058,25 +1087,100 @@ class MainWindow(QMainWindow):
 
     # ── Notificação de mensagem não lida na aba ────────────────────────────
     MSG_TAB_INDEX   = 1      # índice da aba Mensagens na ordem actual
-    MSG_TAB_NORMAL  = "💬  Mensagens"
-    MSG_TAB_UNREAD  = "💬  Mensagens  🔴"
+
+    def _on_language_changed(self, lang: str):
+        """Called when user picks a new language in the connection dialog.
+        Rebuilds every static label created at construction time.
+        """
+        # ── Hint bar ──────────────────────────────────────────────────────
+        self._refresh_hint_bar()
+
+        # ── Tabs ──────────────────────────────────────────────────────────
+        self.tab_widget.setTabText(0, tr("📋  Lista de Nós"))
+        self.tab_widget.setTabText(1, tr("💬  Mensagens"))
+        self.tab_widget.setTabText(2, tr("🗺  Mapa"))
+        self.tab_widget.setTabText(3, tr("📈 Métricas"))
+        self.tab_widget.setTabText(4, tr("⚙ Configurações"))
+
+        # ── Menus (titles) ────────────────────────────────────────────────
+        if hasattr(self, "_conn_menu"):   self._conn_menu.setTitle(tr("🔌  Conexão"))
+        if hasattr(self, "_node_menu"):   self._node_menu.setTitle(tr("📡  Nó"))
+        if hasattr(self, "_config_menu"): self._config_menu.setTitle(tr("🔧  Ferramentas"))
+        if hasattr(self, "_about_menu"):  self._about_menu.setTitle(tr("ℹ️  Sobre"))
+
+        # ── Menu actions ──────────────────────────────────────────────────
+        if hasattr(self, "_act_connect"):    self._act_connect.setText(tr("🔌  Conectar…"))
+        if hasattr(self, "_act_disconnect"): self._act_disconnect.setText(tr("⏹  Desconectar"))
+        if hasattr(self, "act_send_nodeinfo"): self.act_send_nodeinfo.setText(tr("📡  Enviar Info do Nó"))
+        if hasattr(self, "act_send_position"): self.act_send_position.setText(tr("📍  Enviar Posição Manual"))
+        if hasattr(self, "act_reset_nodedb"):  self.act_reset_nodedb.setText(tr("🗑  Reset NodeDB"))
+        if hasattr(self, "_act_console"):    self._act_console.setText(tr("🖥  Consola de logs…"))
+        if hasattr(self, "act_sound"):       self.act_sound.setText(tr("🔔  Som em nova mensagem"))
+        if hasattr(self, "_act_info"):       self._act_info.setText(tr("📋  Sobre Meshtastic Monitor"))
+
+        # ── Connection indicator ──────────────────────────────────────────
+        connected = (getattr(self, "worker", None) is not None and
+                     getattr(self.worker, "iface", None) is not None)
+        if not connected:
+            self.conn_indicator.setText(tr("⚫  Desconectado"))
+
+        # ── Node count + local node label ─────────────────────────────────
+        self._update_node_count()
+        if hasattr(self, "local_node_label") and not connected:
+            self.local_node_label.setText(tr("Nó local: —"))
+        elif connected:
+            self._update_local_node_label(
+                getattr(self, "_local_gps_enabled", False) and
+                getattr(self, "_local_has_pos", False)
+            )
+
+        # ── Table headers ─────────────────────────────────────────────────
+        self.source_model.headerDataChanged.emit(
+            Qt.Horizontal, 0, len(self.source_model.HEADERS) - 1
+        )
+
+        # ── Search placeholder ────────────────────────────────────────────
+        if hasattr(self, "search_edit"):
+            self.search_edit.setPlaceholderText(tr("Pesquisar por ID, nome longo ou curto…"))
+
+        # ── Node count tooltip ────────────────────────────────────────────
+        if hasattr(self, "node_count_label"):
+            self.node_count_label.setToolTip(tr("Total de nós na rede (excluindo o nó local)"))
+
+        # ── SNR tooltip ───────────────────────────────────────────────────
+        if hasattr(self, "_stats_label"):
+            self._stats_label.setToolTip(tr("SNR tooltip"))
+
+        # ── Metrics section list ──────────────────────────────────────────
+        if hasattr(self, "metrics_tab"):
+            self.metrics_tab._rebuild_section_list()
+
+        # Force table view to repaint (picks up translated headers + tooltips)
+        if hasattr(self, "table_view"):
+            self.table_view.viewport().update()
+        # Retranslate messages tab headers
+        if hasattr(self, "messages_tab"):
+            self.messages_tab.retranslate()
+        # Retranslate map widget (theme buttons + legend)
+        if hasattr(self, "map_widget"):
+            self.map_widget.retranslate()
 
     def _on_sound_toggled(self, enabled: bool):
         self._sound_enabled = enabled
         QSettings("CT7BRA", "MeshtasticMonitor").setValue("sound_enabled", enabled)
-        state = "activado" if enabled else "silenciado"
-        self.statusBar().showMessage(f"🔔 Som de notificação {state}", 3000)
+        msg = tr("🔔 Som de notificação activado") if enabled else tr("🔔 Som de notificação silenciado")
+        self.statusBar().showMessage(msg, 3000)
 
     def _on_messages_unread(self):
         """Mostra indicador vermelho na aba Mensagens e beep se som activo."""
         if self.tab_widget.currentIndex() != self.MSG_TAB_INDEX:
-            self.tab_widget.setTabText(self.MSG_TAB_INDEX, self.MSG_TAB_UNREAD)
+            self.tab_widget.setTabText(self.MSG_TAB_INDEX, tr("💬  Mensagens") + "  🔴")
             if self._sound_enabled:
                 _play_notification_sound()
 
     def _clear_messages_badge(self):
         """Remove o indicador da aba Mensagens."""
-        self.tab_widget.setTabText(self.MSG_TAB_INDEX, self.MSG_TAB_NORMAL)
+        self.tab_widget.setTabText(self.MSG_TAB_INDEX, tr("💬  Mensagens"))
 
     def _on_tab_changed(self, index):
         if index == 2:   # Mapa (índice 2 na nova ordem)
@@ -1090,14 +1194,14 @@ class MainWindow(QMainWindow):
         online = self.source_model.get_online_count()
         self.node_count_label.setTextFormat(2)   # Qt.RichText
         self.node_count_label.setText(
-            f"Nós: {total}&nbsp;&nbsp;"
+            tr("Nós: {total}", total=total) + "&nbsp;&nbsp;"
             f"<span style='color:#39d353;font-weight:bold'>⬤ {online} online</span>"
         )
 
     def _show_about_dialog(self):
         """Diálogo de apresentação da aplicação."""
         dlg = QDialog(self)
-        dlg.setWindowTitle("Sobre o Meshtastic Monitor")
+        dlg.setWindowTitle(tr("Sobre o Meshtastic Monitor"))
         dlg.setMinimumWidth(460)
         dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowContextHelpButtonHint)
 
@@ -1113,7 +1217,7 @@ class MainWindow(QMainWindow):
         lbl_title.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_title)
 
-        lbl_version = QLabel(f"Versão {APP_VERSION}  ·  2025")
+        lbl_version = QLabel(tr("Versão {v}  ·  2025", v=APP_VERSION))
         lbl_version.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         lbl_version.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_version)
@@ -1125,9 +1229,8 @@ class MainWindow(QMainWindow):
 
         # Descrição
         lbl_desc = QLabel(
-            "Interface gráfica avançada para monitorização e comunicação\n"
-            "em redes mesh Meshtastic via TCP ao daemon meshtasticd.\n\n"
-            "Desenvolvido e optimizado para o ClockworkPi uConsole CM4."
+            tr("about_desc")
+            + tr("uconsole_line")
         )
         lbl_desc.setStyleSheet(f"color:{TEXT_PRIMARY};font-size:12px;line-height:1.6;")
         lbl_desc.setAlignment(Qt.AlignCenter)
@@ -1141,11 +1244,11 @@ class MainWindow(QMainWindow):
 
         # Funcionalidades resumidas
         features = QLabel(
-            "✅  Lista de nós em tempo real com pesquisa e favoritos\n"
-            "🗺  Mapa Leaflet com traceroutes e métricas de rede\n"
-            "💬  Mensagens por canal e DM com suporte PKI/PSK\n"
-            "⚙  Configuração completa do nó com transacção atómica\n"
-            "📈  Métricas: Canal, RF, Tráfego, Duty Cycle, Fiabilidade"
+            tr("about_feat1")
+            + tr("about_feat2")
+            + tr("about_feat3")
+            + tr("about_feat4")
+            + tr("about_feat5")
         )
         features.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;line-height:1.8;")
         features.setAlignment(Qt.AlignLeft)
@@ -1157,7 +1260,7 @@ class MainWindow(QMainWindow):
         root.addWidget(sep3)
 
         # Autor
-        lbl_author = QLabel("Criado por  <b>CT7BRA — Tiago Veiga</b>")
+        lbl_author = QLabel(tr("Criado por") + "  <b>CT7BRA — Tiago Veiga</b>")
         lbl_author.setStyleSheet(
             f"color:{ACCENT_GREEN};font-size:13px;"
         )
@@ -1171,7 +1274,7 @@ class MainWindow(QMainWindow):
         root.addWidget(lbl_tech)
 
         # Botão fechar
-        btn = QPushButton("Fechar")
+        btn = QPushButton(tr("Fechar"))
         btn.setObjectName("btn_connect")
         btn.setFixedWidth(100)
         btn.clicked.connect(dlg.accept)
@@ -1208,8 +1311,8 @@ class MainWindow(QMainWindow):
 
     def _on_reset_nodedb(self):
         reply = QMessageBox.question(
-            self, "Reset NodeDB",
-            "Apagar o NodeDB do nó local?\n\nTodos os nós conhecidos serão removidos do firmware.",
+            self, tr("Reset NodeDB"),
+            tr("Apagar o NodeDB do nó local?\n\nTodos os nós conhecidos serão removidos do firmware."),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply == QMessageBox.Yes and self.worker:
@@ -1218,7 +1321,7 @@ class MainWindow(QMainWindow):
 
     def _on_nodedb_reset(self):
         self.source_model.clear_all_nodes()
-        self.node_count_label.setText("Nós: 0"); self.node_count_label.setTextFormat(2)
+        self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
         self.act_reset_nodedb.setEnabled(True)
 
@@ -1246,7 +1349,7 @@ class MainWindow(QMainWindow):
         if self.worker:
             self.act_send_nodeinfo.setEnabled(False)
             self.worker.send_node_info()
-            self.statusBar().showMessage("📡 Info do Nó enviada para a rede.", 5000)
+            self.statusBar().showMessage(tr("📡 Info do Nó enviada para a rede."), 5000)
             QTimer.singleShot(3000, lambda: self.act_send_nodeinfo.setEnabled(True))
 
     def _on_send_position(self):
@@ -1269,7 +1372,7 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(msg, 6000)
             else:
                 self.statusBar().clearMessage()
-                QMessageBox.warning(self, "Envio de Posição", msg)
+                QMessageBox.warning(self, tr("Envio de Posição"), msg)
 
         self.act_send_position.setEnabled(False)
         self.worker.position_sent.connect(_on_result)
@@ -1336,14 +1439,14 @@ class MainWindow(QMainWindow):
         if self._reconnect_seconds <= 0:
             self._reconnect_bar_timer.stop()
             self.statusBar().showMessage(
-                f"🔄 A tentar reconectar… (tentativa {self._reconnect_attempt})"
+                tr("🔄 A tentar reconectar… (tentativa {n})", n=self._reconnect_attempt)
             )
         else:
             self._update_reconnect_bar()
 
     def _update_reconnect_bar(self):
         self.statusBar().showMessage(
-            f"🔌 Ligação perdida — a reconectar em {self._reconnect_seconds}s (tentativa {self._reconnect_attempt})…"
+            tr("🔌 Ligação perdida — a reconectar em {n}s (tentativa {k})…", n=self._reconnect_seconds, k=self._reconnect_attempt)
         )
 
     def closeEvent(self, event):

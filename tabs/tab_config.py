@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QColor
 
 import os
+from i18n import tr
 import base64
 from meshtastic.protobuf.channel_pb2 import Channel
 from meshtastic.protobuf import admin_pb2
@@ -46,20 +47,20 @@ class ChannelsTab(QWidget):
         root.setSpacing(8)
 
         top = QHBoxLayout()
-        self.status_lbl = QLabel("⚠  Sem conexão")
+        self.status_lbl = QLabel(tr("⚠  Sem conexão"))
         self.status_lbl.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         top.addWidget(self.status_lbl)
         top.addStretch()
 
-        btn_reload = QPushButton("🔄  Recarregar")
+        btn_reload = QPushButton(tr("🔄  Recarregar"))
         btn_reload.clicked.connect(self._load_channels)
         top.addWidget(btn_reload)
 
-        btn_add = QPushButton("➕  Adicionar Canal")
+        btn_add = QPushButton(tr("➕  Adicionar Canal"))
         btn_add.clicked.connect(self._add_channel)
         top.addWidget(btn_add)
 
-        btn_save = QPushButton("💾  Guardar Alterações")
+        btn_save = QPushButton(tr("💾  Guardar Alterações"))
         btn_save.setObjectName("btn_connect")
         btn_save.clicked.connect(self._save_all)
         top.addWidget(btn_save)
@@ -93,17 +94,17 @@ class ChannelsTab(QWidget):
         self._iface = None
         self._channels = []
         self._clear_rows()
-        self.status_lbl.setText("⚠  Sem conexão")
+        self.status_lbl.setText(tr("⚠  Sem conexão"))
 
     def _load_channels(self):
         if not self._iface:
-            self.status_lbl.setText("⚠  Sem conexão")
+            self.status_lbl.setText(tr("⚠  Sem conexão"))
             return
         try:
             node = self._iface.localNode
             self._channels = list(node.channels) if node and node.channels else []
             self._rebuild_ui()
-            self.status_lbl.setText(f"✅  {len(self._channels)} canal(ais) carregados")
+            self.status_lbl.setText(tr("✅  {n} canal(ais) carregados", n=len(self._channels)))
         except Exception as e:
             logger.error(f"Erro ao carregar canais: {e}", exc_info=True)
             self.status_lbl.setText(f"❌  Erro: {e}")
@@ -129,33 +130,33 @@ class ChannelsTab(QWidget):
 
     def _add_channel(self):
         if not self._iface:
-            QMessageBox.warning(self, "Sem Conexão", "Conecte-se primeiro.")
+            QMessageBox.warning(self, tr("Sem Conexão"), tr("Conecte-se primeiro."))
             return
         used = {ch.index for ch in self._channels if hasattr(ch, 'index')}
         for idx in range(8):
             if idx not in used:
                 break
         else:
-            QMessageBox.warning(self, "Limite atingido",
-                                "O máximo de 8 canais (0-7) já foi atingido.")
+            QMessageBox.warning(self, tr("Limite atingido"),
+                                tr("O máximo de 8 canais (0-7) já foi atingido."))
             return
 
         try:
             new_ch = Channel()
             new_ch.index = idx
             new_ch.role  = 2
-            new_ch.settings.name = f"Canal {idx}"
+            new_ch.settings.name = tr("Canal {n}", n=idx)
             self._channels.append(new_ch)
             self._rebuild_ui()
-            self.status_lbl.setText(f"➕  Canal {idx} adicionado — edite e guarde")
+            self.status_lbl.setText(tr("➕  Canal {n} adicionado — edite e guarde", n=idx))
         except Exception as e:
             logger.error(f"Erro ao criar canal: {e}", exc_info=True)
-            QMessageBox.critical(self, "Erro", f"Não foi possível criar canal:\n{e}")
+            QMessageBox.critical(self, tr("Erro"), tr("Não foi possível criar canal:\n{e}", e=e))
 
     def _remove_channel(self, index: int):
         reply = QMessageBox.question(
-            self, "Remover Canal",
-            f"Remover o canal com índice {index}?",
+            self, tr("Remover Canal"),
+            tr("Remover o canal com índice {n}?", n=index),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply != QMessageBox.Yes:
@@ -163,23 +164,24 @@ class ChannelsTab(QWidget):
         self._channels = [ch for ch in self._channels
                           if getattr(ch, 'index', None) != index]
         self._rebuild_ui()
-        self.status_lbl.setText(f"🗑  Canal {index} marcado para remoção — guarde para aplicar")
+        self.status_lbl.setText(tr("🗑  Canal {n} marcado para remoção — guarde para aplicar", n=index))
 
     def _save_all(self):
         if not self._iface:
-            QMessageBox.warning(self, "Sem Conexão", "Não está conectado.")
+            QMessageBox.warning(self, tr("Sem Conexão"), "Não está conectado.")
             return
         reply = QMessageBox.question(
-            self, "Guardar Canais",
-            "Guardar todas as alterações de canais no nó?\n\n"
-            "⚠  O nó irá reiniciar para aplicar as alterações.\n"
-            "    A ligação TCP será temporariamente perdida e restabelecida.",
+            self, tr("Guardar Canais"),
+            (tr("Guardar todas as alterações de canais no nó?\n\n")
+             + tr("⚠  O nó irá reiniciar para aplicar as alterações.\n")
+             + tr("A ligação TCP será temporariamente perdida e restabelecida.")),
+            
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply != QMessageBox.Yes:
             return
 
-        self.status_lbl.setText("A guardar…")
+        self.status_lbl.setText(tr("A guardar…"))
         errors = []
         saved  = 0
         try:
@@ -207,13 +209,13 @@ class ChannelsTab(QWidget):
                     except Exception:
                         pass
 
-            msg = f"✅  {saved} canal(ais) guardados"
+            msg = tr("✅  {n} canal(ais) guardados", n=saved)
             if errors:
                 msg += f" | ⚠ {len(errors)} erro(s)"
             self.status_lbl.setText(msg)
             QMessageBox.information(
-                self, "Canais Guardados",
-                f"{saved} canal(ais) guardados no nó." +
+                self, tr("Canais Guardados"),
+                tr("{n} canal(ais) guardados no nó.", n=saved) +
                 (f"\n\nErros:\n" + "\n".join(errors[:5]) if errors else "")
             )
             if saved > 0:
@@ -224,7 +226,7 @@ class ChannelsTab(QWidget):
         except Exception as e:
             logger.error(f"Erro ao guardar canais: {e}", exc_info=True)
             self.status_lbl.setText(f"❌ Erro: {e}")
-            QMessageBox.critical(self, "Erro", f"Erro ao guardar canais:\n{e}")
+            QMessageBox.critical(self, tr("Erro"), tr("Erro ao guardar canais:\n{e}", e=e))
 
 
 class _ChannelRow(QWidget):
@@ -251,7 +253,7 @@ class _ChannelRow(QWidget):
         role_str   = role_names.get(role_num, str(role_num))
         color      = ACCENT_GREEN if role_num == 1 else (ACCENT_BLUE if role_num == 2 else TEXT_MUTED)
 
-        lbl_idx = QLabel(f"📻  Canal {idx}")
+        lbl_idx = QLabel(tr("📻  Canal {n}", n=idx))
         lbl_idx.setStyleSheet(f"color:{color};font-weight:bold;font-size:13px;")
         hdr.addWidget(lbl_idx)
         hdr.addStretch()
@@ -279,7 +281,7 @@ class _ChannelRow(QWidget):
         settings = getattr(ch, 'settings', None)
         name_val  = getattr(settings, 'name', '') if settings else ''
         self.w_name = QLineEdit(name_val or "")
-        self.w_name.setPlaceholderText("Nome do canal")
+        self.w_name.setPlaceholderText(tr("Nome do canal"))
         self.w_name.setFixedWidth(240)
         form.addRow(mk_lbl("Nome"), self.w_name)
 
@@ -304,14 +306,14 @@ class _ChannelRow(QWidget):
             f"background:{DARK_BG};color:{TEXT_PRIMARY};"
             f"border:1px solid {BORDER_COLOR};border-radius:4px;padding:2px 4px;font-size:11px;"
         )
-        btn_gen_psk = QPushButton("🔑 Gerar")
+        btn_gen_psk = QPushButton(tr("🔑 Gerar"))
         btn_gen_psk.setFixedWidth(70)
         btn_gen_psk.setStyleSheet(
             f"QPushButton{{background:{PANEL_BG};color:{ACCENT_BLUE};"
             f"border:1px solid {ACCENT_BLUE};border-radius:4px;padding:2px 6px;font-size:11px;}}"
             f"QPushButton:hover{{background:{ACCENT_BLUE};color:#000;}}"
         )
-        btn_gen_psk.setToolTip("Gera uma chave PSK aleatória do tipo seleccionado")
+        btn_gen_psk.setToolTip(tr("Gera uma chave PSK aleatória do tipo seleccionado"))
 
         def _gen_psk():
             t = self.w_psk_type.currentIndex()
@@ -332,16 +334,16 @@ class _ChannelRow(QWidget):
         psk_row.addWidget(btn_gen_psk)
         form.addRow(mk_lbl("PSK"), psk_row)
 
-        self.w_uplink = QCheckBox("Uplink MQTT habilitado")
+        self.w_uplink = QCheckBox(tr("Uplink MQTT habilitado"))
         self.w_uplink.setChecked(bool(getattr(settings, 'uplink_enabled', False) if settings else False))
         form.addRow(mk_lbl("Uplink MQTT"), self.w_uplink)
 
-        self.w_downlink = QCheckBox("Downlink MQTT habilitado")
+        self.w_downlink = QCheckBox(tr("Downlink MQTT habilitado"))
         self.w_downlink.setChecked(bool(getattr(settings, 'downlink_enabled', False) if settings else False))
         form.addRow(mk_lbl("Downlink MQTT"), self.w_downlink)
 
         mod_settings = getattr(settings, 'module_settings', None) if settings else None
-        self.w_muted = QCheckBox("Silenciar notificações (is_muted)")
+        self.w_muted = QCheckBox(tr("Silenciar notificações (is_muted)"))
         self.w_muted.setChecked(bool(getattr(mod_settings, 'is_muted', False) if mod_settings else False))
         form.addRow(mk_lbl("Silenciar"), self.w_muted)
 
@@ -350,7 +352,7 @@ class _ChannelRow(QWidget):
         self.w_pos_prec = QSpinBox()
         self.w_pos_prec.setRange(0, 32)
         self.w_pos_prec.setValue(int(pos_prec_val))
-        form.addRow(mk_lbl("Precisão posição"), self.w_pos_prec)
+        form.addRow(mk_lbl(tr("Precisão posição")), self.w_pos_prec)
 
         main.addLayout(form)
 
@@ -396,35 +398,35 @@ class _ChannelRow(QWidget):
 # ---------------------------------------------------------------------------
 MESHTASTIC_CONFIG_DEFS = {
     "localConfig.device": [
-        ("Papel do nó",             "role",                    "combo",
+        (tr("Papel do nó"),             "role",                    "combo",
          ["CLIENT","CLIENT_MUTE","CLIENT_HIDDEN","TRACKER","LOST_AND_FOUND",
           "SENSOR","TAK","TAK_TRACKER","REPEATER","ROUTER","ROUTER_CLIENT"]),
-        ("Retransmitir mensagens",  "rebroadcast_mode",        "combo",
+        (tr("Retransmitir mensagens"),  "rebroadcast_mode",        "combo",
          ["ALL","ALL_SKIP_DECODING","LOCAL_ONLY","KNOWN_ONLY","NONE"]),
         ("Serial habilitado",       "serial_enabled",          "bool",   None),
         ("Debug via serial",        "debug_log_enabled",       "bool",   None),
-        ("Botão GPIO",              "button_gpio",             "spin_int",(0,39)),
+        (tr("Botão GPIO"),              "button_gpio",             "spin_int",(0,39)),
         ("Buzzer GPIO",             "buzzer_gpio",             "spin_int",(0,39)),
-        ("Duplo clique alimentação","double_tap_as_button_press","bool",  None),
+        (tr("Duplo clique alimentação"),"double_tap_as_button_press","bool",  None),
         ("LED em heartbeat",        "led_heartbeat_disabled",  "bool",   None),
-        ("Intervalo broadcast NodeInfo (s)", "node_info_broadcast_secs","spin_int",(0,604800)),
-        ("Fuso horário (TZ string)","tzdef",                   "text",   None),
+        (tr("Intervalo broadcast NodeInfo (s)"), "node_info_broadcast_secs","spin_int",(0,604800)),
+        (tr("Fuso horário (TZ string)"),"tzdef",                   "text",   None),
         ("Disable triple-click",    "disable_triple_click",    "bool",   None),
         ("Quick chat button",       "quick_chat_button",       "bool",   None),
     ],
     "localConfig.position": [
         ("Modo GPS",                "gps_mode",                "combo",
          ["DISABLED","ENABLED","NOT_PRESENT"]),
-        ("Intervalo update GPS (s)","gps_update_interval",     "spin_int",(0,86400)),
+        (tr("Intervalo update GPS (s)"),"gps_update_interval",     "spin_int",(0,86400)),
         ("Tentativa GPS (s)",       "gps_attempt_time",        "spin_int",(0,3600)),
-        ("Intervalo broadcast pos (s)","position_broadcast_secs","spin_int",(0,86400)),
+        (tr("Intervalo broadcast pos (s)"),"position_broadcast_secs","spin_int",(0,86400)),
         ("Smart broadcast pos.",    "position_broadcast_smart_enabled","bool",None),
-        ("Distância mínima smart (m)","broadcast_smart_minimum_distance","spin_int",(0,10000)),
-        ("Intervalo mínimo smart (s)","broadcast_smart_minimum_interval_secs","spin_int",(0,3600)),
-        ("Latitude fixa (graus)",   "fixed_lat",               "spin_float",(-90.0, 90.0)),
-        ("Longitude fixa (graus)",  "fixed_lon",               "spin_float",(-180.0,180.0)),
-        ("Altitude fixa (m)",       "fixed_alt",               "spin_int",  (-1000, 10000)),
-        ("Precision de posição",    "position_flags",          "spin_int",(0,8191)),
+        (tr("Distância mínima smart (m)"),"broadcast_smart_minimum_distance","spin_int",(0,10000)),
+        (tr("Intervalo mínimo smart (s)"),"broadcast_smart_minimum_interval_secs","spin_int",(0,3600)),
+        (tr("Latitude fixa (graus)"),   "fixed_lat",               "spin_float",(-90.0, 90.0)),
+        (tr("Longitude fixa (graus)"),  "fixed_lon",               "spin_float",(-180.0,180.0)),
+        (tr("Altitude fixa (m)"),       "fixed_alt",               "spin_int",  (-1000, 10000)),
+        (tr("Precision de posição"),    "position_flags",          "spin_int",(0,8191)),
         ("Receiver GPIO",           "rx_gpio",                 "spin_int",(0,39)),
         ("Transmitter GPIO",        "tx_gpio",                 "spin_int",(0,39)),
         ("Broadcast SBAS",          "gps_accept_2d",           "bool",   None),
@@ -432,13 +434,13 @@ MESHTASTIC_CONFIG_DEFS = {
     ],
     "localConfig.power": [
         ("Modo de economia",        "is_power_saving",         "bool",   None),
-        ("Desligar na bateria (s)", "on_battery_shutdown_after_secs","spin_int",(0,86400)),
+        (tr("Desligar na bateria (s)"), "on_battery_shutdown_after_secs","spin_int",(0,86400)),
         ("Override ADC multiplicador","adc_multiplier_override","spin_float",(0.0,10.0)),
         ("Wait Bluetooth (s)",      "wait_bluetooth_secs",     "spin_int",(0,3600)),
         ("Modo SDS desligar (s)",   "sds_secs",                "spin_int",(0,86400)),
         ("Modo LS desligar (s)",    "ls_secs",                 "spin_int",(0,86400)),
-        ("Tempo mínimo acordado (s)","min_wake_secs",          "spin_int",(0,3600)),
-        ("INA endereço I2C bateria","device_battery_ina_address","spin_int",(0,127)),
+        (tr("Tempo mínimo acordado (s)"),"min_wake_secs",          "spin_int",(0,3600)),
+        (tr("INA endereço I2C bateria"),"device_battery_ina_address","spin_int",(0,127)),
         ("Powersave GPIO",          "powermon_enables",        "spin_int",(0,65535)),
     ],
     "localConfig.network": [
@@ -448,14 +450,14 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Servidor NTP",            "ntp_server",              "text",   None),
         ("Ethernet habilitada",     "eth_enabled",             "bool",   None),
         ("Modo endereçamento",      "address_mode",            "combo",  ["DHCP","STATIC"]),
-        ("IP estático",             "ipv4_config.ip",          "text",   None),
+        (tr("IP estático"),             "ipv4_config.ip",          "text",   None),
         ("Gateway",                 "ipv4_config.gateway",     "text",   None),
         ("Subnet",                  "ipv4_config.subnet",      "text",   None),
         ("DNS",                     "ipv4_config.dns",         "text",   None),
         ("RSync Server",            "rsync_server",            "text",   None),
     ],
     "localConfig.display": [
-        ("Ecrã ligado (s)",         "screen_on_secs",          "spin_int",(0,3600)),
+        (tr("Ecrã ligado (s)"),         "screen_on_secs",          "spin_int",(0,3600)),
         ("Formato GPS",             "gps_format",              "combo",
          ["DEC","DMS","UTM","MGRS","OLC","OSGR"]),
         ("Múltiplo do auto dim.",   "auto_screen_carousel_secs","spin_int",(0,3600)),
@@ -476,14 +478,14 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Modem preset",            "modem_preset",            "combo",
          ["LONG_FAST","LONG_SLOW","VERY_LONG_SLOW","MEDIUM_SLOW",
           "MEDIUM_FAST","SHORT_SLOW","SHORT_FAST","LONG_MODERATE"]),
-        ("Região",                  "region",                  "combo",
+        (tr("Região"),                  "region",                  "combo",
          ["UNSET","US","EU_433","EU_868","CN","JP","ANZ","KR","TW",
           "RU","IN","NZ_865","TH","LORA_24","UA_433","UA_868",
           "MY_433","MY_919","SG_923","PH_433","PH_868","PH_915"]),
         ("Largura de banda",        "bandwidth",               "spin_int",(0,500)),
         ("Spreading factor",        "spread_factor",           "spin_int",(7,12)),
         ("Coding rate",             "coding_rate",             "spin_int",(5,8)),
-        ("Offset frequência (MHz)", "frequency_offset",        "spin_float",(-100.0,100.0)),
+        (tr("Offset frequência (MHz)"), "frequency_offset",        "spin_float",(-100.0,100.0)),
         ("TX habilitado",           "tx_enabled",              "bool",   None),
         ("TX Power (dBm)",          "tx_power",                "spin_int",(0,30)),
         ("Hop limit",               "hop_limit",               "spin_int",(1,7)),
@@ -493,7 +495,7 @@ MESHTASTIC_CONFIG_DEFS = {
         ("RX boosted gain (SX126x)","sx126x_rx_boosted_gain",  "bool",   None),
         ("PA fan GPIO",             "pa_fan_disabled",         "bool",   None),
         ("OK para MQTT",            "config_ok_to_mqtt",       "bool",   None),
-        ("Número do canal (0-7)",   "channel_num",             "spin_int",(0,7)),
+        (tr("Número do canal (0-7)"),   "channel_num",             "spin_int",(0,7)),
     ],
     "localConfig.bluetooth": [
         ("Habilitado",              "enabled",                 "bool",   None),
@@ -506,15 +508,15 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Servidor",                "address",                 "text",   None),
         ("Utilizador",              "username",                "text",   None),
         ("Senha",                   "password",                "text",   None),
-        ("Encriptação habilitada",  "encryption_enabled",      "bool",   None),
+        (tr("Encriptação habilitada"),  "encryption_enabled",      "bool",   None),
         ("JSON habilitado",         "json_enabled",            "bool",   None),
         ("TLS habilitado",          "tls_enabled",             "bool",   None),
         ("Root topic",              "root",                    "text",   None),
         ("Proxy para cliente",      "proxy_to_client_enabled", "bool",   None),
         ("Map reporting",           "map_reporting_enabled",   "bool",   None),
-        ("Precisão do mapa",        "map_report_settings.position_precision","spin_int",(0,32)),
-        ("Intervalo map report (s)","map_report_settings.publish_interval_secs","spin_int",(0,86400)),
-        ("Ok para MQTT (canal)",    "ok_to_mqtt",              "bool",   None),
+        (tr("Precisão do mapa"),        "map_report_settings.position_precision","spin_int",(0,32)),
+        (tr("Intervalo map report (s)"),"map_report_settings.publish_interval_secs","spin_int",(0,86400)),
+        (tr("Ok para MQTT (canal)"),    "ok_to_mqtt",              "bool",   None),
     ],
     "moduleConfig.serial": [
         ("Habilitado",              "enabled",                 "bool",   None),
@@ -537,48 +539,48 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Saída GPIO",              "output",                  "spin_int",(0,39)),
         ("Saída vibra GPIO",        "output_vibra",            "spin_int",(0,39)),
         ("Saída buzzer GPIO",       "output_buzzer",           "spin_int",(0,39)),
-        ("Alerta para mensagem",    "alert_message",           "bool",   None),
+        (tr("Alerta para mensagem"),    "alert_message",           "bool",   None),
         ("Alerta msg pulso",        "alert_message_buzzer",    "bool",   None),
         ("Alerta msg vibra",        "alert_message_vibra",     "bool",   None),
         ("Alerta para bell",        "alert_bell",              "bool",   None),
         ("Alerta bell buzzer",      "alert_bell_buzzer",       "bool",   None),
         ("Alerta bell vibra",       "alert_bell_vibra",        "bool",   None),
         ("Usar PWM buzzer",         "use_pwm",                 "bool",   None),
-        ("Nível activo GPIO",       "active",                  "bool",   None),
+        (tr("Nível activo GPIO"),       "active",                  "bool",   None),
     ],
     "moduleConfig.storeForward": [
         ("Habilitado",              "enabled",                 "bool",   None),
         ("Heartbeat",               "heartbeat",               "bool",   None),
         ("Num records",             "records",                 "spin_int",(0,300)),
-        ("Histórico (s)",           "history_return_window",   "spin_int",(0,86400)),
-        ("Max msgs histórico",      "history_return_max",      "spin_int",(0,300)),
+        (tr("Histórico (s)"),           "history_return_window",   "spin_int",(0,86400)),
+        (tr("Max msgs histórico"),      "history_return_max",      "spin_int",(0,300)),
         ("É servidor S&F",          "is_server",               "bool",   None),
     ],
     "moduleConfig.rangeTest": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        ("Intervalo sender (s)",    "sender",                  "spin_int",(0,86400)),
-        ("Guardar em CSV",          "save",                    "bool",   None),
+        (tr("Intervalo sender (s)"),    "sender",                  "spin_int",(0,86400)),
+        (tr("Guardar em CSV"),          "save",                    "bool",   None),
     ],
     "moduleConfig.telemetry": [
-        ("Intervalo dispositivo (s)","device_update_interval", "spin_int",(0,86400)),
-        ("Intervalo ambiente (s)",  "environment_update_interval","spin_int",(0,86400)),
-        ("Medição ambiente activa", "environment_measurement_enabled","bool",None),
+        (tr("Intervalo dispositivo (s)"),"device_update_interval", "spin_int",(0,86400)),
+        (tr("Intervalo ambiente (s)"),  "environment_update_interval","spin_int",(0,86400)),
+        (tr("Medição ambiente activa"), "environment_measurement_enabled","bool",None),
         ("Ambiente no ecrã",        "environment_screen_enabled","bool",  None),
         ("Temperatura em Fahrenheit","environment_display_fahrenheit","bool",None),
-        ("Intervalo air quality (s)","air_quality_interval",   "spin_int",(0,86400)),
-        ("Air quality activo",      "air_quality_enabled",     "bool",   None),
-        ("Intervalo potência (s)",  "power_update_interval",   "spin_int",(0,86400)),
-        ("Medição potência activa", "power_measurement_enabled","bool",  None),
-        ("Intervalo saúde (s)",     "health_update_interval",  "spin_int",(0,86400)),
-        ("Saúde activo",            "health_telemetry_enabled","bool",   None),
+        (tr("Intervalo air quality (s)"),"air_quality_interval",   "spin_int",(0,86400)),
+        (tr("Air quality activo"),      "air_quality_enabled",     "bool",   None),
+        (tr("Intervalo potência (s)"),  "power_update_interval",   "spin_int",(0,86400)),
+        (tr("Medição potência activa"), "power_measurement_enabled","bool",  None),
+        (tr("Intervalo saúde (s)"),     "health_update_interval",  "spin_int",(0,86400)),
+        (tr("Saúde activo"),            "health_telemetry_enabled","bool",   None),
     ],
     "moduleConfig.cannedMessage": [
         # ── Campo especial: lista de mensagens (separadas por |, max 200 chars total) ──
         # Guardado via localNode.setCannedMessages(), não via writeConfig
-        ("Mensagens pré-definidas", "__canned_messages__",     "canned_messages", None),
+        (tr("Mensagens pré-definidas"), "__canned_messages__",     "canned_messages", None),
         # ── Configuração do módulo ──────────────────────────────────────────────────
         ("Habilitado",              "enabled",                 "bool",   None),
-        ("Enviar sinal Bell",       "send_bell",               "bool",   None),
+        (tr("Enviar sinal Bell"),       "send_bell",               "bool",   None),
         ("Fonte de entrada aceite", "allow_input_source",      "text",   None),
         # Rotary encoder #1
         ("Rotary encoder #1",       "rotary1_enabled",         "bool",   None),
@@ -615,12 +617,12 @@ MESHTASTIC_CONFIG_DEFS = {
     ],
     "moduleConfig.remotehardware": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        ("Permitir input não seg.", "allow_undefined_pin_access","bool", None),
+        (tr("Permitir input não seg."), "allow_undefined_pin_access","bool", None),
     ],
     "moduleConfig.neighborInfo": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        ("Intervalo update (s)",    "update_interval",         "spin_int",(0,86400)),
-        ("Transmitir sobre LoRa",   "transmit_over_lora",      "bool",   None),
+        (tr("Intervalo update (s)"),    "update_interval",         "spin_int",(0,86400)),
+        (tr("Transmitir sobre LoRa"),   "transmit_over_lora",      "bool",   None),
     ],
     "moduleConfig.ambientLighting": [
         ("Habilitado LED",          "led_state",               "bool",   None),
@@ -631,20 +633,20 @@ MESHTASTIC_CONFIG_DEFS = {
     ],
     "moduleConfig.detectionSensor": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        ("Intervalo mínimo send (s)","minimum_broadcast_secs", "spin_int",(0,86400)),
-        ("Intervalo estado (s)",    "state_broadcast_secs",    "spin_int",(0,86400)),
+        (tr("Intervalo mínimo send (s)"),"minimum_broadcast_secs", "spin_int",(0,86400)),
+        (tr("Intervalo estado (s)"),    "state_broadcast_secs",    "spin_int",(0,86400)),
         ("Usar pull-up",            "use_pullup",              "bool",   None),
         ("Nome",                    "name",                    "text",   None),
         ("Monitor GPIO",            "monitor_pin",             "spin_int",(0,39)),
-        ("Tipo de detecção",        "detection_triggered_high","bool",   None),
+        (tr("Tipo de detecção"),        "detection_triggered_high","bool",   None),
     ],
     "moduleConfig.paxcounter": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        ("Intervalo Paxcount (s)",  "paxcounter_update_interval","spin_int",(0,86400)),
+        (tr("Intervalo Paxcount (s)"),  "paxcounter_update_interval","spin_int",(0,86400)),
     ],
     "localConfig.security": [
         ("Chave pública (readonly)","public_key",              "readonly",None),
-        ("Admin via canal legacy",  "admin_channel_enabled",   "bool",   None),
+        (tr("Admin via canal legacy"),  "admin_channel_enabled",   "bool",   None),
         ("Managed mode",            "is_managed",              "bool",   None),
         ("Modo serial (debug)",     "serial_enabled",          "bool",   None),
         ("Log debug via serial",    "debug_log_api_enabled",   "bool",   None),
@@ -655,9 +657,9 @@ MESHTASTIC_CONFIG_DEFS = {
 
 SECTION_LABELS = {
     "localConfig.device":              "💻 Dispositivo",
-    "localConfig.position":            "📍 Posição / GPS",
+    "localConfig.position":            tr("📍 Posição / GPS"),
     "localConfig.power":               "🔋 Energia",
-    "localConfig.network":             "🌐 Rede / WiFi",
+    "localConfig.network":             tr("🌐 Rede / WiFi"),
     "localConfig.display":             "🖥 Display",
     "localConfig.lora":                "📡 LoRa",
     "localConfig.bluetooth":           "🔵 Bluetooth",
@@ -669,7 +671,7 @@ SECTION_LABELS = {
     "moduleConfig.telemetry":          "📊 Telemetria",
     "moduleConfig.cannedMessage":      "💬 Msgs Pre-definidas",
     "moduleConfig.audio":              "🎙 Audio / Codec2",
-    "moduleConfig.remotehardware":     "🔧 Hardware Remoto",
+    "moduleConfig.remotehardware":     tr("🔧 Hardware Remoto"),
     "moduleConfig.neighborInfo":       "🔗 Neighbor Info",
     "moduleConfig.ambientLighting":    "💡 Ilum. Ambiente",
     "moduleConfig.detectionSensor":    "🔍 Sensor Deteccao",
@@ -722,21 +724,21 @@ class ConfigTab(QWidget):
         root.setSpacing(8)
 
         hdr = QHBoxLayout()
-        title = QLabel("⚙ Config. do No Local")
+        title = QLabel(tr("⚙ Config. do No Local"))
         title.setStyleSheet(f"color:{ACCENT_ORANGE};font-size:15px;font-weight:bold;")
         hdr.addWidget(title)
         hdr.addStretch()
 
-        self.status_label = QLabel("Não conectado")
+        self.status_label = QLabel(tr("Não conectado"))
         self.status_label.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         hdr.addWidget(self.status_label)
 
-        btn_reload = QPushButton("🔄  Recarregar")
+        btn_reload = QPushButton(tr("🔄  Recarregar"))
         btn_reload.setObjectName("btn_reload_config")
         btn_reload.clicked.connect(self.reload_config)
         hdr.addWidget(btn_reload)
 
-        self.btn_save = QPushButton("💾  Guardar Alterações")
+        self.btn_save = QPushButton(tr("💾  Guardar Alterações"))
         self.btn_save.setObjectName("btn_save_config")
         self.btn_save.setEnabled(False)
         self.btn_save.clicked.connect(self._save_config)
@@ -759,7 +761,7 @@ class ConfigTab(QWidget):
         lv.setContentsMargins(0, 0, 4, 0)
         lv.setSpacing(4)
 
-        sec_lbl = QLabel("Secções")
+        sec_lbl = QLabel(tr("Secções"))
         sec_lbl.setStyleSheet(
             f"color:{ACCENT_BLUE};font-weight:bold;font-size:11px;"
             f"padding:4px 8px;background:{PANEL_BG};"
@@ -780,7 +782,7 @@ class ConfigTab(QWidget):
         splitter.setStretchFactor(1, 1)
         root.addWidget(splitter, stretch=1)
 
-        self._show_placeholder("Conecte-se a um nó para ver as configurações.")
+        self._show_placeholder(tr("Conecte-se a um nó para ver as configurações."))
 
     def set_interface(self, iface):
         self._iface = iface
@@ -792,36 +794,36 @@ class ConfigTab(QWidget):
         self._iface      = None
         self._local_node = None
         self.btn_save.setEnabled(False)
-        self.status_label.setText("Não conectado")
+        self.status_label.setText(tr("Não conectado"))
         if hasattr(self, '_channels_tab_widget') and self._channels_tab_widget:
             self._channels_tab_widget.clear_interface()
         self.section_list.clear()
         while self.stack.count():
             w = self.stack.widget(0)
             self.stack.removeWidget(w)
-        self._show_placeholder("Conecte-se a um nó para ver as configurações.")
+        self._show_placeholder(tr("Conecte-se a um nó para ver as configurações."))
 
     def reload_config(self):
         if not self._iface:
-            self._show_placeholder("Conecte-se a um nó para ver as configurações.")
+            self._show_placeholder(tr("Conecte-se a um nó para ver as configurações."))
             return
-        self.status_label.setText("A carregar configuração…")
+        self.status_label.setText(tr("A carregar configuração…"))
         QTimer.singleShot(100, self._do_reload)
 
     def _do_reload(self):
         try:
             self._local_node = self._iface.getNode("^local")
             if not self._local_node:
-                self._show_placeholder("Não foi possível obter o nó local.")
-                self.status_label.setText("Erro: nó local indisponível")
+                self._show_placeholder(tr("Não foi possível obter o nó local."))
+                self.status_label.setText(tr("Erro: nó local indisponível"))
                 return
             self._build_config_ui()
             self.btn_save.setEnabled(True)
-            self.status_label.setText("✅ Configuração carregada")
+            self.status_label.setText(tr("✅ Configuração carregada"))
         except Exception as e:
             logger.error(f"Erro ao carregar configuração: {e}", exc_info=True)
             self._show_placeholder(f"Erro ao carregar: {e}")
-            self.status_label.setText("❌ Erro ao carregar")
+            self.status_label.setText(tr("❌ Erro ao carregar"))
 
     def _build_config_ui(self):
         self.section_list.clear()
@@ -829,14 +831,14 @@ class ConfigTab(QWidget):
         while self.stack.count():
             self.stack.removeWidget(self.stack.widget(0))
 
-        self.section_list.addItem("📻 Canais")
+        self.section_list.addItem(tr("📻 Canais"))
         self._channels_tab_widget = ChannelsTab()
         if self._iface:
             self._channels_tab_widget.set_interface(self._iface)
         self._channels_tab_widget.reboot_required.connect(self.reboot_required)
         self.stack.addWidget(self._channels_tab_widget)
 
-        self.section_list.addItem("👤 Usuário")
+        self.section_list.addItem(tr("👤 Usuário"))
         self.stack.addWidget(self._build_device_info_page())
 
         for sec_key, field_defs in MESHTASTIC_CONFIG_DEFS.items():
@@ -920,13 +922,13 @@ class ConfigTab(QWidget):
             if my_info:
                 user      = my_info.get('user', {})
                 fields_ro = [
-                    ("ID do Nó",  "id",       user.get('id', '—')),
+                    (tr("ID do Nó"),  "id",       user.get('id', '—')),
                     ("Modelo HW", "hw_model", user.get('hwModel', '—')),
                     ("Firmware",  "firmware", str(my_info.get('firmwareVersion', '—'))),
                 ]
                 fields_rw = [
-                    ("Nome Longo",       "long_name",   user.get('longName', '')),
-                    ("Nome Curto",       "short_name",  user.get('shortName', '')),
+                    (tr("Nome Longo"),       "long_name",   user.get('longName', '')),
+                    (tr("Nome Curto"),       "short_name",  user.get('shortName', '')),
                     ("Licenciado (Ham)", "is_licensed", user.get('isLicensed', False)),
                 ]
         except Exception as e:
@@ -944,7 +946,7 @@ class ConfigTab(QWidget):
             sep.setFrameShape(QFrame.HLine)
             sep.setStyleSheet(f"color:{BORDER_COLOR};")
             form.addRow(sep)
-            note = QLabel("✏  Campos editáveis — guardar usa setOwner()")
+            note = QLabel(tr("✏  Campos editáveis — guardar usa setOwner()"))
             note.setStyleSheet(f"color:{TEXT_MUTED};font-size:10px;font-style:italic;")
             form.addRow(note)
         for label, key, val in fields_rw:
@@ -976,7 +978,7 @@ class ConfigTab(QWidget):
         form.setLabelAlignment(Qt.AlignRight)
         form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
         if not fields:
-            form.addRow(QLabel("Nenhum campo disponível para esta secção."))
+            form.addRow(QLabel(tr("Nenhum campo disponível para esta secção.")))
         else:
             for label, field_type, field_name, current_val, extra in fields:
                 w = self._create_field_widget(field_type, current_val, extra)
@@ -1101,19 +1103,20 @@ class ConfigTab(QWidget):
 
     def _save_config(self):
         if not self._iface or not self._local_node:
-            QMessageBox.warning(self, "Sem Conexão", "Não está conectado a nenhum nó.")
+            QMessageBox.warning(self, tr("Sem Conexão"), tr("Não está conectado a nenhum nó."))
             return
         reply = QMessageBox.question(
-            self, "Guardar Configuração",
-            "Deseja guardar todas as alterações de configuração no nó?\n\n"
-            "⚠  O nó irá reiniciar após guardar para aplicar as configurações.\n"
-            "    A ligação TCP será temporariamente perdida e restabelecida.",
+            self, tr("Guardar Configuração"),
+            (tr("Deseja guardar todas as alterações de configuração no nó?\n\n")
+             + tr("⚠  O nó irá reiniciar após guardar para aplicar as configurações.\n")
+             + tr("A ligação TCP será temporariamente perdida e restabelecida.")),
+            
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply != QMessageBox.Yes:
             return
 
-        self.status_label.setText("A guardar…")
+        self.status_label.setText(tr("A guardar…"))
         errors         = []
         saved_sections = set()
 
@@ -1254,23 +1257,23 @@ class ConfigTab(QWidget):
                     errors.append(f"setOwner: {e}")
 
             if saved_sections:
-                self.status_label.setText(f"✅ {len(saved_sections)} secção(ões) guardadas")
-                msg = f"Configuração guardada!\n{len(saved_sections)} secção(ões) enviadas ao nó."
+                self.status_label.setText(tr("✅ {n} secção(ões) guardadas", n=len(saved_sections)))
+                msg = tr("Configuração guardada!\n{n} secção(ões) enviadas ao nó.", n=len(saved_sections))
                 if errors:
                     msg += f"\n\n⚠ {len(errors)} aviso(s):\n" + "\n".join(errors[:8])
-                QMessageBox.information(self, "Configuração Guardada", msg)
+                QMessageBox.information(self, tr("Configuração Guardada"), msg)
                 self.reboot_required.emit()
             else:
-                self.status_label.setText("⚠ Nada guardado")
-                msg = "Não foram detectadas alterações para guardar."
+                self.status_label.setText(tr("⚠ Nada guardado"))
+                msg = tr("Não foram detectadas alterações para guardar.")
                 if errors:
                     msg += f"\n\nErros:\n" + "\n".join(errors[:8])
-                QMessageBox.information(self, "Sem Alterações", msg)
+                QMessageBox.information(self, tr("Sem Alterações"), msg)
 
         except Exception as e:
             logger.error(f"Erro ao guardar configuração: {e}", exc_info=True)
-            self.status_label.setText("❌ Erro ao guardar")
-            QMessageBox.critical(self, "Erro", f"Erro ao guardar configuração:\n{e}")
+            self.status_label.setText(tr("❌ Erro ao guardar"))
+            QMessageBox.critical(self, tr("Erro"), tr("Erro ao guardar configuração:\n{e}", e=e))
 
     def _on_section_changed(self, row: int):
         if 0 <= row < self.stack.count():
@@ -1347,7 +1350,7 @@ class ConfigTab(QWidget):
             vl.setSpacing(4)
 
             note = QLabel(
-                "💡  Uma mensagem por linha · Separadas por | no firmware · Máx. 200 chars total"
+                tr("canned_hint")
             )
             note.setStyleSheet(f"color:{TEXT_MUTED};font-size:10px;font-style:italic;")
             note.setWordWrap(True)
@@ -1356,7 +1359,7 @@ class ConfigTab(QWidget):
             te = QTextEdit()
             te.setObjectName("canned_te")
             te.setPlaceholderText(
-                "Escreva uma mensagem por linha.\nExemplo:\nOlá!\nA caminho\nChegarei em 10 min\nSEM SINAL"
+                tr("canned_placeholder")
             )
             te.setFixedHeight(130)
             te.setStyleSheet(
@@ -1368,7 +1371,7 @@ class ConfigTab(QWidget):
                 msgs = [m.strip() for m in current_val.split('|') if m.strip()]
                 te.setPlainText('\n'.join(msgs))
 
-            char_label = QLabel("0 / 200 caracteres")
+            char_label = QLabel(tr("0 / 200 caracteres"))
             char_label.setStyleSheet(f"color:{TEXT_MUTED};font-size:10px;")
 
             def _update_count():
@@ -1379,7 +1382,7 @@ class ConfigTab(QWidget):
                 )
                 n = len(pipe_str)
                 color = ACCENT_GREEN if n <= 200 else ACCENT_RED
-                char_label.setText(f"{n} / 200 caracteres")
+                char_label.setText(tr("{n} / 200 caracteres", n=n))
                 char_label.setStyleSheet(f"color:{color};font-size:10px;")
 
             te.textChanged.connect(_update_count)

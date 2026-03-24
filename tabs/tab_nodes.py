@@ -4,6 +4,7 @@ traceroutes, NeighborInfo e temas de mapa Leaflet.
 """
 import json
 import logging
+from i18n import tr
 import time
 from typing import Optional, Callable
 import functools
@@ -24,17 +25,33 @@ from constants import (
     ACCENT_ORANGE, ACCENT_RED, TEXT_PRIMARY, TEXT_MUTED, INPUT_BG
 )
 
-
-
 class MapWidget(QWidget):
     node_deselected = pyqtSignal()
 
+    # Static URL list (order must match get_tile_urls())
+    _TILE_URL_LIST = [
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    ]
+    # Keep TILE_URLS for backward-compat (any code using .keys() or .values())
     TILE_URLS = {
-        "🌑 Escuro":        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-        "☀ Claro":         "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        "🗺 OpenStreetMap": "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        "🛰 Satélite":     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        "🌑 Escuro":        _TILE_URL_LIST[0],
+        "☀ Claro":         _TILE_URL_LIST[1],
+        "🗺 OpenStreetMap": _TILE_URL_LIST[2],
+        "🛰 Satélite":     _TILE_URL_LIST[3],
     }
+
+    @classmethod
+    def get_tile_urls(cls):
+        """Returns {translated_label: url} dict for the current language."""
+        return {
+            tr("🌑 Escuro"):        cls._TILE_URL_LIST[0],
+            tr("☀ Claro"):         cls._TILE_URL_LIST[1],
+            tr("🗺 OpenStreetMap"): cls._TILE_URL_LIST[2],
+            tr("🛰 Satélite"):     cls._TILE_URL_LIST[3],
+        }
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -72,7 +89,8 @@ class MapWidget(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        hdr = QLabel("📡  Traceroutes")
+        self._tr_hdr_label = QLabel(tr("📡  Traceroutes"))
+        hdr = self._tr_hdr_label
         hdr.setStyleSheet(
             f"color:{ACCENT_GREEN};font-size:11px;font-weight:bold;"
             f"padding:6px 10px;border-bottom:1px solid {BORDER_COLOR};"
@@ -80,7 +98,7 @@ class MapWidget(QWidget):
         left_layout.addWidget(hdr)
 
         # Botão "Mostrar todas" — toggle verdadeiro ON/OFF
-        self.btn_tr_all = QPushButton("◉  Mostrar todas")
+        self.btn_tr_all = QPushButton(tr("◉  Mostrar todas"))
         self.btn_tr_all.setCheckable(True)
         self.btn_tr_all.setChecked(True)
         self.btn_tr_all.setStyleSheet(
@@ -94,7 +112,8 @@ class MapWidget(QWidget):
         left_layout.addWidget(self.btn_tr_all)
 
         # Botão "Limpar"
-        btn_clear = QPushButton("🗑  Limpar lista")
+        self._tr_clear_btn = QPushButton(tr("🗑  Limpar lista"))
+        btn_clear = self._tr_clear_btn
         btn_clear.setStyleSheet(
             f"QPushButton{{background:{PANEL_BG};color:#cc3333;"
             f"border:none;border-bottom:1px solid {BORDER_COLOR};"
@@ -102,7 +121,7 @@ class MapWidget(QWidget):
             f"QPushButton:hover{{background:#2a1010;color:#ff5555;}}"
         )
         btn_clear.clicked.connect(self._on_tr_clear)
-        left_layout.addWidget(btn_clear)
+        left_layout.addWidget(self._tr_clear_btn)
 
         # Lista scrollável de registos — cada item tem checkbox para multi-selecção
         self._tr_list_widget = QListWidget()
@@ -135,11 +154,11 @@ class MapWidget(QWidget):
         ctrl_layout.setContentsMargins(12, 4, 12, 4)
         ctrl_layout.setSpacing(6)
 
-        lbl = QLabel("🎨  Tema:")
+        lbl = QLabel(tr("🎨  Tema:"))
         lbl.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         ctrl_layout.addWidget(lbl)
 
-        theme_names = list(self.TILE_URLS.keys())
+        theme_names = list(self.get_tile_urls().keys())
         self._theme_buttons: List[QPushButton] = []
         for i, name in enumerate(theme_names):
             btn = QPushButton(name)
@@ -183,8 +202,8 @@ class MapWidget(QWidget):
         self.web.setHtml(
             f"<html><body style='background:{DARK_BG};color:{TEXT_PRIMARY};"
             "font-family:monospace;display:flex;align-items:center;"
-            "justify-content:center;height:100vh;margin:0;font-size:18px;'>"
-            "📡 Aguardando dados de posição...</body></html>"
+            f"justify-content:center;height:100vh;margin:0;font-size:18px;'>"
+            f"{tr('📡 Aguardando dados de posição...')}</body></html>"
         )
         self._map_initialized = False
 
@@ -238,14 +257,14 @@ class MapWidget(QWidget):
 <div id="map"></div>
 
 <div class="map-legend">
-  <div><span class="leg-dot" style="background:#2b7cd3;border:1px solid #1050aa"></span> RF activo</div>
+  <div><span class="leg-dot" style="background:#2b7cd3;border:1px solid #1050aa"></span> {tr('RF activo')}</div>
   <div><span class="leg-dot" style="background:#ff8800;border:1px solid #cc6600"></span> MQTT</div>
-  <div><span class="leg-dot" style="background:#ff4444;border:1px solid #cc0000"></span> Pacote recebido</div>
-  <div><span class="leg-dot" style="background:#555566;border:1px solid #444455"></span> Inactivo (&gt;2h)</div>
-  <div><span class="leg-dot" style="background:#00ff88;border:1px solid #00cc66"></span> Seleccionado</div>
-  <div><span class="leg-line" style="background:#00cc44"></span> Traceroute ida</div>
-  <div><span class="leg-line" style="background:#007a29"></span> Traceroute volta</div>
-  <div><span class="leg-line" style="background:#bc8cff;border-top:2px dashed #bc8cff;height:0"></span> Vizinhança (NeighborInfo)</div>
+  <div><span class="leg-dot" style="background:#ff4444;border:1px solid #cc0000"></span> {tr('Pacote recebido')}</div>
+  <div><span class="leg-dot" style="background:#555566;border:1px solid #444455"></span> {tr('Inactivo (>2h)').replace('>','&gt;')}</div>
+  <div><span class="leg-dot" style="background:#00ff88;border:1px solid #00cc66"></span> {tr('Seleccionado')}</div>
+  <div><span class="leg-line" style="background:#00cc44"></span> {tr('Traceroute ida')}</div>
+  <div><span class="leg-line" style="background:#007a29"></span> {tr('Traceroute volta')}</div>
+  <div><span class="leg-line" style="background:#bc8cff;border-top:2px dashed #bc8cff;height:0"></span> {tr('Vizinhança (NeighborInfo)')}</div>
 </div>
 
 <script>
@@ -274,7 +293,7 @@ class MapWidget(QWidget):
 </html>"""
 
     def _init_map(self, center_lat: float, center_lon: float, zoom: int):
-        tile_url = list(self.TILE_URLS.values())[self._theme_idx]
+        tile_url = self._TILE_URL_LIST[self._theme_idx]
         html_str = self._map_html(center_lat, center_lon, zoom, tile_url)
         self._map_initialized = False
         self.web.loadFinished.connect(self._on_load_finished)
@@ -443,7 +462,7 @@ class MapWidget(QWidget):
                 f"<tr><td>{enc_icon}</td><td>DM: {'PKI' if has_key else 'PSK'}</td></tr>"
                 f"<tr><td>🕐</td><td>{html.escape(lh_str)}</td></tr>"
                 f"</table>"
-                + (f"<div style='color:#00ff88;font-size:11px;margin-top:4px'>● Seleccionado</div>"
+                + (f"<div style='color:#00ff88;font-size:11px;margin-top:4px'>● {tr('Seleccionado')}</div>"
                    if is_selected else "")
                 + f"<div style='margin-top:8px;text-align:center'>"
                   f"<a href='traceroute:{node_id}' style='color:#58a6ff;text-decoration:none;"
@@ -463,6 +482,42 @@ class MapWidget(QWidget):
                 "node_id": node_id,
             })
         return markers
+
+    def retranslate(self):
+        """Update all translatable UI elements after a language change."""
+        # Theme button labels
+        translated_names = list(self.get_tile_urls().keys())
+        for i, btn in enumerate(self._theme_buttons):
+            if i < len(translated_names):
+                btn.setText(translated_names[i])
+        # Traceroute panel header + clear button
+        if hasattr(self, '_tr_hdr_label'):
+            self._tr_hdr_label.setText(tr("📡  Traceroutes"))
+        if hasattr(self, '_tr_clear_btn'):
+            self._tr_clear_btn.setText(tr("🗑  Limpar lista"))
+        if hasattr(self, 'btn_tr_all'):
+            checked = self.btn_tr_all.isChecked()
+            self.btn_tr_all.setText(tr("◉  Mostrar todas") if checked else tr("○  Mostrar todas"))
+        # Reload map HTML so legend and all text gets translated
+        if self._map_initialized:
+            if self._current_nodes:
+                self.refresh_map(self._current_nodes)
+            else:
+                # Map initialized but no nodes yet — rebuild base map HTML
+                tile_url = self._TILE_URL_LIST[self._theme_idx]
+                html_str = self._map_html(0, 0, 2, tile_url)
+                self.web.setHtml(html_str, QUrl("about:blank"))
+        else:
+            # Not yet initialized — update the waiting screen
+            waiting_bg   = DARK_BG
+            waiting_fg   = TEXT_PRIMARY
+            waiting_text = tr("📡 Aguardando dados de posição...")
+            self.web.setHtml(
+                f"<html><body style='background:{waiting_bg};color:{waiting_fg};"
+                "font-family:monospace;display:flex;align-items:center;"
+                f"justify-content:center;height:100vh;margin:0;font-size:18px;'>"
+                f"{waiting_text}</body></html>"
+            )
 
     def set_traceroute_callback(self, fn):
         """Regista callback para quando o utilizador clica em 'Traceroute' no popup do mapa."""
@@ -549,7 +604,7 @@ class MapWidget(QWidget):
     def _on_tr_all_toggled(self, checked: bool):
         """Botão 'Mostrar todas': ON → marca todos os itens; OFF → desmarca todos."""
         self._tr_show_all = checked
-        self.btn_tr_all.setText("◉  Mostrar todas" if checked else "○  Mostrar todas")
+        self.btn_tr_all.setText(tr("◉  Mostrar todas") if checked else tr("○  Mostrar todas"))
 
         # Actualiza checkboxes de todos os itens sem disparar _on_tr_item_changed
         self._tr_blocking_signals = True
@@ -581,7 +636,7 @@ class MapWidget(QWidget):
         # Actualiza botão sem disparar o seu slot
         self.btn_tr_all.blockSignals(True)
         self.btn_tr_all.setChecked(all_checked)
-        self.btn_tr_all.setText("◉  Mostrar todas" if all_checked else "○  Mostrar todas")
+        self.btn_tr_all.setText(tr("◉  Mostrar todas") if all_checked else tr("○  Mostrar todas"))
         self.btn_tr_all.blockSignals(False)
 
         if none_checked:
@@ -594,9 +649,8 @@ class MapWidget(QWidget):
         if not self._tr_records:
             return
         reply = QMessageBox.question(
-            self, "Limpar lista de traceroutes",
-            f"Tem a certeza que deseja remover todos os {len(self._tr_records)} "
-            f"traceroute(s) da lista?\n\nAs linhas de rota no mapa também serão removidas.",
+            self, tr("Limpar lista de traceroutes"),
+            tr("confirm_clear_traceroute", n=len(self._tr_records)),
             QMessageBox.Yes | QMessageBox.Cancel,
             QMessageBox.Cancel,
         )
@@ -608,7 +662,7 @@ class MapWidget(QWidget):
         self._tr_list_widget.clear()
         self._tr_blocking_signals = False
         self.btn_tr_all.setChecked(True)
-        self.btn_tr_all.setText("◉  Mostrar todas")
+        self.btn_tr_all.setText(tr("◉  Mostrar todas"))
         self._clear_traceroute_js()
 
     def show_traceroute_on_map(self, forward_edges: list, back_edges: list,
@@ -807,12 +861,12 @@ class MapWidget(QWidget):
             lb, lob = pos(b)
             if la is None or lb is None:
                 continue
-            snr_str   = f"{snr:+.1f} dB" if snr != 0.0 else "SNR desconhecido"
+            snr_str   = f"{snr:+.1f} dB" if snr != 0.0 else tr("SNR desconhecido")
             dir_arrow = "→" if direction == 'ida' else "←"
             skip_str  = ""
             if skipped:
-                skip_str = f"\n⚠ Via (sem GPS): {', '.join(node_info(s) for s in skipped)}"
-            dir_label = "Ida" if direction == 'ida' else "Volta"
+                skip_str = f"\n⚠ {tr('Via (sem GPS)')}: {', '.join(node_info(s) for s in skipped)}"
+            dir_label = tr("Ida") if direction == 'ida' else tr("Volta")
             tip = (f"{dir_arrow} {dir_label}: {node_info(a)}  {dir_arrow}  {node_info(b)}"
                    f"  |  SNR: {snr_str}{skip_str}")
             col = '#00cc44' if direction == 'ida' else '#007a29'
@@ -919,7 +973,7 @@ class MapWidget(QWidget):
         self._tr_list_widget.clear()
         self._tr_blocking_signals = False
         self.btn_tr_all.setChecked(True)
-        self.btn_tr_all.setText("◉  Mostrar todas")
+        self.btn_tr_all.setText(tr("◉  Mostrar todas"))
         self._clear_traceroute_js()
 
 
@@ -965,8 +1019,8 @@ class MapWidget(QWidget):
                 if key in seen:
                     continue
                 seen.add(key)
-                snr_str = f"{snr:+.1f} dB" if snr != 0.0 else "SNR desconhecido"
-                tip = (f"🔗 Vizinhos: {name(from_id)}  ↔  {name(nb_id)}"
+                snr_str = f"{snr:+.1f} dB" if snr != 0.0 else tr("SNR desconhecido")
+                tip = (f"{tr('🔗 Vizinhos: {a}  ↔  {b}', a=name(from_id), b=name(nb_id))}"
                        f"  |  SNR: {snr_str}")
                 segments.append({
                     'lat1': p_a[0], 'lon1': p_a[1],
