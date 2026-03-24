@@ -296,7 +296,9 @@ class MetricsDataMixin:
                        self._battery.get(nid)] for nid,cnt in top]
         return {"total_pkts":total_pkts,"n_active":len(active_nids),"ppm":ppm,
                 "snr_avg":snr_avg,"hops_avg":hops_avg,"ch_avg":ch_avg,"air_avg":air_avg,
-                "delivery":delivery,"table_rows":table_rows,"now":self._now_str()}
+                "delivery":delivery,"table_rows":table_rows,"now":self._now_str(),
+                "unit_nos": " " + tr("nós"),
+                "now_label": tr("Actualizado:")}
 
     def _data_channel(self) -> dict:
         duty = {nid: round(min(a*6,100.0),2) for nid,a in self._air_tx.items()}
@@ -311,7 +313,10 @@ class MetricsDataMixin:
             dc=duty.get(nid,round(min(air*6,100.0),2))
             rows.append([nid, self._name(nid), round(ch,1), round(air,2), dc])
         return {"duty_avg":duty_avg,"air_avg":air_avg,"ch_net_avg":ch_net_avg,
-                "ts_labels":ts_labels,"ts_vals":ts_vals,"rows":rows,"now":self._now_str()}
+                "ts_labels":ts_labels,"ts_vals":ts_vals,"rows":rows,"now":self._now_str(),
+                "lbl_exceed": tr("🚨 Excede limite"),
+                "lbl_warn":   tr("⚠ Atenção"),
+                "lbl_ok":     "✅ OK"}
 
     def _name(self, nid: str) -> str:
         """Devolve o nome curto do nó se disponível, senão o ID."""
@@ -334,31 +339,31 @@ class MetricsDataMixin:
 
         # ── Análise da distribuição ──────────────────────────────────────
         lines.append(
-            f"<b>Distribuição de qualidade</b> em {n} pacotes: "
-            f"<span style='color:#39d353'>{pct_exc}% excelente (≥8dB)</span> · "
-            f"<span style='color:#56d364'>{pct_good}% bom (5–8dB)</span> · "
-            f"<span style='color:#f0883e'>{pct_marg}% marginal (0–5dB)</span> · "
-            f"<span style='color:#f85149'>{pct_weak}% fraco (&lt;0dB)</span>"
+            f"<b>{tr('Distribuição de qualidade em {n} pacotes:', n=n)}</b> "
+            f"<span style='color:#39d353'>{pct_exc}% {tr('excelente')} (≥8dB)</span> · "
+            f"<span style='color:#56d364'>{pct_good}% {tr('bom')} (5–8dB)</span> · "
+            f"<span style='color:#f0883e'>{pct_marg}% {tr('marginal')} (0–5dB)</span> · "
+            f"<span style='color:#f85149'>{pct_weak}% {tr('fraco')} (&lt;0dB)</span>"
         )
 
         # ── Avaliação global ─────────────────────────────────────────────
         if pct_ok >= 80:
-            lines.append("✅ <b>Rede em excelentes condições RF.</b> A grande maioria dos pacotes chega com sinal forte.")
+            lines.append(tr("✅ Rede em excelentes condições RF. A grande maioria dos pacotes chega com sinal forte."))
         elif pct_ok >= 60:
-            lines.append("✅ <b>Qualidade RF boa.</b> A maioria das ligações é estável, com algumas margens.")
+            lines.append(tr("✅ Qualidade RF boa. A maioria das ligações é estável, com algumas margens."))
         elif pct_ok >= 40:
-            lines.append("⚠️ <b>Qualidade RF moderada.</b> Uma parte significativa dos pacotes está em zona marginal — risco de perda em condições adversas.")
+            lines.append(tr("⚠️ Qualidade RF moderada."))
         else:
-            lines.append("🚨 <b>Qualidade RF fraca.</b> Mais de 60% dos pacotes chegam com sinal deficiente. Reveja antenas e posicionamento.")
+            lines.append(tr("🚨 Qualidade RF fraca."))
 
         # ── SNR P10 (pior 10%) ───────────────────────────────────────────
         if snr_p10 is not None:
             if snr_p10 < -10:
-                lines.append(f"⚠️ <b>Pior decil:</b> SNR ≤ {snr_p10} dB — algumas ligações estão severamente degradadas, possivelmente com perda de pacotes frequente.")
+                lines.append(tr("⚠️ Pior decil SNR fraco", snr_p10=snr_p10))
             elif snr_p10 < 0:
-                lines.append(f"ℹ️ <b>Pior decil:</b> SNR ≤ {snr_p10} dB — ligações marginais no extremo da cobertura.")
+                lines.append(tr("ℹ️ Pior decil SNR marginal", snr_p10=snr_p10))
             else:
-                lines.append(f"✅ <b>Pior decil:</b> SNR ≥ {snr_p10} dB — mesmo os piores percursos têm sinal razoável.")
+                lines.append(tr("✅ Pior decil SNR ok", snr_p10=snr_p10))
 
         # ── Análise de hops ──────────────────────────────────────────────
         if hops_values:
@@ -367,7 +372,7 @@ class MetricsDataMixin:
             pct_1hop   = round(hops_values.count(1) / len(hops_values) * 100)
             max_hops   = max(hops_values)
             lines.append(
-                f"<b>Topologia:</b> {pct_direct}% directos · {pct_1hop}% a 1 hop · média {avg_hops:.1f} hops · máximo {max_hops} hops."
+                tr("topologia", pct_direct=f"{pct_direct:.0f}", pct_1hop=f"{pct_1hop:.0f}", avg_hops=avg_hops, max_hops=max_hops)
             )
             if avg_hops > 2.5:
                 lines.append(tr("⚠️ Média de hops elevada"))
@@ -376,11 +381,11 @@ class MetricsDataMixin:
 
         # ── Conclusão ────────────────────────────────────────────────────
         if pct_ok >= 70 and (not hops_values or sum(hops_values)/len(hops_values) < 2):
-            lines.append("<br><b>Conclusão:</b> Rede RF saudável e bem dimensionada. 🟢")
+            lines.append(tr("conclusao_verde"))
         elif pct_ok >= 50:
-            lines.append("<br><b>Conclusão:</b> Rede funcional com oportunidades de melhoria. Monitorize em períodos de maior tráfego. 🟡")
+            lines.append(tr("conclusao_amarela"))
         else:
-            lines.append("<br><b>Conclusão:</b> Qualidade RF abaixo do esperado. Reveja infraestrutura de antenas, posicionamento e modo de radio configurado. 🔴")
+            lines.append(tr("conclusao_vermelha"))
 
         return "<br>".join(lines)
 
@@ -403,7 +408,8 @@ class MetricsDataMixin:
         return {"n":n, "snr_avg":snr_avg, "snr_med":snr_med, "snr_p10":snr_p10,
                 "snr_labels":snr_labels,"snr_counts":snr_counts,
                 "hop_labels":hop_labels,"hop_counts":hop_counts,
-                "assessment": assessment}
+                "assessment": assessment,
+                "unit_amostras": tr("amostras")}
 
     def _data_traffic(self) -> dict:
         now = time.time()

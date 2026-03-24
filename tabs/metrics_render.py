@@ -105,13 +105,15 @@ class MetricsRenderMixin:
             color = "green" if val < self.CH_UTIL_OK else ("orange" if val < self.CH_UTIL_WARN else "red")
             bar_color = "#39d353" if val < self.CH_UTIL_OK else ("#f0883e" if val < self.CH_UTIL_WARN else "#f85149")
             pct = min(int(val), 100)
-            return f'''<div class="card"><h3>Utiliz. Canal (avg)</h3>
+            _ch_label = tr("Utiliz. Canal (avg)")
+            _ch_sub   = tr("<25% óptimo · <50% aceitável · >50% crítico")
+            return (f'''<div class="card"><h3>{_ch_label}</h3>
               <div id="ov-chutil" class="kpi {color}">{val}%</div>
               <div class="bar-wrap"><div class="bar-bg">
               <div class="bar-fill" style="width:{pct}%;background:{bar_color}"></div>
               </div></div>
-              <div class="kpi-sub">&lt;25% óptimo · &lt;50% aceitável · &gt;50% crítico</div>
-            </div>'''
+              <div class="kpi-sub">{_ch_sub}</div>
+            </div>''')
 
         # Tabela top nós por pacotes
         nid_counts = {}
@@ -123,13 +125,13 @@ class MetricsRenderMixin:
             f"<td>{round(self._ch_util.get(nid, 0), 1)}%</td>"
             f"<td>{self._battery.get(nid, '—')}{'%' if self._battery.get(nid) is not None else ''}</td></tr>"
             for nid, cnt in top
-        ) or "<tr><td colspan='4' class='no-data'>Sem dados ainda</td></tr>"
+        ) or f"<tr><td colspan='4' class='no-data'>{tr('Sem dados ainda')}</td></tr>"
 
         body = f"""
-<div class="subtitle">Resumo da sessão · Actualizado: {self._now_str()}</div>
+<div class="subtitle">{tr('Resumo da sessão · Actualizado: {hora}', hora=self._now_str())}</div>
 <div class="grid-3">
   {kpi(total_pkts, "", tr("Total Pacotes"), "blue", "ov-pkts")}
-  {kpi(n_active, " nós", tr("Nós Activos (2h)"), "green", "ov-active")}
+  {kpi(n_active, " " + tr("nós"), tr("Nós Activos (2h)"), "green", "ov-active")}
   {kpi(ppm, "/min", tr("Pacotes/min"), "", "ov-ppm")}
 </div>
 <div class="grid-3">
@@ -142,10 +144,10 @@ class MetricsRenderMixin:
   {kpi(air_avg, "%", tr("Airtime TX (avg)"), "green" if air_avg and air_avg < 10 else "orange", "ov-air")}
 </div>
 <div class="card" style="margin-top:16px">
-  <h3>Top Nós por Pacotes</h3>
-  <table><tr><th>ID</th><th>Nome</th><th>Pacotes</th><th>Ch. Util.</th><th>Bateria</th></tr><tbody id="ov-node-tbody">{rows}</tbody></table>
+  <h3>{tr("Top Nós por Pacotes")}</h3>
+  <table><tr><th>ID</th><th>{tr("Nome")}</th><th>{tr("Pacotes")}</th><th>Ch. Util.</th><th>{tr("Bateria")}</th></tr><tbody id="ov-node-tbody">{rows}</tbody></table>
 </div>
-<div class="updated" id="ov-updated">Sessão iniciada · {datetime.fromtimestamp(self._start_time).strftime('%H:%M:%S %d/%m/%Y')} · Actualizado: {self._now_str()}</div>
+<div class="updated" id="ov-updated">{tr('Sessão iniciada')} · {datetime.fromtimestamp(self._start_time).strftime('%H:%M:%S %d/%m/%Y')} · {tr('Actualizado:')} {self._now_str()}</div>
 <script>
 window._metricsUpdateData = function(d) {{
   function kpiColor(val, thresholds) {{
@@ -161,7 +163,7 @@ window._metricsUpdateData = function(d) {{
     var e=document.getElementById(id); if(e) e.className='kpi '+(cls||'')+' ov-kpi';
   }}
   setKpi('ov-pkts', d.total_pkts, '');
-  setKpi('ov-active', d.n_active, ' nós');
+  setKpi('ov-active', d.n_active, d.unit_nos||' nós');
   setKpi('ov-ppm', d.ppm, '/min');
   setKpi('ov-snr', d.snr_avg, ' dB');
   setKpiClass('ov-snr', d.snr_avg!==null&&d.snr_avg>=0?'green':'orange');
@@ -172,7 +174,7 @@ window._metricsUpdateData = function(d) {{
   setKpiClass('ov-chutil', d.ch_avg===null?'':d.ch_avg<25?'green':d.ch_avg<50?'orange':'red');
   setKpi('ov-air', d.air_avg, '%');
   setKpiClass('ov-air', d.air_avg!==null&&d.air_avg<10?'green':'orange');
-  var e=document.getElementById('ov-updated'); if(e) e.textContent='Actualizado: '+d.now;
+  var e=document.getElementById('ov-updated'); if(e) e.textContent=''+d.now_label+': '+d.now;
   var tb=document.getElementById('ov-node-tbody');
   if(tb && d.table_rows && d.table_rows.length) {{
     var h='';
@@ -185,7 +187,7 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("📊 Visão Geral", body)
+        return self._base_html(tr("📊 Visão Geral"), body)
 
     # ── 2. Canal & Airtime ────────────────────────────────────────────────
     # Limites de duty cycle horário (EU_433 / EU_868 — ETSI EN300.220)
@@ -194,8 +196,8 @@ window._metricsUpdateData = function(d) {{
 
     def _html_channel(self) -> str:
         if not self._ch_util and not self._ch_util_ts and not self._air_tx:
-            body = '<div class="no-data">⏳ Aguardando dados de telemetria (TELEMETRY_APP)...<br><br>Os nós devem ter o módulo de telemetria activado.</div>'
-            return self._base_html("📡 Canal & Airtime", body)
+            body = f'<div class="no-data">{tr("⏳ Aguardando dados de telemetria (TELEMETRY_APP)...")}<br><br>{tr("Os nós devem ter o módulo de telemetria activado.")}</div>'
+            return self._base_html(tr("📡 Canal & Airtime"), body)
 
         # Hourly Duty Cycle estimado: airUtilTx (10 min) × 6 = estimativa 1h
         # airUtilTx é uma métrica POR NÓ (tx daquele nó).
@@ -215,7 +217,7 @@ window._metricsUpdateData = function(d) {{
         def duty_status(dc):
             if dc >= self.DUTY_CYCLE_LIMIT_EU: return "red",    tr("🚨 LIMITE EXCEDIDO")
             if dc >= self.DUTY_CYCLE_WARN_EU:  return "orange", tr("⚠ Próximo do limite")
-            return "green", "✅ Normal"
+            return "green", tr("✅ Óptimo (<25%)")
 
         # Tabela por nó
         rows = ""
@@ -241,7 +243,7 @@ window._metricsUpdateData = function(d) {{
                 f"<td style='font-size:11px'>{dc_label}</td></tr>"
             )
         if not rows:
-            rows = "<tr><td colspan='5' class='no-data'>Sem dados</td></tr>"
+            rows = f"<tr><td colspan='5' class='no-data'>{tr('Sem dados')}</td></tr>"
 
         # KPI: pior nó (mais relevante para conformidade EU)
         # KPI principal: channelUtilization médio da rede
@@ -251,17 +253,17 @@ window._metricsUpdateData = function(d) {{
             ch_color = "green" if ch_net_avg < self.CH_UTIL_OK else ("orange" if ch_net_avg < self.CH_UTIL_WARN else "red")
             ch_bar_c = {"green": "#39d353", "orange": "#f0883e", "red": "#f85149"}[ch_color]
             ch_pct   = min(int(ch_net_avg), 100)
-            ch_label = tr("✅ Óptimo (<25%)") if ch_net_avg < self.CH_UTIL_OK else ("⚠ Aceitável (<50%)" if ch_net_avg < self.CH_UTIL_WARN else "🚨 Crítico (>50%)")
+            ch_label = tr("✅ Óptimo (<25%)") if ch_net_avg < self.CH_UTIL_OK else (tr("⚠ Próximo do limite") if ch_net_avg < self.CH_UTIL_WARN else tr("🚨 LIMITE EXCEDIDO"))
             ch_kpi = (
-                f'<div class="card"><h3>Channel Utilization da Rede</h3>'
+                f'<div class="card"><h3>{tr("Channel Utilization da Rede")}</h3>'
                 f'<div id="ch-net-val" class="kpi {ch_color}">{ch_net_avg}%</div>'
                 f'<div class="bar-wrap"><div class="bar-bg">'
                 f'<div class="bar-fill" style="width:{ch_pct}%;background:{ch_bar_c}"></div></div></div>'
-                f'<div class="kpi-sub"><b>Métrica da rede</b> — airtime observado por cada nó (RX+TX de todos) · {ch_label}<br>'
-                f'Firmware atrasa envios acima de 25% · Para GPS: limite 40%</div></div>'
+                f'<div class="kpi-sub">{tr("Métrica da rede — airtime observado por cada nó (RX+TX de todos) · {ch_label}", ch_label=ch_label)}<br>'
+                f'{tr("Firmware atrasa envios acima de 25% · Para GPS: limite 40%")}</div></div>'
             )
         else:
-            ch_kpi = '<div class="card"><h3>Channel Utilization da Rede</h3><div class="kpi" style="color:#8b949e">—</div><div class="kpi-sub">Aguardando dados de telemetria...</div></div>'
+            ch_kpi = f'<div class="card"><h3>{tr("Channel Utilization da Rede")}</h3><div class="kpi" style="color:#8b949e">—</div><div class="kpi-sub">{tr("Aguardando dados de telemetria...")}</div></div>'
 
         # KPI secundário: duty cycle do pior nó (airUtilTx por nó — conformidade EU)
         if worst_dc is not None:
@@ -270,40 +272,40 @@ window._metricsUpdateData = function(d) {{
             dc_pct_w = min(int(worst_dc / self.DUTY_CYCLE_LIMIT_EU * 100), 100)
             bar_c_w  = {"green": "#39d353", "orange": "#f0883e", "red": "#f85149"}[dc_color_w]
             duty_kpi = (
-                f'<div class="card"><h3>Duty Cycle/h — Pior Nó ({worst_name})</h3>'
+                f'<div class="card"><h3>{tr("Duty Cycle/h — Pior Nó ({nome})", nome=worst_name)}</h3>'
                 f'<div id="dc-avg-val" class="kpi {dc_color_w}">{worst_dc}%</div>'
                 f'<div class="bar-wrap"><div class="bar-bg">'
                 f'<div class="bar-fill" style="width:{dc_pct_w}%;background:{bar_c_w}"></div></div></div>'
-                f'<div class="kpi-sub"><b>Métrica por nó</b> (TX daquele nó) · airUtilTx×6 · Limite EU: 10%/hora · {dc_label_w}</div></div>'
+                f'<div class="kpi-sub">{tr("Métrica por nó (TX daquele nó) · airUtilTx×6 · Limite EU: 10%/hora · {dc_label_w}", dc_label_w=dc_label_w)}</div></div>'
             )
         else:
-            duty_kpi = '<div class="card"><h3>Duty Cycle/h por Nó</h3><div class="kpi" style="color:#8b949e">—</div><div class="kpi-sub">Aguardando dados de airUtilTx...</div></div>'
+            duty_kpi = f'<div class="card"><h3>{tr("Duty Cycle/h por Nó")}</h3><div class="kpi" style="color:#8b949e">—</div><div class="kpi-sub">{tr("Aguardando dados de airUtilTx...")}</div></div>'
 
         air_avg = round(sum(self._air_tx.values()) / len(self._air_tx), 2) if self._air_tx else None
         air_color = "green" if air_avg and air_avg < 10 else ("orange" if air_avg else "")
         air_kpi = (
-            f'<div class="card"><h3>Airtime TX (10 min, avg)</h3>'
+            f'<div class="card"><h3>{tr("Airtime TX (10 min, avg)")}</h3>'
             f'<div class="kpi {air_color}">{air_avg if air_avg is not None else "—"}'
             f'{"%" if air_avg is not None else ""}</div>'
-            f'<div class="kpi-sub">Média de TX de todos os nós nos últimos 10 min</div></div>'
+            f'<div class="kpi-sub">{tr("Média de TX de todos os nós nos últimos 10 min")}</div></div>'
         )
 
         n_ts = len(ts_vals) or 1
         body = f"""
-<div class="subtitle">Canal LoRa · Airtime TX · Hourly Duty Cycle · {self._now_str()}</div>
+<div class="subtitle">{tr("Canal LoRa · Airtime TX · Hourly Duty Cycle · {hora}", hora=self._now_str())}</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
-  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
+  <span style="color:#39d353;font-size:12px;font-weight:bold">{tr("🌐 Métrica da Rede")}</span><span style="color:#8b949e;font-size:11px"> {tr("network_metric_desc")}</span>
 </div>
 <div class="grid-3">{ch_kpi}{duty_kpi}{air_kpi}</div>
 <div class="card" style="margin-top:16px">
-  <h3>Channel Utilization ao Longo do Tempo</h3>
+  <h3>{tr("Channel Utilization ao Longo do Tempo")}</h3>
   <div class="chart-wrap-lg"><canvas id="chChart"></canvas></div>
 </div>
 <div class="card" style="margin-top:16px">
-  <h3>Por Nó — Ch. Util · Airtime TX · Duty Cycle/h</h3>
-  <table><tr><th>ID</th><th>Nome</th><th>Ch. Util.</th><th>Air TX (10m)</th><th>Duty Cycle/h</th><th>Estado</th></tr><tbody id="ch-node-tbody">{rows}</tbody></table>
+  <h3>{tr("Por Nó — Ch. Util · Airtime TX · Duty Cycle/h")}</h3>
+  <table><tr><th>ID</th><th>{tr("Nome")}</th><th>Ch. Util.</th><th>Air TX (10m)</th><th>Duty Cycle/h</th><th>{tr("Estado")}</th></tr><tbody id="ch-node-tbody">{rows}</tbody></table>
   <div style="color:#8b949e;font-size:10px;margin-top:8px;padding-top:8px;border-top:1px solid #21262d">
-    ℹ️ Duty cycle horário estimado = airUtilTx × 6. Limite EU_433/EU_868: 10%/hora (ETSI EN300.220).
+    {tr("duty_cycle_note")}
   </div>
 </div>
 <script>
@@ -315,9 +317,9 @@ window._chChart = new Chart(document.getElementById('chChart'), {{
       {{ label: 'Ch. Utilization (%)', data: {json.dumps(ts_vals)},
          borderColor: '#39d353', backgroundColor: 'rgba(57,211,83,0.08)',
          fill: true, tension: 0.3, pointRadius: 2 }},
-      {{ label: 'Limite óptimo (25%)', data: Array({n_ts}).fill(25),
+      {{ label: '{tr("Limite óptimo (25%)")}'  , data: Array({n_ts}).fill(25),
          borderColor: '#f0883e', borderDash: [4,4], pointRadius: 0, fill: false }},
-      {{ label: 'Limite crítico (50%)', data: Array({n_ts}).fill(50),
+      {{ label: '{tr("Limite crítico (50%)")}'  , data: Array({n_ts}).fill(50),
          borderColor: '#f85149', borderDash: [4,4], pointRadius: 0, fill: false }},
     ]
   }},
@@ -366,20 +368,20 @@ window._metricsUpdateData = function(d) {{
             + '<td><span class="tag tag-'+dcColor+'">'+dc+'%</span>'
             + '<div class="bar-bg" style="margin-top:3px"><div class="bar-fill" style="width:'+dcPct+'%;background:'+barC+'"></div></div></td>'
             + '<td><span class="tag tag-'+dcColor+'">'
-            + (dc>=DUTY_LIMIT?'🚨 Excede limite':dc>=DUTY_WARN?'⚠ Atenção':'✅ OK')
+            + (dc>=DUTY_LIMIT?d.lbl_exceed:dc>=DUTY_WARN?d.lbl_warn:d.lbl_ok)
             + '</span></td></tr>';
     }});
     tbody.innerHTML = html;
   }}
 }};
 </script>"""
-        return self._base_html("📡 Canal & Airtime", body)
+        return self._base_html(tr("📡 Canal & Airtime"), body)
 
     # ── 3. Qualidade RF ───────────────────────────────────────────────────
     def _html_rf(self) -> str:
         if not self._snr_values and not self._hops_values:
-            body = '<div class="no-data">⏳ Aguardando pacotes RF...</div>'
-            return self._base_html("📶 Qualidade RF", body)
+            body = f'<div class="no-data">{tr("⏳ Aguardando pacotes RF...")}</div>'
+            return self._base_html(tr("📶 Qualidade RF"), body)
 
         # Histograma SNR em buckets de 2dB
         def histogram(vals, bucket=2, mn=-20, mx=14):
@@ -407,32 +409,32 @@ window._metricsUpdateData = function(d) {{
         snr_p10  = round(snr_sorted[max(0, n//10)], 1)   if n else None  # percentil 10 (pior)
 
         body = f"""
-<div class="subtitle" id="snr-n">Distribuição de SNR e hops · {len(self._snr_values)} amostras</div>
+<div class="subtitle" id="snr-n">{tr("Distribuição de SNR e hops · {n} amostras", n=len(self._snr_values))}</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
-  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
+  <span style="color:#39d353;font-size:12px;font-weight:bold">{tr("🌐 Métrica da Rede")}</span><span style="color:#8b949e;font-size:11px"> {tr("network_metric_desc")}</span>
 </div>
 <div class="grid-3">
-  <div class="card"><h3>SNR Médio</h3>
+  <div class="card"><h3>{tr("SNR Médio")}</h3>
     <div id="snr-avg" class="kpi {'green' if snr_avg and snr_avg>=5 else 'orange' if snr_avg and snr_avg>=0 else 'red'}">{snr_avg if snr_avg is not None else '—'} dB</div></div>
-  <div class="card"><h3>SNR Mediano</h3>
+  <div class="card"><h3>{tr("SNR Mediano")}</h3>
     <div id="snr-med" class="kpi">{snr_med if snr_med is not None else '—'} dB</div></div>
-  <div class="card"><h3>SNR P10 (pior 10%)</h3>
+  <div class="card"><h3>{tr("SNR P10 (pior 10%)")}</h3>
     <div id="snr-p10" class="kpi red">{snr_p10 if snr_p10 is not None else '—'} dB</div></div>
 </div>
 <div class="grid">
   <div class="card">
-    <h3>Distribuição SNR (dB)</h3>
+    <h3>{tr("Distribuição SNR (dB)")}</h3>
     <div class="chart-wrap"><canvas id="snrChart"></canvas></div>
   </div>
   <div class="card">
-    <h3>Distribuição de Hops</h3>
+    <h3>{tr("Distribuição de Hops")}</h3>
     <div class="chart-wrap"><canvas id="hopsChart"></canvas></div>
   </div>
 </div>
 <div class="card" id="assessment-card" style="margin-top:16px;border-left:4px solid {
 '#39d353' if snr_avg and snr_avg >= 5 else '#f0883e' if snr_avg and snr_avg >= 0 else '#f85149'
 }">
-  <h3>Avaliação da Qualidade RF</h3>
+  <h3>{tr("Avaliação da Qualidade RF")}</h3>
   <div id="rf-assessment" style="font-size:13px;line-height:1.7;color:#e6edf3">{self._rf_assessment(snr_avg, snr_med, snr_p10, self._hops_values)}</div>
 </div>
 <script>
@@ -440,7 +442,7 @@ window._snrChart = new Chart(document.getElementById('snrChart'), {{
   type: 'bar',
   data: {{
     labels: {json.dumps(snr_labels)},
-    datasets: [{{ label: 'Pacotes', data: {json.dumps(snr_counts)},
+    datasets: [{{ label: '{tr("Pacotes")}', data: {json.dumps(snr_counts)},
       backgroundColor: {json.dumps(
           ['rgba(248,81,73,0.7)' if i < 5 else 'rgba(240,136,62,0.7)' if i < 10 else 'rgba(57,211,83,0.7)'
            for i in range(len(snr_counts))])},
@@ -460,7 +462,7 @@ window._hopsChart = new Chart(document.getElementById('hopsChart'), {{
   type: 'bar',
   data: {{
     labels: {json.dumps(hop_labels)},
-    datasets: [{{ label: 'Pacotes', data: {json.dumps(hop_counts)},
+    datasets: [{{ label: '{tr("Pacotes")}', data: {json.dumps(hop_counts)},
       backgroundColor: 'rgba(88,166,255,0.7)', borderRadius: 3 }}]
   }},
   options: {{
@@ -481,7 +483,7 @@ window._metricsUpdateData = function(d) {{
   set('snr-avg', d.snr_avg !== null ? d.snr_avg + ' dB' : '—');
   set('snr-med', d.snr_med !== null ? d.snr_med + ' dB' : '—');
   set('snr-p10', d.snr_p10 !== null ? d.snr_p10 + ' dB' : '—');
-  set('snr-n', d.n + ' amostras');
+  set('snr-n', d.n + ' ' + (d.unit_amostras||'amostras'));
   if(d.assessment) setHtml('rf-assessment', d.assessment);
   if(window._snrChart && d.snr_counts.length > 0) {{
     window._snrChart.data.labels = d.snr_labels;
@@ -495,14 +497,14 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("📶 Qualidade RF", body)
+        return self._base_html(tr("📶 Qualidade RF"), body)
 
     # ── 4. Tráfego ────────────────────────────────────────────────────────
     def _html_traffic(self) -> str:
         now = time.time()
         if not self._packets:
             body = '<div class="no-data">⏳ Aguardando pacotes...</div>'
-            return self._base_html("📦 Tráfego de Rede", body)
+            return self._base_html(tr("📦 Tráfego de Rede"), body)
 
         label_map = {
             'TEXT_MESSAGE_APP':       '💬 Mensagem',
@@ -699,7 +701,7 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("📦 Tráfego de Rede", body)
+        return self._base_html(tr("📦 Tráfego de Rede"), body)
 
     # ── 5. Nós & Bateria ──────────────────────────────────────────────────
     def _html_nodes(self) -> str:
@@ -793,7 +795,7 @@ window._hwChart = new Chart(document.getElementById('hwChart'), {{
         body = f"""
 <div class="subtitle">Saúde dos nós, baterias e hardware · {self._now_str()}</div>
 <div class="card" style="margin-bottom:16px;border-left:4px solid #39d353;padding:8px 14px">
-  <span style="color:#39d353;font-size:12px;font-weight:bold">🌐 Métrica da Rede</span><span style="color:#8b949e;font-size:11px"> — os dados abaixo são observados passivamente a partir de todos os pacotes recebidos pelo nó local. Refletem o estado de toda a rede visível, não apenas o nó local.</span>
+  <span style="color:#39d353;font-size:12px;font-weight:bold">{tr("🌐 Métrica da Rede")}</span><span style="color:#8b949e;font-size:11px"> {tr("network_metric_desc")}</span>
 </div>
 <div class="grid-3">
   <div class="card"><h3>Nós Activos (2h)</h3>
@@ -875,7 +877,7 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("🔋 Nós & Bateria", body)
+        return self._base_html(tr("🔋 Nós & Bateria"), body)
 
     # ── 6. Fiabilidade ────────────────────────────────────────────────────
     def _html_latency(self) -> str:
@@ -884,7 +886,7 @@ window._metricsUpdateData = function(d) {{
             body = ('<div class="no-data">⏳ Sem dados de latência ainda.<br><br>'
                     'Envie mensagens com wantAck=True para medir o RTT '
                     '(tempo entre envio e ACK do destinatário).</div>')
-            return self._base_html("⏱ Latência (RTT)", body)
+            return self._base_html(tr("⏱ Latência (RTT)"), body)
 
         def kpi(val, unit, label, color="", kid="", note=""):
             v = f"{val}{unit}" if val is not None else "—"
@@ -952,7 +954,7 @@ window._metricsUpdateData = function(d) {{
   // Actualização via dados do servidor — rtt chart actualizado no próximo reload
 }};
 </script>"""
-        return self._base_html("⏱ Latência (RTT)", body)
+        return self._base_html(tr("⏱ Latência (RTT)"), body)
 
     def _html_reliability(self) -> str:
         now = time.time()
@@ -1179,7 +1181,7 @@ window._metricsUpdateData = function(d) {{
   }}
 }};
 </script>"""
-        return self._base_html("✅ Fiabilidade", body)
+        return self._base_html(tr("✅ Fiabilidade"), body)
 
     # ── 8. Vizinhança ─────────────────────────────────────────────────────
     def _html_neighbors(self) -> str:
@@ -1202,7 +1204,7 @@ window._metricsUpdateData = function(d) {{
                 '<p style="margin-top:10px;color:#8b949e;font-size:11px">ℹ O módulo deteta vizinhos mesmo que o nó vizinho não o tenha activo (firmware ≥ 2.3.2).</p>'
                 '</div>'
             )
-            return self._base_html("🔗 Vizinhança", body)
+            return self._base_html(tr("🔗 Vizinhança"), body)
 
         d = self._data_neighbors()
         rows_html = ""
@@ -1241,7 +1243,7 @@ window._metricsUpdateData = function(d) {{
   // Tabela de vizinhos não tem update incremental — actualiza no próximo render
 }};
 </script>"""
-        return self._base_html("🔗 Vizinhança", body)
+        return self._base_html(tr("🔗 Vizinhança"), body)
 
     # ── 9. Alcance & Links ────────────────────────────────────────────────
     def _html_range_links(self) -> str:
@@ -1267,7 +1269,7 @@ window._metricsUpdateData = function(d) {{
                 '<p style="margin-top:8px;color:#8b949e;font-size:11px">ℹ O cálculo de alcance usa a fórmula de Haversine sobre as coordenadas GPS de cada par de vizinhos reportados.</p>'
                 '</div>'
             )
-            return self._base_html("📏 Alcance & Links", body)
+            return self._base_html(tr("📏 Alcance & Links"), body)
 
         def kpi(val, unit, label, color="", kid="", note=""):
             v = f"{val}{unit}" if val is not None else "—"
@@ -1314,7 +1316,7 @@ window._metricsUpdateData = function(d) {{
   </table>
 </div>
 <script>window._metricsUpdateData=function(d){{}};</script>"""
-        return self._base_html("📏 Alcance & Links", body)
+        return self._base_html(tr("📏 Alcance & Links"), body)
 
     # ── 10. Intervalos entre pacotes ─────────────────────────────────────
     def _html_intervals(self) -> str:
@@ -1322,7 +1324,7 @@ window._metricsUpdateData = function(d) {{
         if not d["rows"]:
             body = ('<div class="no-data">⏳ Sem dados de intervalos ainda.<br><br>'
                     'Requer pelo menos 2 pacotes por nó para calcular o intervalo médio.</div>')
-            return self._base_html("⏰ Intervalos", body)
+            return self._base_html(tr("⏰ Intervalos"), body)
 
         rows_html = ""
         for nid, nid_n, avg, mn, mx, count in d["rows"]:
@@ -1359,5 +1361,5 @@ window._metricsUpdateData = function(d) {{
   </div>
 </div>
 <script>window._metricsUpdateData=function(d){{}};</script>"""
-        return self._base_html("⏰ Intervalos", body)
+        return self._base_html(tr("⏰ Intervalos"), body)
 

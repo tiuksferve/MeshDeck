@@ -481,9 +481,11 @@ _STRINGS: dict = {
     "📊 Visão Geral":               {"pt": "📊 Visão Geral",                    "en": "📊 Overview"},
     "📡 Canal & Airtime":           {"pt": "📡 Canal & Airtime",                "en": "📡 Channel & Airtime"},
     "📶 Qualidade RF":              {"pt": "📶 Qualidade RF",                   "en": "📶 RF Quality"},
+    "📦 Tráfego de Rede":           {"pt": "📦 Tráfego de Rede",             "en": "📦 Network Traffic"},
     "📦 Tráfego":                   {"pt": "📦 Tráfego",                        "en": "📦 Traffic"},
     "🔋 Nós & Bateria":             {"pt": "🔋 Nós & Bateria",                  "en": "🔋 Nodes & Battery"},
     "✅ Fiabilidade":               {"pt": "✅ Fiabilidade",                    "en": "✅ Reliability"},
+    "⏱ Latência (RTT)":            {"pt": "⏱ Latência (RTT)",               "en": "⏱ Latency (RTT)"},
     "⏱ Latência":                  {"pt": "⏱ Latência",                       "en": "⏱ Latency"},
     "🔗 Vizinhança":                {"pt": "🔗 Vizinhança",                     "en": "🔗 Neighbourhood"},
     "📏 Alcance & Links":           {"pt": "📏 Alcance & Links",                "en": "📏 Range & Links"},
@@ -496,6 +498,9 @@ _STRINGS: dict = {
                                      "en": "— the data below refers exclusively to the local node (sent messages and their ACK/NAK). Other network nodes do not contribute to these values."},
 
     # ── Métricas — KPIs e textos HTML ────────────────────────────────────────
+    "nós":                          {"pt": "nós",                            "en": "nodes"},
+    "Sessão iniciada":              {"pt": "Sessão iniciada",                "en": "Session started"},
+    "ID":                           {"pt": "ID",                             "en": "ID"},
     "Resumo da sessão · Actualizado: {hora}":
                                     {"pt": "Resumo da sessão · Actualizado: {hora}",
                                      "en": "Session summary · Updated: {hora}"},
@@ -572,6 +577,12 @@ _STRINGS: dict = {
     "Distribuição SNR (dB)":        {"pt": "Distribuição SNR (dB)",             "en": "SNR Distribution (dB)"},
     "Distribuição de Hops":         {"pt": "Distribuição de Hops",              "en": "Hop Distribution"},
     "Avaliação da Qualidade RF":    {"pt": "Avaliação da Qualidade RF",         "en": "RF Quality Assessment"},
+    "excelente":                    {"pt": "excelente",                       "en": "excellent"},
+    "bom":                          {"pt": "bom",                             "en": "good"},
+    "marginal":                     {"pt": "marginal",                        "en": "marginal"},
+    "fraco":                        {"pt": "fraco",                           "en": "weak"},
+    "amostras":                     {"pt": "amostras",                        "en": "samples"},
+    "Distribuição de qualidade em {n} pacotes:": {"pt": "Distribuição de qualidade em {n} pacotes:", "en": "Quality distribution over {n} packets:"},
     "⏳ Aguardando dados suficientes para avaliação...":
                                     {"pt": "⏳ Aguardando dados suficientes para avaliação...",
                                      "en": "⏳ Awaiting sufficient data for assessment..."},
