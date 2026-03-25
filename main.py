@@ -1161,6 +1161,9 @@ class MainWindow(QMainWindow):
         # Retranslate messages tab headers
         if hasattr(self, "messages_tab"):
             self.messages_tab.retranslate()
+        # Retranslate config tab
+        if hasattr(self, "config_tab"):
+            self.config_tab.retranslate()
         # Retranslate map widget (theme buttons + legend)
         if hasattr(self, "map_widget"):
             self.map_widget.retranslate()

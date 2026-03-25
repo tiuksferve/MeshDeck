@@ -17,6 +17,7 @@ from meshtastic import BROADCAST_ADDR, BROADCAST_NUM
 from meshtastic.protobuf import mesh_pb2, portnums_pb2, admin_pb2
 
 from constants import logger, _BROADCAST_NUMS, _is_broadcast
+from i18n import tr
 from dialogs import _LogHandler
 
 
@@ -262,7 +263,7 @@ class MeshtasticWorker(QObject):
         o resultado real.
         """
         if not self.iface or not self._connected:
-            self.position_sent.emit(False, "Não conectado.")
+            self.position_sent.emit(False, tr("Não conectado."))
             return
         try:
 
@@ -281,7 +282,7 @@ class MeshtasticWorker(QObject):
                 )
                 sent_via_api = True
                 logger.info("send_position: enviado via localNode.setPosition()")
-                self.position_sent.emit(True, "📍 Posição enviada para a rede (via firmware).")
+                self.position_sent.emit(True, tr("📍 Posição enviada para a rede (via firmware)."))
                 return
             except TypeError:
                 # Versões mais antigas da lib exigem lat/lon explícitos
@@ -319,13 +320,7 @@ class MeshtasticWorker(QObject):
                     logger.debug(f"send_position: não leu posição fixa da config: {cfg_err}")
 
             if not lat_i or not lon_i:
-                msg = (
-                    "O nó local não tem posição disponível.\n\n"
-                    "Verifique se:\n"
-                    "  • O GPS está activo e já adquiriu sinal, ou\n"
-                    "  • Está definida uma posição fixa em Configurações → Posição/GPS\n"
-                    "    (campos Latitude fixa / Longitude fixa)."
-                )
+                msg = tr("pos_no_coords_msg")
                 logger.warning("send_position: sem coordenadas — abortar")
                 self.position_sent.emit(False, msg)
                 return
@@ -347,13 +342,13 @@ class MeshtasticWorker(QObject):
                 wantResponse=False,
                 channelIndex=0,
             )
-            msg = f"📍 Posição enviada ({lat_i/1e7:.6f}, {lon_i/1e7:.6f})."
+            msg = tr("📍 Posição enviada ({lat}, {lon}).", lat=f"{lat_i/1e7:.6f}", lon=f"{lon_i/1e7:.6f}")
             logger.info(msg)
             self.position_sent.emit(True, msg)
 
         except Exception as e:
             logger.error(f"Erro ao enviar posição: {e}", exc_info=True)
-            self.position_sent.emit(False, f"Erro ao enviar posição: {e}")
+            self.position_sent.emit(False, tr("Erro ao enviar posição: {msg}", msg=str(e)))
 
     def send_node_info(self):
         if not self.iface or not self._connected:

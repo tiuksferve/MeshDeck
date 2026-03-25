@@ -86,6 +86,24 @@ class ChannelsTab(QWidget):
 
         self._channel_widgets: list = []
 
+    def retranslate(self):
+        """Update ChannelsTab labels after language change.
+        Channel rows are rebuilt on reload; only static buttons need updating.
+        """
+        if hasattr(self, "status_lbl"):
+            if self._iface:
+                from i18n import tr as _tr
+                loaded = self._channels
+                self.status_lbl.setText(_tr("✅  {n} canal(ais) carregados", n=len(loaded)) if loaded else "")
+            else:
+                self.status_lbl.setText(tr("⚠  Sem conexão"))
+        if hasattr(self, "btn_add") and self.btn_add:
+            self.btn_add.setText(tr("➕  Adicionar Canal"))
+        if hasattr(self, "btn_save_ch") and self.btn_save_ch:
+            self.btn_save_ch.setText(tr("💾  Guardar Alterações"))
+        if hasattr(self, "btn_reload_ch") and self.btn_reload_ch:
+            self.btn_reload_ch.setText(tr("🔄  Recarregar"))
+
     def set_interface(self, iface):
         self._iface = iface
         self._load_channels()
@@ -283,12 +301,12 @@ class _ChannelRow(QWidget):
         self.w_name = QLineEdit(name_val or "")
         self.w_name.setPlaceholderText(tr("Nome do canal"))
         self.w_name.setFixedWidth(240)
-        form.addRow(mk_lbl("Nome"), self.w_name)
+        form.addRow(mk_lbl(tr("Nome do canal")), self.w_name)
 
         self.w_role = QComboBox()
         self.w_role.addItems(["DISABLED", "PRIMARY", "SECONDARY"])
         self.w_role.setCurrentIndex(min(role_num, 2))
-        form.addRow(mk_lbl("Papel"), self.w_role)
+        form.addRow(mk_lbl(tr("Papel")), self.w_role)
 
         psk_bytes = getattr(settings, 'psk', b'') if settings else b''
         # Mostra como Base64 — formato standard das apps iOS/Android
@@ -297,7 +315,7 @@ class _ChannelRow(QWidget):
         else:
             psk_display = ''
         self.w_psk = QLineEdit(psk_display)
-        self.w_psk.setPlaceholderText("Base64 (ex: AQ==)  ou  default / none / random")
+        self.w_psk.setPlaceholderText(tr("Base64 (ex: AQ==)  ou  default / none / random"))
 
         self.w_psk_type = QComboBox()
         self.w_psk_type.addItems(["256-bit (32 bytes)", "128-bit (16 bytes)", "Default (AQ==)"])
@@ -345,7 +363,7 @@ class _ChannelRow(QWidget):
         mod_settings = getattr(settings, 'module_settings', None) if settings else None
         self.w_muted = QCheckBox(tr("Silenciar notificações (is_muted)"))
         self.w_muted.setChecked(bool(getattr(mod_settings, 'is_muted', False) if mod_settings else False))
-        form.addRow(mk_lbl("Silenciar"), self.w_muted)
+        form.addRow(mk_lbl(tr("Silenciar")), self.w_muted)
 
         pos_prec     = getattr(settings, 'module_settings', None)
         pos_prec_val = getattr(pos_prec, 'position_precision', 0) if pos_prec else 0
@@ -398,35 +416,35 @@ class _ChannelRow(QWidget):
 # ---------------------------------------------------------------------------
 MESHTASTIC_CONFIG_DEFS = {
     "localConfig.device": [
-        (tr("Papel do nó"),             "role",                    "combo",
+        ("Papel do nó",             "role",                    "combo",
          ["CLIENT","CLIENT_MUTE","CLIENT_HIDDEN","TRACKER","LOST_AND_FOUND",
           "SENSOR","TAK","TAK_TRACKER","REPEATER","ROUTER","ROUTER_CLIENT"]),
-        (tr("Retransmitir mensagens"),  "rebroadcast_mode",        "combo",
+        ("Retransmitir mensagens",  "rebroadcast_mode",        "combo",
          ["ALL","ALL_SKIP_DECODING","LOCAL_ONLY","KNOWN_ONLY","NONE"]),
         ("Serial habilitado",       "serial_enabled",          "bool",   None),
         ("Debug via serial",        "debug_log_enabled",       "bool",   None),
-        (tr("Botão GPIO"),              "button_gpio",             "spin_int",(0,39)),
+        ("Botão GPIO",              "button_gpio",             "spin_int",(0,39)),
         ("Buzzer GPIO",             "buzzer_gpio",             "spin_int",(0,39)),
-        (tr("Duplo clique alimentação"),"double_tap_as_button_press","bool",  None),
+        ("Duplo clique alimentação","double_tap_as_button_press","bool",  None),
         ("LED em heartbeat",        "led_heartbeat_disabled",  "bool",   None),
-        (tr("Intervalo broadcast NodeInfo (s)"), "node_info_broadcast_secs","spin_int",(0,604800)),
-        (tr("Fuso horário (TZ string)"),"tzdef",                   "text",   None),
+        ("Intervalo broadcast NodeInfo (s)", "node_info_broadcast_secs","spin_int",(0,604800)),
+        ("Fuso horário (TZ string)","tzdef",                   "text",   None),
         ("Disable triple-click",    "disable_triple_click",    "bool",   None),
         ("Quick chat button",       "quick_chat_button",       "bool",   None),
     ],
     "localConfig.position": [
         ("Modo GPS",                "gps_mode",                "combo",
          ["DISABLED","ENABLED","NOT_PRESENT"]),
-        (tr("Intervalo update GPS (s)"),"gps_update_interval",     "spin_int",(0,86400)),
+        ("Intervalo update GPS (s)","gps_update_interval",     "spin_int",(0,86400)),
         ("Tentativa GPS (s)",       "gps_attempt_time",        "spin_int",(0,3600)),
-        (tr("Intervalo broadcast pos (s)"),"position_broadcast_secs","spin_int",(0,86400)),
+        ("Intervalo broadcast pos (s)","position_broadcast_secs","spin_int",(0,86400)),
         ("Smart broadcast pos.",    "position_broadcast_smart_enabled","bool",None),
-        (tr("Distância mínima smart (m)"),"broadcast_smart_minimum_distance","spin_int",(0,10000)),
-        (tr("Intervalo mínimo smart (s)"),"broadcast_smart_minimum_interval_secs","spin_int",(0,3600)),
-        (tr("Latitude fixa (graus)"),   "fixed_lat",               "spin_float",(-90.0, 90.0)),
-        (tr("Longitude fixa (graus)"),  "fixed_lon",               "spin_float",(-180.0,180.0)),
-        (tr("Altitude fixa (m)"),       "fixed_alt",               "spin_int",  (-1000, 10000)),
-        (tr("Precision de posição"),    "position_flags",          "spin_int",(0,8191)),
+        ("Distância mínima smart (m)","broadcast_smart_minimum_distance","spin_int",(0,10000)),
+        ("Intervalo mínimo smart (s)","broadcast_smart_minimum_interval_secs","spin_int",(0,3600)),
+        ("Latitude fixa (graus)",   "fixed_lat",               "spin_float",(-90.0, 90.0)),
+        ("Longitude fixa (graus)",  "fixed_lon",               "spin_float",(-180.0,180.0)),
+        ("Altitude fixa (m)",       "fixed_alt",               "spin_int",  (-1000, 10000)),
+        ("Precision de posição",    "position_flags",          "spin_int",(0,8191)),
         ("Receiver GPIO",           "rx_gpio",                 "spin_int",(0,39)),
         ("Transmitter GPIO",        "tx_gpio",                 "spin_int",(0,39)),
         ("Broadcast SBAS",          "gps_accept_2d",           "bool",   None),
@@ -434,13 +452,13 @@ MESHTASTIC_CONFIG_DEFS = {
     ],
     "localConfig.power": [
         ("Modo de economia",        "is_power_saving",         "bool",   None),
-        (tr("Desligar na bateria (s)"), "on_battery_shutdown_after_secs","spin_int",(0,86400)),
+        ("Desligar na bateria (s)", "on_battery_shutdown_after_secs","spin_int",(0,86400)),
         ("Override ADC multiplicador","adc_multiplier_override","spin_float",(0.0,10.0)),
         ("Wait Bluetooth (s)",      "wait_bluetooth_secs",     "spin_int",(0,3600)),
         ("Modo SDS desligar (s)",   "sds_secs",                "spin_int",(0,86400)),
         ("Modo LS desligar (s)",    "ls_secs",                 "spin_int",(0,86400)),
-        (tr("Tempo mínimo acordado (s)"),"min_wake_secs",          "spin_int",(0,3600)),
-        (tr("INA endereço I2C bateria"),"device_battery_ina_address","spin_int",(0,127)),
+        ("Tempo mínimo acordado (s)","min_wake_secs",          "spin_int",(0,3600)),
+        ("INA endereço I2C bateria","device_battery_ina_address","spin_int",(0,127)),
         ("Powersave GPIO",          "powermon_enables",        "spin_int",(0,65535)),
     ],
     "localConfig.network": [
@@ -450,14 +468,14 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Servidor NTP",            "ntp_server",              "text",   None),
         ("Ethernet habilitada",     "eth_enabled",             "bool",   None),
         ("Modo endereçamento",      "address_mode",            "combo",  ["DHCP","STATIC"]),
-        (tr("IP estático"),             "ipv4_config.ip",          "text",   None),
+        ("IP estático",             "ipv4_config.ip",          "text",   None),
         ("Gateway",                 "ipv4_config.gateway",     "text",   None),
         ("Subnet",                  "ipv4_config.subnet",      "text",   None),
         ("DNS",                     "ipv4_config.dns",         "text",   None),
         ("RSync Server",            "rsync_server",            "text",   None),
     ],
     "localConfig.display": [
-        (tr("Ecrã ligado (s)"),         "screen_on_secs",          "spin_int",(0,3600)),
+        ("Ecrã ligado (s)",         "screen_on_secs",          "spin_int",(0,3600)),
         ("Formato GPS",             "gps_format",              "combo",
          ["DEC","DMS","UTM","MGRS","OLC","OSGR"]),
         ("Múltiplo do auto dim.",   "auto_screen_carousel_secs","spin_int",(0,3600)),
@@ -478,14 +496,14 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Modem preset",            "modem_preset",            "combo",
          ["LONG_FAST","LONG_SLOW","VERY_LONG_SLOW","MEDIUM_SLOW",
           "MEDIUM_FAST","SHORT_SLOW","SHORT_FAST","LONG_MODERATE"]),
-        (tr("Região"),                  "region",                  "combo",
+        ("Região",                  "region",                  "combo",
          ["UNSET","US","EU_433","EU_868","CN","JP","ANZ","KR","TW",
           "RU","IN","NZ_865","TH","LORA_24","UA_433","UA_868",
           "MY_433","MY_919","SG_923","PH_433","PH_868","PH_915"]),
         ("Largura de banda",        "bandwidth",               "spin_int",(0,500)),
         ("Spreading factor",        "spread_factor",           "spin_int",(7,12)),
         ("Coding rate",             "coding_rate",             "spin_int",(5,8)),
-        (tr("Offset frequência (MHz)"), "frequency_offset",        "spin_float",(-100.0,100.0)),
+        ("Offset frequência (MHz)", "frequency_offset",        "spin_float",(-100.0,100.0)),
         ("TX habilitado",           "tx_enabled",              "bool",   None),
         ("TX Power (dBm)",          "tx_power",                "spin_int",(0,30)),
         ("Hop limit",               "hop_limit",               "spin_int",(1,7)),
@@ -495,7 +513,7 @@ MESHTASTIC_CONFIG_DEFS = {
         ("RX boosted gain (SX126x)","sx126x_rx_boosted_gain",  "bool",   None),
         ("PA fan GPIO",             "pa_fan_disabled",         "bool",   None),
         ("OK para MQTT",            "config_ok_to_mqtt",       "bool",   None),
-        (tr("Número do canal (0-7)"),   "channel_num",             "spin_int",(0,7)),
+        ("Número do canal (0-7)",   "channel_num",             "spin_int",(0,7)),
     ],
     "localConfig.bluetooth": [
         ("Habilitado",              "enabled",                 "bool",   None),
@@ -508,15 +526,15 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Servidor",                "address",                 "text",   None),
         ("Utilizador",              "username",                "text",   None),
         ("Senha",                   "password",                "text",   None),
-        (tr("Encriptação habilitada"),  "encryption_enabled",      "bool",   None),
+        ("Encriptação habilitada",  "encryption_enabled",      "bool",   None),
         ("JSON habilitado",         "json_enabled",            "bool",   None),
         ("TLS habilitado",          "tls_enabled",             "bool",   None),
         ("Root topic",              "root",                    "text",   None),
         ("Proxy para cliente",      "proxy_to_client_enabled", "bool",   None),
         ("Map reporting",           "map_reporting_enabled",   "bool",   None),
-        (tr("Precisão do mapa"),        "map_report_settings.position_precision","spin_int",(0,32)),
-        (tr("Intervalo map report (s)"),"map_report_settings.publish_interval_secs","spin_int",(0,86400)),
-        (tr("Ok para MQTT (canal)"),    "ok_to_mqtt",              "bool",   None),
+        ("Precisão do mapa",        "map_report_settings.position_precision","spin_int",(0,32)),
+        ("Intervalo map report (s)","map_report_settings.publish_interval_secs","spin_int",(0,86400)),
+        ("Ok para MQTT (canal)",    "ok_to_mqtt",              "bool",   None),
     ],
     "moduleConfig.serial": [
         ("Habilitado",              "enabled",                 "bool",   None),
@@ -539,48 +557,48 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Saída GPIO",              "output",                  "spin_int",(0,39)),
         ("Saída vibra GPIO",        "output_vibra",            "spin_int",(0,39)),
         ("Saída buzzer GPIO",       "output_buzzer",           "spin_int",(0,39)),
-        (tr("Alerta para mensagem"),    "alert_message",           "bool",   None),
+        ("Alerta para mensagem",    "alert_message",           "bool",   None),
         ("Alerta msg pulso",        "alert_message_buzzer",    "bool",   None),
         ("Alerta msg vibra",        "alert_message_vibra",     "bool",   None),
         ("Alerta para bell",        "alert_bell",              "bool",   None),
         ("Alerta bell buzzer",      "alert_bell_buzzer",       "bool",   None),
         ("Alerta bell vibra",       "alert_bell_vibra",        "bool",   None),
         ("Usar PWM buzzer",         "use_pwm",                 "bool",   None),
-        (tr("Nível activo GPIO"),       "active",                  "bool",   None),
+        ("Nível activo GPIO",       "active",                  "bool",   None),
     ],
     "moduleConfig.storeForward": [
         ("Habilitado",              "enabled",                 "bool",   None),
         ("Heartbeat",               "heartbeat",               "bool",   None),
         ("Num records",             "records",                 "spin_int",(0,300)),
-        (tr("Histórico (s)"),           "history_return_window",   "spin_int",(0,86400)),
-        (tr("Max msgs histórico"),      "history_return_max",      "spin_int",(0,300)),
+        ("Histórico (s)",           "history_return_window",   "spin_int",(0,86400)),
+        ("Max msgs histórico",      "history_return_max",      "spin_int",(0,300)),
         ("É servidor S&F",          "is_server",               "bool",   None),
     ],
     "moduleConfig.rangeTest": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        (tr("Intervalo sender (s)"),    "sender",                  "spin_int",(0,86400)),
-        (tr("Guardar em CSV"),          "save",                    "bool",   None),
+        ("Intervalo sender (s)",    "sender",                  "spin_int",(0,86400)),
+        ("Guardar em CSV",          "save",                    "bool",   None),
     ],
     "moduleConfig.telemetry": [
-        (tr("Intervalo dispositivo (s)"),"device_update_interval", "spin_int",(0,86400)),
-        (tr("Intervalo ambiente (s)"),  "environment_update_interval","spin_int",(0,86400)),
-        (tr("Medição ambiente activa"), "environment_measurement_enabled","bool",None),
+        ("Intervalo dispositivo (s)","device_update_interval", "spin_int",(0,86400)),
+        ("Intervalo ambiente (s)",  "environment_update_interval","spin_int",(0,86400)),
+        ("Medição ambiente activa", "environment_measurement_enabled","bool",None),
         ("Ambiente no ecrã",        "environment_screen_enabled","bool",  None),
         ("Temperatura em Fahrenheit","environment_display_fahrenheit","bool",None),
-        (tr("Intervalo air quality (s)"),"air_quality_interval",   "spin_int",(0,86400)),
-        (tr("Air quality activo"),      "air_quality_enabled",     "bool",   None),
-        (tr("Intervalo potência (s)"),  "power_update_interval",   "spin_int",(0,86400)),
-        (tr("Medição potência activa"), "power_measurement_enabled","bool",  None),
-        (tr("Intervalo saúde (s)"),     "health_update_interval",  "spin_int",(0,86400)),
-        (tr("Saúde activo"),            "health_telemetry_enabled","bool",   None),
+        ("Intervalo air quality (s)","air_quality_interval",   "spin_int",(0,86400)),
+        ("Air quality activo",      "air_quality_enabled",     "bool",   None),
+        ("Intervalo potência (s)",  "power_update_interval",   "spin_int",(0,86400)),
+        ("Medição potência activa", "power_measurement_enabled","bool",  None),
+        ("Intervalo saúde (s)",     "health_update_interval",  "spin_int",(0,86400)),
+        ("Saúde activo",            "health_telemetry_enabled","bool",   None),
     ],
     "moduleConfig.cannedMessage": [
         # ── Campo especial: lista de mensagens (separadas por |, max 200 chars total) ──
         # Guardado via localNode.setCannedMessages(), não via writeConfig
-        (tr("Mensagens pré-definidas"), "__canned_messages__",     "canned_messages", None),
+        ("Mensagens pré-definidas", "__canned_messages__",     "canned_messages", None),
         # ── Configuração do módulo ──────────────────────────────────────────────────
         ("Habilitado",              "enabled",                 "bool",   None),
-        (tr("Enviar sinal Bell"),       "send_bell",               "bool",   None),
+        ("Enviar sinal Bell",       "send_bell",               "bool",   None),
         ("Fonte de entrada aceite", "allow_input_source",      "text",   None),
         # Rotary encoder #1
         ("Rotary encoder #1",       "rotary1_enabled",         "bool",   None),
@@ -617,12 +635,12 @@ MESHTASTIC_CONFIG_DEFS = {
     ],
     "moduleConfig.remotehardware": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        (tr("Permitir input não seg."), "allow_undefined_pin_access","bool", None),
+        ("Permitir input não seg.", "allow_undefined_pin_access","bool", None),
     ],
     "moduleConfig.neighborInfo": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        (tr("Intervalo update (s)"),    "update_interval",         "spin_int",(0,86400)),
-        (tr("Transmitir sobre LoRa"),   "transmit_over_lora",      "bool",   None),
+        ("Intervalo update (s)",    "update_interval",         "spin_int",(0,86400)),
+        ("Transmitir sobre LoRa",   "transmit_over_lora",      "bool",   None),
     ],
     "moduleConfig.ambientLighting": [
         ("Habilitado LED",          "led_state",               "bool",   None),
@@ -633,20 +651,20 @@ MESHTASTIC_CONFIG_DEFS = {
     ],
     "moduleConfig.detectionSensor": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        (tr("Intervalo mínimo send (s)"),"minimum_broadcast_secs", "spin_int",(0,86400)),
-        (tr("Intervalo estado (s)"),    "state_broadcast_secs",    "spin_int",(0,86400)),
+        ("Intervalo mínimo send (s)","minimum_broadcast_secs", "spin_int",(0,86400)),
+        ("Intervalo estado (s)",    "state_broadcast_secs",    "spin_int",(0,86400)),
         ("Usar pull-up",            "use_pullup",              "bool",   None),
         ("Nome",                    "name",                    "text",   None),
         ("Monitor GPIO",            "monitor_pin",             "spin_int",(0,39)),
-        (tr("Tipo de detecção"),        "detection_triggered_high","bool",   None),
+        ("Tipo de detecção",        "detection_triggered_high","bool",   None),
     ],
     "moduleConfig.paxcounter": [
         ("Habilitado",              "enabled",                 "bool",   None),
-        (tr("Intervalo Paxcount (s)"),  "paxcounter_update_interval","spin_int",(0,86400)),
+        ("Intervalo Paxcount (s)",  "paxcounter_update_interval","spin_int",(0,86400)),
     ],
     "localConfig.security": [
         ("Chave pública (readonly)","public_key",              "readonly",None),
-        (tr("Admin via canal legacy"),  "admin_channel_enabled",   "bool",   None),
+        ("Admin via canal legacy",  "admin_channel_enabled",   "bool",   None),
         ("Managed mode",            "is_managed",              "bool",   None),
         ("Modo serial (debug)",     "serial_enabled",          "bool",   None),
         ("Log debug via serial",    "debug_log_api_enabled",   "bool",   None),
@@ -655,29 +673,33 @@ MESHTASTIC_CONFIG_DEFS = {
     ],
 }
 
-SECTION_LABELS = {
-    "localConfig.device":              "💻 Dispositivo",
-    "localConfig.position":            tr("📍 Posição / GPS"),
-    "localConfig.power":               "🔋 Energia",
-    "localConfig.network":             tr("🌐 Rede / WiFi"),
-    "localConfig.display":             "🖥 Display",
-    "localConfig.lora":                "📡 LoRa",
-    "localConfig.bluetooth":           "🔵 Bluetooth",
-    "moduleConfig.mqtt":               "☁ MQTT",
-    "moduleConfig.serial":             "🔌 Serial",
-    "moduleConfig.externalNotification":"🔔 Notif. Externa",
-    "moduleConfig.storeForward":       "📦 Store & Forward",
-    "moduleConfig.rangeTest":          "📏 Range Test",
-    "moduleConfig.telemetry":          "📊 Telemetria",
-    "moduleConfig.cannedMessage":      "💬 Msgs Pre-definidas",
-    "moduleConfig.audio":              "🎙 Audio / Codec2",
-    "moduleConfig.remotehardware":     tr("🔧 Hardware Remoto"),
-    "moduleConfig.neighborInfo":       "🔗 Neighbor Info",
-    "moduleConfig.ambientLighting":    "💡 Ilum. Ambiente",
-    "moduleConfig.detectionSensor":    "🔍 Sensor Deteccao",
-    "moduleConfig.paxcounter":         "🧮 Paxcounter",
-    "localConfig.security":            "🔐 Segurança",
-}
+def get_section_label(key: str) -> str:
+    """Returns the translated section label for the given config key."""
+    _map = {
+        "localConfig.device":              "💻 Dispositivo",
+        "localConfig.position":            "📍 Posição / GPS",
+        "localConfig.power":               "🔋 Energia",
+        "localConfig.network":             "🌐 Rede / WiFi",
+        "localConfig.display":             "🖥 Display",
+        "localConfig.lora":                "📡 LoRa",
+        "localConfig.bluetooth":           "🔵 Bluetooth",
+        "moduleConfig.mqtt":               "☁ MQTT",
+        "moduleConfig.serial":             "🔌 Serial",
+        "moduleConfig.externalNotification": "🔔 Notif. Externa",
+        "moduleConfig.storeForward":       "📦 Store & Forward",
+        "moduleConfig.rangeTest":          "📏 Range Test",
+        "moduleConfig.telemetry":          "📊 Telemetria",
+        "moduleConfig.cannedMessage":      "💬 Msgs Pre-definidas",
+        "moduleConfig.audio":              "🎙 Audio / Codec2",
+        "moduleConfig.remotehardware":     "🔧 Hardware Remoto",
+        "moduleConfig.neighborInfo":       "🔗 Neighbor Info",
+        "moduleConfig.ambientLighting":    "💡 Ilum. Ambiente",
+        "moduleConfig.detectionSensor":    "🔍 Sensor Deteccao",
+        "moduleConfig.paxcounter":         "🧮 Paxcounter",
+        "localConfig.security":            "🔐 Segurança",
+    }
+    return tr(_map.get(key, key))
+
 
 SECTION_WRITE_NAME = {
     "localConfig.device":              "device",
@@ -724,19 +746,19 @@ class ConfigTab(QWidget):
         root.setSpacing(8)
 
         hdr = QHBoxLayout()
-        title = QLabel(tr("⚙ Config. do No Local"))
-        title.setStyleSheet(f"color:{ACCENT_ORANGE};font-size:15px;font-weight:bold;")
-        hdr.addWidget(title)
+        self._title_lbl = QLabel(tr("⚙ Config. do No Local"))
+        self._title_lbl.setStyleSheet(f"color:{ACCENT_ORANGE};font-size:15px;font-weight:bold;")
+        hdr.addWidget(self._title_lbl)
         hdr.addStretch()
 
         self.status_label = QLabel(tr("Não conectado"))
         self.status_label.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         hdr.addWidget(self.status_label)
 
-        btn_reload = QPushButton(tr("🔄  Recarregar"))
-        btn_reload.setObjectName("btn_reload_config")
-        btn_reload.clicked.connect(self.reload_config)
-        hdr.addWidget(btn_reload)
+        self._btn_reload = QPushButton(tr("🔄  Recarregar"))
+        self._btn_reload.setObjectName("btn_reload_config")
+        self._btn_reload.clicked.connect(self.reload_config)
+        hdr.addWidget(self._btn_reload)
 
         self.btn_save = QPushButton(tr("💾  Guardar Alterações"))
         self.btn_save.setObjectName("btn_save_config")
@@ -761,7 +783,8 @@ class ConfigTab(QWidget):
         lv.setContentsMargins(0, 0, 4, 0)
         lv.setSpacing(4)
 
-        sec_lbl = QLabel(tr("Secções"))
+        self._sec_lbl = QLabel(tr("Secções"))
+        sec_lbl = self._sec_lbl
         sec_lbl.setStyleSheet(
             f"color:{ACCENT_BLUE};font-weight:bold;font-size:11px;"
             f"padding:4px 8px;background:{PANEL_BG};"
@@ -783,6 +806,34 @@ class ConfigTab(QWidget):
         root.addWidget(splitter, stretch=1)
 
         self._show_placeholder(tr("Conecte-se a um nó para ver as configurações."))
+
+    def retranslate(self):
+        """Update all labels after language change.
+
+        If the node is loaded, rebuilds the entire config UI so that all
+        section pages and field labels appear in the new language.
+        Static header widgets are always updated regardless.
+        """
+        # Always update static header widgets
+        if hasattr(self, "_title_lbl"):  self._title_lbl.setText(tr("⚙ Config. do No Local"))
+        if hasattr(self, "_btn_reload"): self._btn_reload.setText(tr("🔄  Recarregar"))
+        if hasattr(self, "btn_save"):    self.btn_save.setText(tr("💾  Guardar Alterações"))
+        if hasattr(self, "_sec_lbl"):    self._sec_lbl.setText(tr("Secções"))
+
+        if hasattr(self, "_local_node") and self._local_node:
+            # Node is loaded — rebuild all section pages in the new language
+            current_row = self.section_list.currentRow()
+            self._build_config_ui()
+            # Restore selected section
+            if current_row >= 0 and current_row < self.section_list.count():
+                self.section_list.setCurrentRow(current_row)
+            self.status_label.setText(tr("✅ Configuração carregada"))
+            self.btn_save.setEnabled(True)
+        else:
+            if hasattr(self, "status_label"):
+                self.status_label.setText(tr("Não conectado"))
+            # Refresh the placeholder text in the new language
+            self._show_placeholder(tr("Conecte-se a um nó para ver as configurações."))
 
     def set_interface(self, iface):
         self._iface = iface
@@ -842,7 +893,7 @@ class ConfigTab(QWidget):
         self.stack.addWidget(self._build_device_info_page())
 
         for sec_key, field_defs in MESHTASTIC_CONFIG_DEFS.items():
-            label = SECTION_LABELS.get(sec_key, sec_key)
+            label = get_section_label(sec_key)
             self.section_list.addItem(label)
             fields_with_values = self._read_section_values(sec_key, field_defs)
             page = self._build_section_page(sec_key, fields_with_values)
@@ -923,13 +974,13 @@ class ConfigTab(QWidget):
                 user      = my_info.get('user', {})
                 fields_ro = [
                     (tr("ID do Nó"),  "id",       user.get('id', '—')),
-                    ("Modelo HW", "hw_model", user.get('hwModel', '—')),
-                    ("Firmware",  "firmware", str(my_info.get('firmwareVersion', '—'))),
+                    (tr("Modelo HW"), "hw_model", user.get('hwModel', '—')),
+                    (tr("Firmware"),  "firmware", str(my_info.get('firmwareVersion', '—'))),
                 ]
                 fields_rw = [
                     (tr("Nome Longo"),       "long_name",   user.get('longName', '')),
                     (tr("Nome Curto"),       "short_name",  user.get('shortName', '')),
-                    ("Licenciado (Ham)", "is_licensed", user.get('isLicensed', False)),
+                    (tr("Licenciado (Ham)"), "is_licensed", user.get('isLicensed', False)),
                 ]
         except Exception as e:
             logger.warning(f"Erro ao ler info dispositivo: {e}")
@@ -940,7 +991,7 @@ class ConfigTab(QWidget):
                 f"border:1px solid {BORDER_COLOR};border-radius:4px;padding:4px 8px;"
             )
             lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            form.addRow(self._make_label(label), lbl)
+            form.addRow(self._make_label(tr(label)), lbl)
         if fields_rw:
             sep = QFrame()
             sep.setFrameShape(QFrame.HLine)
@@ -983,7 +1034,7 @@ class ConfigTab(QWidget):
             for label, field_type, field_name, current_val, extra in fields:
                 w = self._create_field_widget(field_type, current_val, extra)
                 if w:
-                    form.addRow(self._make_label(label), w)
+                    form.addRow(self._make_label(tr(label)), w)
                     self._config_widgets[sec_key][field_name] = w
         scroll.setWidget(content)
         lay = QVBoxLayout(page)
