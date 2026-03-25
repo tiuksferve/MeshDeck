@@ -625,6 +625,9 @@ _STRINGS: dict = {
     "Pacotes por Minuto (últimos 30 min)":
                                     {"pt": "Pacotes por Minuto (últimos 30 min)",
                                      "en": "Packets per Minute (last 30 min)"},
+    "🔵 1 Hop":                     {"pt": "🔵 1 Hop",                        "en": "🔵 1 Hop"},
+    "🟠 Multi-hop":                 {"pt": "🟠 Multi-hop",                    "en": "🟠 Multi-hop"},
+    "📊 Telemetria":               {"pt": "📊 Telemetria",                   "en": "📊 Telemetry"},
     "🟢 Directo":                   {"pt": "🟢 Directo",                        "en": "🟢 Direct"},
     "⚫ Desconhecido":               {"pt": "⚫ Desconhecido",                   "en": "⚫ Unknown"},
     "💬 Mensagem":                  {"pt": "💬 Mensagem",                       "en": "💬 Message"},
@@ -701,6 +704,7 @@ _STRINGS: dict = {
     "RTT (Round-Trip Time) — tempo entre envio e ACK · {n} amostras · {hora}":
                                     {"pt": "RTT (Round-Trip Time) — tempo entre envio e ACK · {n} amostras · {hora}",
                                      "en": "RTT (Round-Trip Time) — time between send and ACK · {n} samples · {hora}"},
+    "RTT Médio":                   {"pt": "RTT Médio",                       "en": "Avg RTT"},
     "RTT Mediana":                  {"pt": "RTT Mediana",                      "en": "Median RTT"},
     "RTT P90 (pior 10%)":           {"pt": "RTT P90 (pior 10%)",              "en": "RTT P90 (worst 10%)"},
     "RTT Mínimo":                   {"pt": "RTT Mínimo",                       "en": "Min RTT"},

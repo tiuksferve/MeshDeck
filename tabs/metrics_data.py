@@ -67,6 +67,7 @@ class MetricsDataMixin:
         # Packet IDs vistos: {packet_id → (from_id, timestamp, count_seen)}
         # Duplicados = mesmo ID visto mais de uma vez (sinal de flood saudável)
         self._pkt_ids: dict    = {}    # packet_id → {'from': nid, 'ts': t, 'count': n}
+        self._pkt_ids_ever: int = 0    # total ever seen (never resets, for "has data" check)
         self._duplicates: int  = 0     # pacotes recebidos com ID já visto
         self._routing_acks: int = 0    # ROUTING_APP com ACK recebidos na rede
         self._routing_naks: int = 0    # ROUTING_APP com NAK recebidos na rede
@@ -247,6 +248,7 @@ class MetricsDataMixin:
                 self._pkt_ids[pkt_id]['ts'] = ts
             else:
                 self._pkt_ids[pkt_id] = {'from': nid, 'ts': ts, 'count': 1}
+                self._pkt_ids_ever += 1
             # Manter apenas últimos 5 minutos de IDs
             cutoff_ids = ts - 300
             self._pkt_ids = {k: v for k, v in self._pkt_ids.items()
@@ -414,7 +416,7 @@ class MetricsDataMixin:
     def _data_traffic(self) -> dict:
         now = time.time()
         label_map={"TEXT_MESSAGE_APP":tr("💬 Mensagem"),"NODEINFO_APP":"🆔 NodeInfo",
-                   "POSITION_APP":tr("📍 Posição"),"TELEMETRY_APP":"📊 Telemetria",
+                   "POSITION_APP":tr("📍 Posição"),"TELEMETRY_APP":tr("📊 Telemetria"),
                    "TRACEROUTE_APP":"🔍 Traceroute","ROUTING_APP":"🔀 Routing",
                    "NEIGHBORINFO_APP":"🔗 NeighborInfo","ADMIN_APP":"⚙ Admin",
                    "RANGE_TEST_APP":"📏 Range Test","STORE_AND_FORWARD_APP":"📦 S&F"}
@@ -440,7 +442,11 @@ class MetricsDataMixin:
         return {"labels":labels,"values":values,
                 "n_direct":n_direct,"n_1hop":n_1hop,"n_multi":n_multi,"n_unknown":n_unknown,
                 "n_rf":n_rf,"n_mqtt":n_mqtt,
-                "ppm_labels":[b[0] for b in bins],"ppm_vals":[b[1] for b in bins]}
+                "ppm_labels":[b[0] for b in bins],"ppm_vals":[b[1] for b in bins],
+                "lbl_direct":  tr("🟢 Directo"),
+                "lbl_1hop":    tr("🔵 1 Hop"),
+                "lbl_multi":   tr("🟠 Multi-hop"),
+                "lbl_unknown": tr("⚫ Desconhecido")}
 
     def _data_nodes(self) -> dict:
         now = time.time()
@@ -488,6 +494,8 @@ class MetricsDataMixin:
             "hw_labels": [h for h, _ in hw_sorted],
             "hw_values": [c for _, c in hw_sorted],
             "n_gps_unique": n_gps_unique,
+            "lbl_powered": tr("{n} com alimentação externa · 📍 {m} com GPS",
+                              n=len(batt_power), m=n_gps_unique),
         }
 
     def _data_reliability(self) -> dict:
@@ -539,6 +547,22 @@ class MetricsDataMixin:
             "net_nak_rate": net_nak_rate, "active_senders": active_senders,
             "p_col": p_col,
             "ch_util_avg": round(ch_util_avg, 1) if ch_util_avg is not None else None,
+            # Translated JS labels
+            "lbl_dup": (
+                tr("Sem dados") if dup_rate is None else
+                tr("⚠ Atenção") if dup_rate < 10 else
+                tr("✅ Flood saudável") if dup_rate <= 60 else
+                tr("[!] Possível congestionamento")
+            ),
+            "lbl_col": (
+                tr("Sem dados de Ch.Util.") if p_col is None else
+                tr("✅ Flood saudável") if p_col < 5 else
+                tr("⚠ Próximo do limite") if p_col < 15 else
+                tr("[!] Risco elevado")
+            ),
+            "lbl_pkt_sub": tr("{n} nós emissores · {m} duplicados vistos",
+                              n=active_senders, m=self._duplicates),
+            "ever_seen": getattr(self, '_pkt_ids_ever', 0) > 0,
         }
 
     # ── 1. Visão Geral ────────────────────────────────────────────────────
@@ -645,60 +669,7 @@ class MetricsDataMixin:
                 self._node_pos = {}
             self._node_pos[nid] = (lat, lon)
 
-    def _html_range_links(self) -> str:
-        d = self._data_range_links()
-        if not d["rows"]:
-            body = ('<div class="no-data">⏳ Sem dados de alcance ainda.<br><br>'
-                    'Requer que os nós reportem posição GPS (<b>POSITION_APP</b>) '
-                    'e que os dados de vizinhança (<b>NEIGHBORINFO_APP</b>) estejam disponíveis.<br>'
-                    f'Nós com GPS conhecidos: {d["n_with_gps"]}</div>')
-            return self._base_html("📏 Alcance & Links", body)
 
-        def kpi(val, unit, label, color=""):
-            v = f"{val}{unit}" if val is not None else "—"
-            return f'<div class="card"><h3>{label}</h3><div class="kpi {color}">{v}</div></div>'
-
-        rows_html = ""
-        for from_n, nb_n, dist, snr_str, snr_val in d["rows"]:
-            dist_color = "green" if dist < 2 else ("orange" if dist < 10 else "blue")
-            if snr_val is not None:
-                snr_color = "green" if snr_val >= 5 else ("orange" if snr_val >= 0 else "red")
-            else:
-                snr_color = "gray"
-            rows_html += (
-                f"<tr><td>{from_n}</td><td>{nb_n}</td>"
-                f"<td><span class='tag tag-{dist_color}'>{dist} km</span></td>"
-                f"<td><span class='tag tag-{snr_color}'>{snr_str} dB</span></td></tr>"
-            )
-
-        body = f"""
-<div class="subtitle">Alcance dos links LoRa directos (requer GPS + NeighborInfo) · {d['now']}</div>
-<div class="card" style="margin-bottom:16px;border-left:4px solid #8b949e;padding:8px 14px">
-  <span style="color:#8b949e;font-size:11px">
-    ℹ️ Métrica da rede — calcula a distância real entre nós vizinhos reportados via
-    <b>NEIGHBORINFO_APP</b>, usando as coordenadas GPS de cada nó (fórmula de Haversine).
-    Não envolve o nó local a não ser que ele também esteja nos pares.
-  </span>
-</div>
-<div class="grid-3" style="margin-bottom:16px">
-  {kpi(f"{d['max_range']:.2f}" if d['max_range'] else None, " km", "Maior Alcance", "blue")}
-  <div class="card"><h3>Par de maior alcance</h3>
-    <div style="font-size:14px;font-weight:bold;color:#58a6ff">
-      {d['max_pair'][0]} ↔ {d['max_pair'][1]}
-    </div></div>
-  {kpi(d['n_with_gps'], " nós", "Nós com GPS", "")}
-</div>
-<div class="card">
-  <h3>Links por Alcance</h3>
-  <table>
-    <tr><th>Nó A</th><th>Nó B</th><th>Distância</th><th>SNR</th></tr>
-    {rows_html}
-  </table>
-</div>
-<script>window._metricsUpdateData=function(d){{}};</script>"""
-        return self._base_html("📏 Alcance & Links", body)
-
-    # ── 10. Intervalos entre pacotes ─────────────────────────────────────
     def _data_intervals(self) -> dict:
         rows = []
         for nid, entry in self._pkt_intervals.items():
@@ -710,5 +681,10 @@ class MetricsDataMixin:
             mx  = round(max(vals), 1)
             rows.append([nid, self._name(nid), avg, mn, mx, len(vals)])
         rows.sort(key=lambda r: r[1])
-        return {"rows": rows, "now": self._now_str()}
+        return {"rows": rows, "now": self._now_str(),
+                "lbl_freq": {
+                    "high":   tr("Alta frequência"),
+                    "normal": "Normal",
+                    "low":    tr("Baixa frequência")
+                }}
 

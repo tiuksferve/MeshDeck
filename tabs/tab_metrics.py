@@ -148,7 +148,8 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
         ll.addWidget(self._lbl_last_refresh)
 
         # Botão limpar
-        btn_clear = QPushButton(tr("🗑  Limpar dados"))
+        self._btn_clear = QPushButton(tr("🗑  Limpar dados"))
+        btn_clear = self._btn_clear
         btn_clear.setStyleSheet(
             f"QPushButton{{background:{DARK_BG};color:{TEXT_MUTED};"
             f"border:none;border-top:1px solid {BORDER_COLOR};"
@@ -174,12 +175,20 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
 
     # ── Orquestração de secções ───────────────────────────────────────────
     def _rebuild_section_list(self):
-        """Refreshes section labels after a language change."""
+        """Refreshes section labels and re-renders current metric after a language change."""
         current_row = self._section_list.currentRow()
         self._section_list.clear()
         for label, _ in self.get_sections():
             self._section_list.addItem(label)
         self._section_list.setCurrentRow(current_row)
+        # Update button labels
+        if hasattr(self, "_btn_refresh"):
+            self._btn_refresh.setText(tr("🔄  Actualizar"))
+        if hasattr(self, "_btn_clear"):
+            self._btn_clear.setText(tr("🗑  Limpar dados"))
+        # Re-render the currently visible metric so it picks up the new language
+        if current_row >= 0:
+            self._render_section(current_row)
 
     def _on_section_changed(self, row: int):
         if 0 <= row < len(self.get_sections()):
@@ -204,15 +213,44 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
             self._reset_data()
             self._render_section(self._section_list.currentRow())
 
+    # Sections that show a waiting screen when empty — need full reload on transition
+    _WAITING_CHECK = {
+        'intervals':   lambda self: bool(self._data_intervals()['rows']),
+        'neighbors':   lambda self: bool(self._nb_links),
+        'range_links': lambda self: bool(self._data_range_links()['rows']),
+        'rf':          lambda self: bool(self._snr_values or self._hops_values),
+        'channel':     lambda self: bool(self._ch_util or self._air_tx),
+        'nodes':       lambda self: bool(self._battery or self._packets),
+    }
+
     def _refresh_current(self):
-        """Actualiza os dados da secção activa sem recarregar o HTML (sem flash).
-        Só corre se a página estiver pronta — mas o timer nunca para.
+        """Actualiza os dados da secção activa.
+        - Waiting screen → data available: force full _render_section (setHtml).
+        - Data screen: update via runJavaScript (no flash).
         """
         if not self._page_ready:
             return
         key = getattr(self, '_current_key', None)
         if not key:
             return
+
+        # If this section can show a waiting screen, check whether data has arrived
+        # and a full re-render is needed to switch from waiting to data view.
+        check = self._WAITING_CHECK.get(key)
+        if check is not None:
+            has_data_now = check(self)
+            was_waiting  = getattr(self, '_was_waiting', {}).get(key, True)
+            if not hasattr(self, '_was_waiting'):
+                self._was_waiting = {}
+            if has_data_now and was_waiting:
+                # Transition: waiting → data — full reload required
+                self._was_waiting[key] = False
+                row = self._section_list.currentRow()
+                if row >= 0:
+                    self._render_section(row)
+                return
+            self._was_waiting[key] = not has_data_now
+
         data_fn = {
             'overview':    self._data_overview,
             'channel':     self._data_channel,
