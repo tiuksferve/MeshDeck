@@ -576,9 +576,9 @@ body{{background:{bg};color:{TEXT_PRIMARY};
         if prev_date is None or msg_date != prev_date:
             today = datetime.now().date()
             if msg_date == today:
-                ds = f"&#8212; {tr("Hoje")} &#8212;"
+                ds = f"&#8212; {tr('Hoje')} &#8212;"
             elif msg_date == today - timedelta(days=1):
-                ds = f"&#8212; {tr("Ontem")} &#8212;"
+                ds = f"&#8212; {tr('Ontem')} &#8212;"
             else:
                 ds = f"&#8212; {msg_date.strftime('%d/%m/%Y')} &#8212;"
             parts.append(f'<div class="date-sep">{ds}</div>')
@@ -593,9 +593,9 @@ body{{background:{bg};color:{TEXT_PRIMARY};
         status_detail = msg.get('status_detail', '')
         if msg.get('outgoing'):
             if status == 'sending':
-                status_html = f'<span title=tr("A enviar...") style="color:{TEXT_MUTED};font-size:11px;">&#9679;&#9679;&#9679;</span>'
+                status_html = f'<span title="{tr("A enviar...")}" style="color:{TEXT_MUTED};font-size:11px;">&#9679;&#9679;&#9679;</span>'
             elif status == 'ack_implicit':
-                status_html = f'<span title=tr("Recebido por relay") style="color:{ACCENT_ORANGE};font-size:12px;">&#10003;</span>'
+                status_html = f'<span title="{tr("Recebido por relay")}" style="color:{ACCENT_ORANGE};font-size:12px;">&#10003;</span>'
             elif status == 'ack':
                 status_html = f'<span title="Confirmado pelo destinatario" style="color:{ACCENT_GREEN};font-size:12px;">&#10003;&#10003;</span>'
             elif status == 'nak':
