@@ -9,6 +9,7 @@ import math
 import time
 from collections import deque
 from datetime import datetime
+from i18n import tr
 
 
 class MetricsDataMixin:
@@ -66,6 +67,7 @@ class MetricsDataMixin:
         # Packet IDs vistos: {packet_id → (from_id, timestamp, count_seen)}
         # Duplicados = mesmo ID visto mais de uma vez (sinal de flood saudável)
         self._pkt_ids: dict    = {}    # packet_id → {'from': nid, 'ts': t, 'count': n}
+        self._pkt_ids_ever: int = 0    # total ever seen (never resets, for "has data" check)
         self._duplicates: int  = 0     # pacotes recebidos com ID já visto
         self._routing_acks: int = 0    # ROUTING_APP com ACK recebidos na rede
         self._routing_naks: int = 0    # ROUTING_APP com NAK recebidos na rede
@@ -246,6 +248,7 @@ class MetricsDataMixin:
                 self._pkt_ids[pkt_id]['ts'] = ts
             else:
                 self._pkt_ids[pkt_id] = {'from': nid, 'ts': ts, 'count': 1}
+                self._pkt_ids_ever += 1
             # Manter apenas últimos 5 minutos de IDs
             cutoff_ids = ts - 300
             self._pkt_ids = {k: v for k, v in self._pkt_ids.items()
@@ -295,7 +298,9 @@ class MetricsDataMixin:
                        self._battery.get(nid)] for nid,cnt in top]
         return {"total_pkts":total_pkts,"n_active":len(active_nids),"ppm":ppm,
                 "snr_avg":snr_avg,"hops_avg":hops_avg,"ch_avg":ch_avg,"air_avg":air_avg,
-                "delivery":delivery,"table_rows":table_rows,"now":self._now_str()}
+                "delivery":delivery,"table_rows":table_rows,"now":self._now_str(),
+                "unit_nos": " " + tr("nós"),
+                "now_label": tr("Actualizado:")}
 
     def _data_channel(self) -> dict:
         duty = {nid: round(min(a*6,100.0),2) for nid,a in self._air_tx.items()}
@@ -310,7 +315,10 @@ class MetricsDataMixin:
             dc=duty.get(nid,round(min(air*6,100.0),2))
             rows.append([nid, self._name(nid), round(ch,1), round(air,2), dc])
         return {"duty_avg":duty_avg,"air_avg":air_avg,"ch_net_avg":ch_net_avg,
-                "ts_labels":ts_labels,"ts_vals":ts_vals,"rows":rows,"now":self._now_str()}
+                "ts_labels":ts_labels,"ts_vals":ts_vals,"rows":rows,"now":self._now_str(),
+                "lbl_exceed": tr("🚨 Excede limite"),
+                "lbl_warn":   tr("⚠ Atenção"),
+                "lbl_ok":     "✅ OK"}
 
     def _name(self, nid: str) -> str:
         """Devolve o nome curto do nó se disponível, senão o ID."""
@@ -319,7 +327,7 @@ class MetricsDataMixin:
     def _rf_assessment(self, snr_avg, snr_med, snr_p10, hops_values) -> str:
         """Avaliação da qualidade RF da rede baseada em distribuição de pacotes por faixa de SNR."""
         if snr_avg is None or not self._snr_values:
-            return "⏳ Aguardando dados suficientes para avaliação..."
+            return tr("⏳ Aguardando dados suficientes para avaliação...")
 
         n = len(self._snr_values)
         # Distribuição por faixa — igual às apps iOS/Android
@@ -333,31 +341,31 @@ class MetricsDataMixin:
 
         # ── Análise da distribuição ──────────────────────────────────────
         lines.append(
-            f"<b>Distribuição de qualidade</b> em {n} pacotes: "
-            f"<span style='color:#39d353'>{pct_exc}% excelente (≥8dB)</span> · "
-            f"<span style='color:#56d364'>{pct_good}% bom (5–8dB)</span> · "
-            f"<span style='color:#f0883e'>{pct_marg}% marginal (0–5dB)</span> · "
-            f"<span style='color:#f85149'>{pct_weak}% fraco (&lt;0dB)</span>"
+            f"<b>{tr('Distribuição de qualidade em {n} pacotes:', n=n)}</b> "
+            f"<span style='color:#39d353'>{pct_exc}% {tr('excelente')} (≥8dB)</span> · "
+            f"<span style='color:#56d364'>{pct_good}% {tr('bom')} (5–8dB)</span> · "
+            f"<span style='color:#f0883e'>{pct_marg}% {tr('marginal')} (0–5dB)</span> · "
+            f"<span style='color:#f85149'>{pct_weak}% {tr('fraco')} (&lt;0dB)</span>"
         )
 
         # ── Avaliação global ─────────────────────────────────────────────
         if pct_ok >= 80:
-            lines.append("✅ <b>Rede em excelentes condições RF.</b> A grande maioria dos pacotes chega com sinal forte.")
+            lines.append(tr("✅ Rede em excelentes condições RF. A grande maioria dos pacotes chega com sinal forte."))
         elif pct_ok >= 60:
-            lines.append("✅ <b>Qualidade RF boa.</b> A maioria das ligações é estável, com algumas margens.")
+            lines.append(tr("✅ Qualidade RF boa. A maioria das ligações é estável, com algumas margens."))
         elif pct_ok >= 40:
-            lines.append("⚠️ <b>Qualidade RF moderada.</b> Uma parte significativa dos pacotes está em zona marginal — risco de perda em condições adversas.")
+            lines.append(tr("⚠️ Qualidade RF moderada."))
         else:
-            lines.append("🚨 <b>Qualidade RF fraca.</b> Mais de 60% dos pacotes chegam com sinal deficiente. Reveja antenas e posicionamento.")
+            lines.append(tr("🚨 Qualidade RF fraca."))
 
         # ── SNR P10 (pior 10%) ───────────────────────────────────────────
         if snr_p10 is not None:
             if snr_p10 < -10:
-                lines.append(f"⚠️ <b>Pior decil:</b> SNR ≤ {snr_p10} dB — algumas ligações estão severamente degradadas, possivelmente com perda de pacotes frequente.")
+                lines.append(tr("⚠️ Pior decil SNR fraco", snr_p10=snr_p10))
             elif snr_p10 < 0:
-                lines.append(f"ℹ️ <b>Pior decil:</b> SNR ≤ {snr_p10} dB — ligações marginais no extremo da cobertura.")
+                lines.append(tr("ℹ️ Pior decil SNR marginal", snr_p10=snr_p10))
             else:
-                lines.append(f"✅ <b>Pior decil:</b> SNR ≥ {snr_p10} dB — mesmo os piores percursos têm sinal razoável.")
+                lines.append(tr("✅ Pior decil SNR ok", snr_p10=snr_p10))
 
         # ── Análise de hops ──────────────────────────────────────────────
         if hops_values:
@@ -366,20 +374,20 @@ class MetricsDataMixin:
             pct_1hop   = round(hops_values.count(1) / len(hops_values) * 100)
             max_hops   = max(hops_values)
             lines.append(
-                f"<b>Topologia:</b> {pct_direct}% directos · {pct_1hop}% a 1 hop · média {avg_hops:.1f} hops · máximo {max_hops} hops."
+                tr("topologia", pct_direct=f"{pct_direct:.0f}", pct_1hop=f"{pct_1hop:.0f}", avg_hops=avg_hops, max_hops=max_hops)
             )
             if avg_hops > 2.5:
-                lines.append("⚠️ Média de hops elevada — a rede depende muito de repetidores. Pode aumentar latência e congestionamento.")
+                lines.append(tr("⚠️ Média de hops elevada"))
             if max_hops >= 6:
-                lines.append(f"⚠️ Máximo de {max_hops} hops detectado — próximo do limite do firmware (7). Considere rever o hop limit configurado.")
+                lines.append(tr("⚠️ Máximo de hops", max_hops=max_hops))
 
         # ── Conclusão ────────────────────────────────────────────────────
         if pct_ok >= 70 and (not hops_values or sum(hops_values)/len(hops_values) < 2):
-            lines.append("<br><b>Conclusão:</b> Rede RF saudável e bem dimensionada. 🟢")
+            lines.append(tr("conclusao_verde"))
         elif pct_ok >= 50:
-            lines.append("<br><b>Conclusão:</b> Rede funcional com oportunidades de melhoria. Monitorize em períodos de maior tráfego. 🟡")
+            lines.append(tr("conclusao_amarela"))
         else:
-            lines.append("<br><b>Conclusão:</b> Qualidade RF abaixo do esperado. Reveja infraestrutura de antenas, posicionamento e modo de radio configurado. 🔴")
+            lines.append(tr("conclusao_vermelha"))
 
         return "<br>".join(lines)
 
@@ -402,12 +410,13 @@ class MetricsDataMixin:
         return {"n":n, "snr_avg":snr_avg, "snr_med":snr_med, "snr_p10":snr_p10,
                 "snr_labels":snr_labels,"snr_counts":snr_counts,
                 "hop_labels":hop_labels,"hop_counts":hop_counts,
-                "assessment": assessment}
+                "assessment": assessment,
+                "unit_amostras": tr("amostras")}
 
     def _data_traffic(self) -> dict:
         now = time.time()
-        label_map={"TEXT_MESSAGE_APP":"💬 Mensagem","NODEINFO_APP":"🆔 NodeInfo",
-                   "POSITION_APP":"📍 Posição","TELEMETRY_APP":"📊 Telemetria",
+        label_map={"TEXT_MESSAGE_APP":tr("💬 Mensagem"),"NODEINFO_APP":"🆔 NodeInfo",
+                   "POSITION_APP":tr("📍 Posição"),"TELEMETRY_APP":tr("📊 Telemetria"),
                    "TRACEROUTE_APP":"🔍 Traceroute","ROUTING_APP":"🔀 Routing",
                    "NEIGHBORINFO_APP":"🔗 NeighborInfo","ADMIN_APP":"⚙ Admin",
                    "RANGE_TEST_APP":"📏 Range Test","STORE_AND_FORWARD_APP":"📦 S&F"}
@@ -433,7 +442,11 @@ class MetricsDataMixin:
         return {"labels":labels,"values":values,
                 "n_direct":n_direct,"n_1hop":n_1hop,"n_multi":n_multi,"n_unknown":n_unknown,
                 "n_rf":n_rf,"n_mqtt":n_mqtt,
-                "ppm_labels":[b[0] for b in bins],"ppm_vals":[b[1] for b in bins]}
+                "ppm_labels":[b[0] for b in bins],"ppm_vals":[b[1] for b in bins],
+                "lbl_direct":  tr("🟢 Directo"),
+                "lbl_1hop":    tr("🔵 1 Hop"),
+                "lbl_multi":   tr("🟠 Multi-hop"),
+                "lbl_unknown": tr("⚫ Desconhecido")}
 
     def _data_nodes(self) -> dict:
         now = time.time()
@@ -481,6 +494,8 @@ class MetricsDataMixin:
             "hw_labels": [h for h, _ in hw_sorted],
             "hw_values": [c for _, c in hw_sorted],
             "n_gps_unique": n_gps_unique,
+            "lbl_powered": tr("{n} com alimentação externa · 📍 {m} com GPS",
+                              n=len(batt_power), m=n_gps_unique),
         }
 
     def _data_reliability(self) -> dict:
@@ -532,6 +547,22 @@ class MetricsDataMixin:
             "net_nak_rate": net_nak_rate, "active_senders": active_senders,
             "p_col": p_col,
             "ch_util_avg": round(ch_util_avg, 1) if ch_util_avg is not None else None,
+            # Translated JS labels
+            "lbl_dup": (
+                tr("Sem dados") if dup_rate is None else
+                tr("⚠ Atenção") if dup_rate < 10 else
+                tr("✅ Flood saudável") if dup_rate <= 60 else
+                tr("[!] Possível congestionamento")
+            ),
+            "lbl_col": (
+                tr("Sem dados de Ch.Util.") if p_col is None else
+                tr("✅ Flood saudável") if p_col < 5 else
+                tr("⚠ Próximo do limite") if p_col < 15 else
+                tr("[!] Risco elevado")
+            ),
+            "lbl_pkt_sub": tr("{n} nós emissores · {m} duplicados vistos",
+                              n=active_senders, m=self._duplicates),
+            "ever_seen": getattr(self, '_pkt_ids_ever', 0) > 0,
         }
 
     # ── 1. Visão Geral ────────────────────────────────────────────────────
@@ -638,60 +669,7 @@ class MetricsDataMixin:
                 self._node_pos = {}
             self._node_pos[nid] = (lat, lon)
 
-    def _html_range_links(self) -> str:
-        d = self._data_range_links()
-        if not d["rows"]:
-            body = ('<div class="no-data">⏳ Sem dados de alcance ainda.<br><br>'
-                    'Requer que os nós reportem posição GPS (<b>POSITION_APP</b>) '
-                    'e que os dados de vizinhança (<b>NEIGHBORINFO_APP</b>) estejam disponíveis.<br>'
-                    f'Nós com GPS conhecidos: {d["n_with_gps"]}</div>')
-            return self._base_html("📏 Alcance & Links", body)
 
-        def kpi(val, unit, label, color=""):
-            v = f"{val}{unit}" if val is not None else "—"
-            return f'<div class="card"><h3>{label}</h3><div class="kpi {color}">{v}</div></div>'
-
-        rows_html = ""
-        for from_n, nb_n, dist, snr_str, snr_val in d["rows"]:
-            dist_color = "green" if dist < 2 else ("orange" if dist < 10 else "blue")
-            if snr_val is not None:
-                snr_color = "green" if snr_val >= 5 else ("orange" if snr_val >= 0 else "red")
-            else:
-                snr_color = "gray"
-            rows_html += (
-                f"<tr><td>{from_n}</td><td>{nb_n}</td>"
-                f"<td><span class='tag tag-{dist_color}'>{dist} km</span></td>"
-                f"<td><span class='tag tag-{snr_color}'>{snr_str} dB</span></td></tr>"
-            )
-
-        body = f"""
-<div class="subtitle">Alcance dos links LoRa directos (requer GPS + NeighborInfo) · {d['now']}</div>
-<div class="card" style="margin-bottom:16px;border-left:4px solid #8b949e;padding:8px 14px">
-  <span style="color:#8b949e;font-size:11px">
-    ℹ️ Métrica da rede — calcula a distância real entre nós vizinhos reportados via
-    <b>NEIGHBORINFO_APP</b>, usando as coordenadas GPS de cada nó (fórmula de Haversine).
-    Não envolve o nó local a não ser que ele também esteja nos pares.
-  </span>
-</div>
-<div class="grid-3" style="margin-bottom:16px">
-  {kpi(f"{d['max_range']:.2f}" if d['max_range'] else None, " km", "Maior Alcance", "blue")}
-  <div class="card"><h3>Par de maior alcance</h3>
-    <div style="font-size:14px;font-weight:bold;color:#58a6ff">
-      {d['max_pair'][0]} ↔ {d['max_pair'][1]}
-    </div></div>
-  {kpi(d['n_with_gps'], " nós", "Nós com GPS", "")}
-</div>
-<div class="card">
-  <h3>Links por Alcance</h3>
-  <table>
-    <tr><th>Nó A</th><th>Nó B</th><th>Distância</th><th>SNR</th></tr>
-    {rows_html}
-  </table>
-</div>
-<script>window._metricsUpdateData=function(d){{}};</script>"""
-        return self._base_html("📏 Alcance & Links", body)
-
-    # ── 10. Intervalos entre pacotes ─────────────────────────────────────
     def _data_intervals(self) -> dict:
         rows = []
         for nid, entry in self._pkt_intervals.items():
@@ -703,5 +681,10 @@ class MetricsDataMixin:
             mx  = round(max(vals), 1)
             rows.append([nid, self._name(nid), avg, mn, mx, len(vals)])
         rows.sort(key=lambda r: r[1])
-        return {"rows": rows, "now": self._now_str()}
+        return {"rows": rows, "now": self._now_str(),
+                "lbl_freq": {
+                    "high":   tr("Alta frequência"),
+                    "normal": "Normal",
+                    "low":    tr("Baixa frequência")
+                }}
 

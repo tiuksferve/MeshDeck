@@ -3,11 +3,13 @@ dialogs.py — Diálogos auxiliares: ConnectionDialog, PacketDetailDialog,
 ConsoleWindow (log em tempo real) e RebootWaitDialog.
 """
 import logging
+from i18n import tr, set_language, get_language
+from i18n import tr, set_language, get_language
 import sys
 from typing import Optional
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtWidgets import (
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QSettings
+from PyQt5.QtWidgets import (QComboBox,
     QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QSpinBox, QPushButton, QFrame, QFormLayout, QTextEdit,
     QProgressBar, QSizePolicy
@@ -20,64 +22,142 @@ from constants import (
 )
 
 class ConnectionDialog(QDialog):
+    """Connection dialog with live language switching.
+
+    Build-once pattern: layout is created once in __init__.
+    _retranslate_ui() updates only text content — never destroys widgets.
+    This preserves field values and avoids blank-dialog bugs.
+    """
+    from PyQt5.QtCore import pyqtSignal as _sig
+    language_changed = _sig(str)
+
     def __init__(self, current_host="localhost", current_port=4403, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Configurar Conexão")
-        self.setFixedSize(420, 240)
+        self.setMinimumWidth(460)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         self.setModal(True)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(10)
-        layout.setContentsMargins(20, 16, 20, 16)
+        # Ensure dialog always opens in English the first time
+        # (QSettings may have saved "pt" from a previous run — we still honour it,
+        #  but the spec says the dialog must default to English on first use)
+        if not QSettings("CT7BRA", "MeshtasticMonitor").contains("language"):
+            set_language("en")
 
-        title = QLabel("📡  Conexão ao Servidor Meshtastic")
-        title.setStyleSheet(
-            f"color:{ACCENT_GREEN};font-size:14px;font-weight:bold;padding-bottom:4px;"
+        root = QVBoxLayout(self)
+        root.setSpacing(12)
+        root.setContentsMargins(24, 18, 24, 18)
+
+        # ── Language selector ──────────────────────────────────────────────
+        lang_row = QHBoxLayout()
+        lang_row.setSpacing(8)
+        self._lang_lbl = QLabel()
+        self._lang_lbl.setStyleSheet(f"color:{TEXT_PRIMARY};font-size:12px;")
+        lang_row.addWidget(self._lang_lbl)
+
+        self._lang_combo = QComboBox()
+        self._lang_combo.setMinimumWidth(150)
+        self._lang_combo.setMinimumHeight(28)
+        # Always use native names so the user recognises their own language
+        self._lang_combo.addItem("English", "en")
+        self._lang_combo.addItem("Português", "pt")
+        cur_idx = self._lang_combo.findData(get_language())
+        if cur_idx >= 0:
+            self._lang_combo.setCurrentIndex(cur_idx)
+        # Connect AFTER setting index to avoid premature retranslate
+        self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
+        lang_row.addWidget(self._lang_combo)
+        lang_row.addStretch()
+        root.addLayout(lang_row)
+
+        # ── Title ──────────────────────────────────────────────────────────
+        self._title_lbl = QLabel()
+        self._title_lbl.setStyleSheet(
+            f"color:{ACCENT_GREEN};font-size:14px;font-weight:bold;padding:4px 0;"
         )
-        layout.addWidget(title)
+        root.addWidget(self._title_lbl)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
         sep.setStyleSheet(f"color:{BORDER_COLOR};")
-        layout.addWidget(sep)
+        root.addWidget(sep)
+
+        # ── Form labels (stored so we can retranslate them) ────────────────
+        self._lbl_address = QLabel()
+        self._lbl_port    = QLabel()
 
         form = QFormLayout()
         form.setSpacing(10)
         form.setLabelAlignment(Qt.AlignRight)
+        form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
 
         self.host_edit = QLineEdit(current_host)
-        self.host_edit.setPlaceholderText("ex: localhost  ou  192.168.1.1")
-        form.addRow("Endereço:", self.host_edit)
+        self.host_edit.setMinimumWidth(240)
+        self.host_edit.setMinimumHeight(28)
+        form.addRow(self._lbl_address, self.host_edit)
 
         self.port_spin = QSpinBox()
         self.port_spin.setRange(1, 65535)
         self.port_spin.setValue(current_port)
-        form.addRow("Porta:", self.port_spin)
+        self.port_spin.setMinimumHeight(28)
+        form.addRow(self._lbl_port, self.port_spin)
 
-        layout.addLayout(form)
+        root.addLayout(form)
 
-        note = QLabel("💡 Endereço padrão: <b>localhost</b> · porta <b>4403</b>")
-        note.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
-        layout.addWidget(note)
+        self._note_lbl = QLabel()
+        self._note_lbl.setTextFormat(Qt.RichText)
+        self._note_lbl.setStyleSheet(
+            f"color:{TEXT_MUTED};font-size:11px;padding-top:2px;"
+        )
+        root.addWidget(self._note_lbl)
 
-        layout.addStretch()
+        root.addStretch()
 
+        # ── Buttons ────────────────────────────────────────────────────────
         btns = QHBoxLayout()
         btns.setSpacing(8)
 
-        btn_cancel = QPushButton("Cancelar")
-        btn_cancel.clicked.connect(self.reject)
-        btns.addWidget(btn_cancel)
+        self._btn_cancel = QPushButton()
+        self._btn_cancel.setMinimumHeight(32)
+        self._btn_cancel.clicked.connect(self.reject)
+        btns.addWidget(self._btn_cancel)
 
         btns.addStretch()
 
-        self.btn_connect = QPushButton("🔌  Conectar")
+        self.btn_connect = QPushButton()
         self.btn_connect.setObjectName("btn_connect")
+        self.btn_connect.setMinimumHeight(32)
         self.btn_connect.setDefault(True)
         self.btn_connect.clicked.connect(self.accept)
         btns.addWidget(self.btn_connect)
 
-        layout.addLayout(btns)
+        root.addLayout(btns)
+
+        # Apply translations to all the labels we just created
+        self._retranslate_ui()
+
+    def _retranslate_ui(self):
+        """Update every translatable string without touching the layout."""
+        self.setWindowTitle(tr("Configurar Conexão"))
+        self._lang_lbl.setText(tr("Idioma:"))
+        self._title_lbl.setText(tr("📡  Conexão ao Servidor Meshtastic"))
+        self._lbl_address.setText(tr("Endereço:"))
+        self._lbl_port.setText(tr("Porta:"))
+        self.host_edit.setPlaceholderText(tr("ex: localhost  ou  192.168.1.1"))
+        self._btn_cancel.setText(tr("Cancelar"))
+        self.btn_connect.setText(tr("🔌  Conectar"))
+        note = tr("💡 Endereço padrão: localhost · porta 4403")
+        note = note.replace("localhost", "<b>localhost</b>").replace("4403", "<b>4403</b>")
+        self._note_lbl.setText(note)
+
+    def _on_lang_changed(self, index: int):
+        lang = self._lang_combo.itemData(index)
+        if not lang:
+            return
+        set_language(lang)
+        QSettings("CT7BRA", "MeshtasticMonitor").setValue("language", lang)
+        self._retranslate_ui()          # update this dialog immediately
+        self.language_changed.emit(lang) # notify MainWindow
 
     @property
     def hostname(self) -> str:
@@ -88,19 +168,16 @@ class ConnectionDialog(QDialog):
         return self.port_spin.value()
 
 
-# ---------------------------------------------------------------------------
-# Diálogo de detalhes do pacote
-# ---------------------------------------------------------------------------
 class PacketDetailDialog(QDialog):
     def __init__(self, node_info, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Detalhes do Último Pacote")
+        self.setWindowTitle(tr("Detalhes do Último Pacote"))
         self.resize(640, 480)
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        title = QLabel(f"📦  Pacote — {node_info.get('id_string', '')}")
+        title = QLabel(f"📦  {tr('Pacote')} — {node_info.get('id_string', '')}")
         title.setStyleSheet(f"color:{ACCENT_GREEN};font-size:14px;font-weight:bold;")
         layout.addWidget(title)
 
@@ -111,10 +188,10 @@ class PacketDetailDialog(QDialog):
             f"background-color:{DARK_BG};color:{ACCENT_GREEN};"
             f"border:1px solid {BORDER_COLOR};border-radius:6px;padding:12px;"
         )
-        te.setText(str(node_info.get("last_packet", "Nenhum pacote armazenado")))
+        te.setText(str(node_info.get("last_packet", tr("Nenhum pacote armazenado"))))
         layout.addWidget(te)
 
-        btn = QPushButton("Fechar")
+        btn = QPushButton(tr("Fechar"))
         btn.clicked.connect(self.accept)
         layout.addWidget(btn, alignment=Qt.AlignRight)
 
@@ -139,7 +216,7 @@ class ConsoleWindow(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.Window)
-        self.setWindowTitle("🖥  Consola de Logs")
+        self.setWindowTitle(tr("🖥  Consola de Logs"))
         self.resize(860, 420)
         self.setAttribute(Qt.WA_DeleteOnClose, False)  # reutilizar
 
@@ -149,16 +226,16 @@ class ConsoleWindow(QWidget):
 
         # Barra de controlos
         ctrl = QHBoxLayout()
-        self._lbl_count = QLabel("0 linhas")
+        self._lbl_count = QLabel(tr("0 linhas"))
         self._lbl_count.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         ctrl.addWidget(self._lbl_count)
         ctrl.addStretch()
 
-        lbl_filter = QLabel("Filtro:")
+        lbl_filter = QLabel(tr("Filtro:"))
         lbl_filter.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         ctrl.addWidget(lbl_filter)
         self._filter = QLineEdit()
-        self._filter.setPlaceholderText("palavra-chave…")
+        self._filter.setPlaceholderText(tr("palavra-chave…"))
         self._filter.setFixedWidth(180)
         self._filter.setStyleSheet(
             f"background:{DARK_BG};color:{TEXT_PRIMARY};border:1px solid {BORDER_COLOR};"
@@ -167,7 +244,7 @@ class ConsoleWindow(QWidget):
         self._filter.textChanged.connect(self._apply_filter)
         ctrl.addWidget(self._filter)
 
-        btn_clear = QPushButton("🗑 Limpar")
+        btn_clear = QPushButton(tr("🗑 Limpar"))
         btn_clear.setStyleSheet(
             f"QPushButton{{background:{PANEL_BG};color:{TEXT_MUTED};"
             f"border:1px solid {BORDER_COLOR};border-radius:4px;padding:3px 10px;"
@@ -209,7 +286,7 @@ class ConsoleWindow(QWidget):
             self._text.append(text)
             self._text.moveCursor(self._text.textCursor().End)
         self._line_count += 1
-        self._lbl_count.setText(f"{len(self._all_lines)} linhas")
+        self._lbl_count.setText(tr("{n} linhas", n=len(self._all_lines)))
 
     def _apply_filter(self, text: str):
         flt = text.strip().lower()
@@ -224,7 +301,7 @@ class ConsoleWindow(QWidget):
     def _clear(self):
         self._all_lines.clear()
         self._text.clear()
-        self._lbl_count.setText("0 linhas")
+        self._lbl_count.setText(tr("0 linhas"))
 
     def closeEvent(self, event):
         # Oculta em vez de destruir
@@ -246,7 +323,7 @@ class RebootWaitDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("A reiniciar nó…")
+        self.setWindowTitle(tr("A reiniciar nó…"))
         self.setModal(True)
         self.setMinimumWidth(400)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
@@ -256,7 +333,7 @@ class RebootWaitDialog(QDialog):
         root.setContentsMargins(24, 20, 24, 20)
 
         # Ícone + título
-        lbl_title = QLabel("🔄  Nó a reiniciar")
+        lbl_title = QLabel(tr("🔄  Nó a reiniciar"))
         lbl_title.setStyleSheet(
             f"color:{ACCENT_GREEN};font-size:15px;font-weight:bold;"
         )
@@ -264,10 +341,7 @@ class RebootWaitDialog(QDialog):
         root.addWidget(lbl_title)
 
         lbl_info = QLabel(
-            "As configurações foram enviadas ao nó.\n"
-            "O nó está a reiniciar para as aplicar.\n\n"
-            "Aguarde antes de reconectar para garantir\n"
-            "que o serviço TCP está novamente disponível."
+            tr("reboot_msg")
         )
         lbl_info.setStyleSheet(f"color:{TEXT_PRIMARY};font-size:12px;")
         lbl_info.setAlignment(Qt.AlignCenter)
@@ -287,7 +361,7 @@ class RebootWaitDialog(QDialog):
         root.addWidget(self._progress)
 
         # Botão de reconexão (bloqueado durante a contagem)
-        self._btn = QPushButton(f"🔌  Aguarde {self.WAIT_SECONDS}s…")
+        self._btn = QPushButton(tr("🔌  Aguarde {n}s…", n=self.WAIT_SECONDS))
         self._btn.setEnabled(False)
         self._btn.setObjectName("btn_connect")
         self._btn.setMinimumHeight(38)
@@ -309,11 +383,11 @@ class RebootWaitDialog(QDialog):
         self._remaining -= 1
         self._progress.setValue(self._remaining)
         if self._remaining > 0:
-            self._btn.setText(f"🔌  Aguarde {self._remaining}s…")
+            self._btn.setText(tr("🔌  Aguarde {n}s…", n=self._remaining))
         else:
             self._timer.stop()
             self._btn.setEnabled(True)
-            self._btn.setText("🔌  Reconectar agora")
+            self._btn.setText(tr("🔌  Reconectar agora"))
             self._done = True
 
     def _on_reconnect(self):

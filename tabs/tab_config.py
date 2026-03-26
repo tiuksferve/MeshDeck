@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QColor
 
 import os
+from i18n import tr
 import base64
 from meshtastic.protobuf.channel_pb2 import Channel
 from meshtastic.protobuf import admin_pb2
@@ -46,20 +47,20 @@ class ChannelsTab(QWidget):
         root.setSpacing(8)
 
         top = QHBoxLayout()
-        self.status_lbl = QLabel("⚠  Sem conexão")
+        self.status_lbl = QLabel(tr("⚠  Sem conexão"))
         self.status_lbl.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         top.addWidget(self.status_lbl)
         top.addStretch()
 
-        btn_reload = QPushButton("🔄  Recarregar")
+        btn_reload = QPushButton(tr("🔄  Recarregar"))
         btn_reload.clicked.connect(self._load_channels)
         top.addWidget(btn_reload)
 
-        btn_add = QPushButton("➕  Adicionar Canal")
+        btn_add = QPushButton(tr("➕  Adicionar Canal"))
         btn_add.clicked.connect(self._add_channel)
         top.addWidget(btn_add)
 
-        btn_save = QPushButton("💾  Guardar Alterações")
+        btn_save = QPushButton(tr("💾  Guardar Alterações"))
         btn_save.setObjectName("btn_connect")
         btn_save.clicked.connect(self._save_all)
         top.addWidget(btn_save)
@@ -85,6 +86,24 @@ class ChannelsTab(QWidget):
 
         self._channel_widgets: list = []
 
+    def retranslate(self):
+        """Update ChannelsTab labels after language change.
+        Channel rows are rebuilt on reload; only static buttons need updating.
+        """
+        if hasattr(self, "status_lbl"):
+            if self._iface:
+                from i18n import tr as _tr
+                loaded = self._channels
+                self.status_lbl.setText(_tr("✅  {n} canal(ais) carregados", n=len(loaded)) if loaded else "")
+            else:
+                self.status_lbl.setText(tr("⚠  Sem conexão"))
+        if hasattr(self, "btn_add") and self.btn_add:
+            self.btn_add.setText(tr("➕  Adicionar Canal"))
+        if hasattr(self, "btn_save_ch") and self.btn_save_ch:
+            self.btn_save_ch.setText(tr("💾  Guardar Alterações"))
+        if hasattr(self, "btn_reload_ch") and self.btn_reload_ch:
+            self.btn_reload_ch.setText(tr("🔄  Recarregar"))
+
     def set_interface(self, iface):
         self._iface = iface
         self._load_channels()
@@ -93,17 +112,17 @@ class ChannelsTab(QWidget):
         self._iface = None
         self._channels = []
         self._clear_rows()
-        self.status_lbl.setText("⚠  Sem conexão")
+        self.status_lbl.setText(tr("⚠  Sem conexão"))
 
     def _load_channels(self):
         if not self._iface:
-            self.status_lbl.setText("⚠  Sem conexão")
+            self.status_lbl.setText(tr("⚠  Sem conexão"))
             return
         try:
             node = self._iface.localNode
             self._channels = list(node.channels) if node and node.channels else []
             self._rebuild_ui()
-            self.status_lbl.setText(f"✅  {len(self._channels)} canal(ais) carregados")
+            self.status_lbl.setText(tr("✅  {n} canal(ais) carregados", n=len(self._channels)))
         except Exception as e:
             logger.error(f"Erro ao carregar canais: {e}", exc_info=True)
             self.status_lbl.setText(f"❌  Erro: {e}")
@@ -129,33 +148,33 @@ class ChannelsTab(QWidget):
 
     def _add_channel(self):
         if not self._iface:
-            QMessageBox.warning(self, "Sem Conexão", "Conecte-se primeiro.")
+            QMessageBox.warning(self, tr("Sem Conexão"), tr("Conecte-se primeiro."))
             return
         used = {ch.index for ch in self._channels if hasattr(ch, 'index')}
         for idx in range(8):
             if idx not in used:
                 break
         else:
-            QMessageBox.warning(self, "Limite atingido",
-                                "O máximo de 8 canais (0-7) já foi atingido.")
+            QMessageBox.warning(self, tr("Limite atingido"),
+                                tr("O máximo de 8 canais (0-7) já foi atingido."))
             return
 
         try:
             new_ch = Channel()
             new_ch.index = idx
             new_ch.role  = 2
-            new_ch.settings.name = f"Canal {idx}"
+            new_ch.settings.name = tr("Canal {n}", n=idx)
             self._channels.append(new_ch)
             self._rebuild_ui()
-            self.status_lbl.setText(f"➕  Canal {idx} adicionado — edite e guarde")
+            self.status_lbl.setText(tr("➕  Canal {n} adicionado — edite e guarde", n=idx))
         except Exception as e:
             logger.error(f"Erro ao criar canal: {e}", exc_info=True)
-            QMessageBox.critical(self, "Erro", f"Não foi possível criar canal:\n{e}")
+            QMessageBox.critical(self, tr("Erro"), tr("Não foi possível criar canal:\n{e}", e=e))
 
     def _remove_channel(self, index: int):
         reply = QMessageBox.question(
-            self, "Remover Canal",
-            f"Remover o canal com índice {index}?",
+            self, tr("Remover Canal"),
+            tr("Remover o canal com índice {n}?", n=index),
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply != QMessageBox.Yes:
@@ -163,23 +182,24 @@ class ChannelsTab(QWidget):
         self._channels = [ch for ch in self._channels
                           if getattr(ch, 'index', None) != index]
         self._rebuild_ui()
-        self.status_lbl.setText(f"🗑  Canal {index} marcado para remoção — guarde para aplicar")
+        self.status_lbl.setText(tr("🗑  Canal {n} marcado para remoção — guarde para aplicar", n=index))
 
     def _save_all(self):
         if not self._iface:
-            QMessageBox.warning(self, "Sem Conexão", "Não está conectado.")
+            QMessageBox.warning(self, tr("Sem Conexão"), "Não está conectado.")
             return
         reply = QMessageBox.question(
-            self, "Guardar Canais",
-            "Guardar todas as alterações de canais no nó?\n\n"
-            "⚠  O nó irá reiniciar para aplicar as alterações.\n"
-            "    A ligação TCP será temporariamente perdida e restabelecida.",
+            self, tr("Guardar Canais"),
+            (tr("Guardar todas as alterações de canais no nó?\n\n")
+             + tr("⚠  O nó irá reiniciar para aplicar as alterações.\n")
+             + tr("A ligação TCP será temporariamente perdida e restabelecida.")),
+            
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply != QMessageBox.Yes:
             return
 
-        self.status_lbl.setText("A guardar…")
+        self.status_lbl.setText(tr("A guardar…"))
         errors = []
         saved  = 0
         try:
@@ -207,13 +227,13 @@ class ChannelsTab(QWidget):
                     except Exception:
                         pass
 
-            msg = f"✅  {saved} canal(ais) guardados"
+            msg = tr("✅  {n} canal(ais) guardados", n=saved)
             if errors:
                 msg += f" | ⚠ {len(errors)} erro(s)"
             self.status_lbl.setText(msg)
             QMessageBox.information(
-                self, "Canais Guardados",
-                f"{saved} canal(ais) guardados no nó." +
+                self, tr("Canais Guardados"),
+                tr("{n} canal(ais) guardados no nó.", n=saved) +
                 (f"\n\nErros:\n" + "\n".join(errors[:5]) if errors else "")
             )
             if saved > 0:
@@ -224,7 +244,7 @@ class ChannelsTab(QWidget):
         except Exception as e:
             logger.error(f"Erro ao guardar canais: {e}", exc_info=True)
             self.status_lbl.setText(f"❌ Erro: {e}")
-            QMessageBox.critical(self, "Erro", f"Erro ao guardar canais:\n{e}")
+            QMessageBox.critical(self, tr("Erro"), tr("Erro ao guardar canais:\n{e}", e=e))
 
 
 class _ChannelRow(QWidget):
@@ -251,7 +271,7 @@ class _ChannelRow(QWidget):
         role_str   = role_names.get(role_num, str(role_num))
         color      = ACCENT_GREEN if role_num == 1 else (ACCENT_BLUE if role_num == 2 else TEXT_MUTED)
 
-        lbl_idx = QLabel(f"📻  Canal {idx}")
+        lbl_idx = QLabel(tr("📻  Canal {n}", n=idx))
         lbl_idx.setStyleSheet(f"color:{color};font-weight:bold;font-size:13px;")
         hdr.addWidget(lbl_idx)
         hdr.addStretch()
@@ -279,14 +299,14 @@ class _ChannelRow(QWidget):
         settings = getattr(ch, 'settings', None)
         name_val  = getattr(settings, 'name', '') if settings else ''
         self.w_name = QLineEdit(name_val or "")
-        self.w_name.setPlaceholderText("Nome do canal")
+        self.w_name.setPlaceholderText(tr("Nome do canal"))
         self.w_name.setFixedWidth(240)
-        form.addRow(mk_lbl("Nome"), self.w_name)
+        form.addRow(mk_lbl(tr("Nome do canal")), self.w_name)
 
         self.w_role = QComboBox()
         self.w_role.addItems(["DISABLED", "PRIMARY", "SECONDARY"])
         self.w_role.setCurrentIndex(min(role_num, 2))
-        form.addRow(mk_lbl("Papel"), self.w_role)
+        form.addRow(mk_lbl(tr("Papel")), self.w_role)
 
         psk_bytes = getattr(settings, 'psk', b'') if settings else b''
         # Mostra como Base64 — formato standard das apps iOS/Android
@@ -295,7 +315,7 @@ class _ChannelRow(QWidget):
         else:
             psk_display = ''
         self.w_psk = QLineEdit(psk_display)
-        self.w_psk.setPlaceholderText("Base64 (ex: AQ==)  ou  default / none / random")
+        self.w_psk.setPlaceholderText(tr("Base64 (ex: AQ==)  ou  default / none / random"))
 
         self.w_psk_type = QComboBox()
         self.w_psk_type.addItems(["256-bit (32 bytes)", "128-bit (16 bytes)", "Default (AQ==)"])
@@ -304,14 +324,14 @@ class _ChannelRow(QWidget):
             f"background:{DARK_BG};color:{TEXT_PRIMARY};"
             f"border:1px solid {BORDER_COLOR};border-radius:4px;padding:2px 4px;font-size:11px;"
         )
-        btn_gen_psk = QPushButton("🔑 Gerar")
+        btn_gen_psk = QPushButton(tr("🔑 Gerar"))
         btn_gen_psk.setFixedWidth(70)
         btn_gen_psk.setStyleSheet(
             f"QPushButton{{background:{PANEL_BG};color:{ACCENT_BLUE};"
             f"border:1px solid {ACCENT_BLUE};border-radius:4px;padding:2px 6px;font-size:11px;}}"
             f"QPushButton:hover{{background:{ACCENT_BLUE};color:#000;}}"
         )
-        btn_gen_psk.setToolTip("Gera uma chave PSK aleatória do tipo seleccionado")
+        btn_gen_psk.setToolTip(tr("Gera uma chave PSK aleatória do tipo seleccionado"))
 
         def _gen_psk():
             t = self.w_psk_type.currentIndex()
@@ -332,25 +352,25 @@ class _ChannelRow(QWidget):
         psk_row.addWidget(btn_gen_psk)
         form.addRow(mk_lbl("PSK"), psk_row)
 
-        self.w_uplink = QCheckBox("Uplink MQTT habilitado")
+        self.w_uplink = QCheckBox(tr("Uplink MQTT habilitado"))
         self.w_uplink.setChecked(bool(getattr(settings, 'uplink_enabled', False) if settings else False))
         form.addRow(mk_lbl("Uplink MQTT"), self.w_uplink)
 
-        self.w_downlink = QCheckBox("Downlink MQTT habilitado")
+        self.w_downlink = QCheckBox(tr("Downlink MQTT habilitado"))
         self.w_downlink.setChecked(bool(getattr(settings, 'downlink_enabled', False) if settings else False))
         form.addRow(mk_lbl("Downlink MQTT"), self.w_downlink)
 
         mod_settings = getattr(settings, 'module_settings', None) if settings else None
-        self.w_muted = QCheckBox("Silenciar notificações (is_muted)")
+        self.w_muted = QCheckBox(tr("Silenciar notificações (is_muted)"))
         self.w_muted.setChecked(bool(getattr(mod_settings, 'is_muted', False) if mod_settings else False))
-        form.addRow(mk_lbl("Silenciar"), self.w_muted)
+        form.addRow(mk_lbl(tr("Silenciar")), self.w_muted)
 
         pos_prec     = getattr(settings, 'module_settings', None)
         pos_prec_val = getattr(pos_prec, 'position_precision', 0) if pos_prec else 0
         self.w_pos_prec = QSpinBox()
         self.w_pos_prec.setRange(0, 32)
         self.w_pos_prec.setValue(int(pos_prec_val))
-        form.addRow(mk_lbl("Precisão posição"), self.w_pos_prec)
+        form.addRow(mk_lbl(tr("Precisão posição")), self.w_pos_prec)
 
         main.addLayout(form)
 
@@ -653,29 +673,33 @@ MESHTASTIC_CONFIG_DEFS = {
     ],
 }
 
-SECTION_LABELS = {
-    "localConfig.device":              "💻 Dispositivo",
-    "localConfig.position":            "📍 Posição / GPS",
-    "localConfig.power":               "🔋 Energia",
-    "localConfig.network":             "🌐 Rede / WiFi",
-    "localConfig.display":             "🖥 Display",
-    "localConfig.lora":                "📡 LoRa",
-    "localConfig.bluetooth":           "🔵 Bluetooth",
-    "moduleConfig.mqtt":               "☁ MQTT",
-    "moduleConfig.serial":             "🔌 Serial",
-    "moduleConfig.externalNotification":"🔔 Notif. Externa",
-    "moduleConfig.storeForward":       "📦 Store & Forward",
-    "moduleConfig.rangeTest":          "📏 Range Test",
-    "moduleConfig.telemetry":          "📊 Telemetria",
-    "moduleConfig.cannedMessage":      "💬 Msgs Pre-definidas",
-    "moduleConfig.audio":              "🎙 Audio / Codec2",
-    "moduleConfig.remotehardware":     "🔧 Hardware Remoto",
-    "moduleConfig.neighborInfo":       "🔗 Neighbor Info",
-    "moduleConfig.ambientLighting":    "💡 Ilum. Ambiente",
-    "moduleConfig.detectionSensor":    "🔍 Sensor Deteccao",
-    "moduleConfig.paxcounter":         "🧮 Paxcounter",
-    "localConfig.security":            "🔐 Segurança",
-}
+def get_section_label(key: str) -> str:
+    """Returns the translated section label for the given config key."""
+    _map = {
+        "localConfig.device":              "💻 Dispositivo",
+        "localConfig.position":            "📍 Posição / GPS",
+        "localConfig.power":               "🔋 Energia",
+        "localConfig.network":             "🌐 Rede / WiFi",
+        "localConfig.display":             "🖥 Display",
+        "localConfig.lora":                "📡 LoRa",
+        "localConfig.bluetooth":           "🔵 Bluetooth",
+        "moduleConfig.mqtt":               "☁ MQTT",
+        "moduleConfig.serial":             "🔌 Serial",
+        "moduleConfig.externalNotification": "🔔 Notif. Externa",
+        "moduleConfig.storeForward":       "📦 Store & Forward",
+        "moduleConfig.rangeTest":          "📏 Range Test",
+        "moduleConfig.telemetry":          "📊 Telemetria",
+        "moduleConfig.cannedMessage":      "💬 Msgs Pre-definidas",
+        "moduleConfig.audio":              "🎙 Audio / Codec2",
+        "moduleConfig.remotehardware":     "🔧 Hardware Remoto",
+        "moduleConfig.neighborInfo":       "🔗 Neighbor Info",
+        "moduleConfig.ambientLighting":    "💡 Ilum. Ambiente",
+        "moduleConfig.detectionSensor":    "🔍 Sensor Deteccao",
+        "moduleConfig.paxcounter":         "🧮 Paxcounter",
+        "localConfig.security":            "🔐 Segurança",
+    }
+    return tr(_map.get(key, key))
+
 
 SECTION_WRITE_NAME = {
     "localConfig.device":              "device",
@@ -722,21 +746,21 @@ class ConfigTab(QWidget):
         root.setSpacing(8)
 
         hdr = QHBoxLayout()
-        title = QLabel("⚙ Config. do No Local")
-        title.setStyleSheet(f"color:{ACCENT_ORANGE};font-size:15px;font-weight:bold;")
-        hdr.addWidget(title)
+        self._title_lbl = QLabel(tr("⚙ Config. do No Local"))
+        self._title_lbl.setStyleSheet(f"color:{ACCENT_ORANGE};font-size:15px;font-weight:bold;")
+        hdr.addWidget(self._title_lbl)
         hdr.addStretch()
 
-        self.status_label = QLabel("Não conectado")
+        self.status_label = QLabel(tr("Não conectado"))
         self.status_label.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         hdr.addWidget(self.status_label)
 
-        btn_reload = QPushButton("🔄  Recarregar")
-        btn_reload.setObjectName("btn_reload_config")
-        btn_reload.clicked.connect(self.reload_config)
-        hdr.addWidget(btn_reload)
+        self._btn_reload = QPushButton(tr("🔄  Recarregar"))
+        self._btn_reload.setObjectName("btn_reload_config")
+        self._btn_reload.clicked.connect(self.reload_config)
+        hdr.addWidget(self._btn_reload)
 
-        self.btn_save = QPushButton("💾  Guardar Alterações")
+        self.btn_save = QPushButton(tr("💾  Guardar Alterações"))
         self.btn_save.setObjectName("btn_save_config")
         self.btn_save.setEnabled(False)
         self.btn_save.clicked.connect(self._save_config)
@@ -759,7 +783,8 @@ class ConfigTab(QWidget):
         lv.setContentsMargins(0, 0, 4, 0)
         lv.setSpacing(4)
 
-        sec_lbl = QLabel("Secções")
+        self._sec_lbl = QLabel(tr("Secções"))
+        sec_lbl = self._sec_lbl
         sec_lbl.setStyleSheet(
             f"color:{ACCENT_BLUE};font-weight:bold;font-size:11px;"
             f"padding:4px 8px;background:{PANEL_BG};"
@@ -780,7 +805,35 @@ class ConfigTab(QWidget):
         splitter.setStretchFactor(1, 1)
         root.addWidget(splitter, stretch=1)
 
-        self._show_placeholder("Conecte-se a um nó para ver as configurações.")
+        self._show_placeholder(tr("Conecte-se a um nó para ver as configurações."))
+
+    def retranslate(self):
+        """Update all labels after language change.
+
+        If the node is loaded, rebuilds the entire config UI so that all
+        section pages and field labels appear in the new language.
+        Static header widgets are always updated regardless.
+        """
+        # Always update static header widgets
+        if hasattr(self, "_title_lbl"):  self._title_lbl.setText(tr("⚙ Config. do No Local"))
+        if hasattr(self, "_btn_reload"): self._btn_reload.setText(tr("🔄  Recarregar"))
+        if hasattr(self, "btn_save"):    self.btn_save.setText(tr("💾  Guardar Alterações"))
+        if hasattr(self, "_sec_lbl"):    self._sec_lbl.setText(tr("Secções"))
+
+        if hasattr(self, "_local_node") and self._local_node:
+            # Node is loaded — rebuild all section pages in the new language
+            current_row = self.section_list.currentRow()
+            self._build_config_ui()
+            # Restore selected section
+            if current_row >= 0 and current_row < self.section_list.count():
+                self.section_list.setCurrentRow(current_row)
+            self.status_label.setText(tr("✅ Configuração carregada"))
+            self.btn_save.setEnabled(True)
+        else:
+            if hasattr(self, "status_label"):
+                self.status_label.setText(tr("Não conectado"))
+            # Refresh the placeholder text in the new language
+            self._show_placeholder(tr("Conecte-se a um nó para ver as configurações."))
 
     def set_interface(self, iface):
         self._iface = iface
@@ -792,36 +845,36 @@ class ConfigTab(QWidget):
         self._iface      = None
         self._local_node = None
         self.btn_save.setEnabled(False)
-        self.status_label.setText("Não conectado")
+        self.status_label.setText(tr("Não conectado"))
         if hasattr(self, '_channels_tab_widget') and self._channels_tab_widget:
             self._channels_tab_widget.clear_interface()
         self.section_list.clear()
         while self.stack.count():
             w = self.stack.widget(0)
             self.stack.removeWidget(w)
-        self._show_placeholder("Conecte-se a um nó para ver as configurações.")
+        self._show_placeholder(tr("Conecte-se a um nó para ver as configurações."))
 
     def reload_config(self):
         if not self._iface:
-            self._show_placeholder("Conecte-se a um nó para ver as configurações.")
+            self._show_placeholder(tr("Conecte-se a um nó para ver as configurações."))
             return
-        self.status_label.setText("A carregar configuração…")
+        self.status_label.setText(tr("A carregar configuração…"))
         QTimer.singleShot(100, self._do_reload)
 
     def _do_reload(self):
         try:
             self._local_node = self._iface.getNode("^local")
             if not self._local_node:
-                self._show_placeholder("Não foi possível obter o nó local.")
-                self.status_label.setText("Erro: nó local indisponível")
+                self._show_placeholder(tr("Não foi possível obter o nó local."))
+                self.status_label.setText(tr("Erro: nó local indisponível"))
                 return
             self._build_config_ui()
             self.btn_save.setEnabled(True)
-            self.status_label.setText("✅ Configuração carregada")
+            self.status_label.setText(tr("✅ Configuração carregada"))
         except Exception as e:
             logger.error(f"Erro ao carregar configuração: {e}", exc_info=True)
             self._show_placeholder(f"Erro ao carregar: {e}")
-            self.status_label.setText("❌ Erro ao carregar")
+            self.status_label.setText(tr("❌ Erro ao carregar"))
 
     def _build_config_ui(self):
         self.section_list.clear()
@@ -829,18 +882,18 @@ class ConfigTab(QWidget):
         while self.stack.count():
             self.stack.removeWidget(self.stack.widget(0))
 
-        self.section_list.addItem("📻 Canais")
+        self.section_list.addItem(tr("📻 Canais"))
         self._channels_tab_widget = ChannelsTab()
         if self._iface:
             self._channels_tab_widget.set_interface(self._iface)
         self._channels_tab_widget.reboot_required.connect(self.reboot_required)
         self.stack.addWidget(self._channels_tab_widget)
 
-        self.section_list.addItem("👤 Usuário")
+        self.section_list.addItem(tr("👤 Usuário"))
         self.stack.addWidget(self._build_device_info_page())
 
         for sec_key, field_defs in MESHTASTIC_CONFIG_DEFS.items():
-            label = SECTION_LABELS.get(sec_key, sec_key)
+            label = get_section_label(sec_key)
             self.section_list.addItem(label)
             fields_with_values = self._read_section_values(sec_key, field_defs)
             page = self._build_section_page(sec_key, fields_with_values)
@@ -920,14 +973,14 @@ class ConfigTab(QWidget):
             if my_info:
                 user      = my_info.get('user', {})
                 fields_ro = [
-                    ("ID do Nó",  "id",       user.get('id', '—')),
-                    ("Modelo HW", "hw_model", user.get('hwModel', '—')),
-                    ("Firmware",  "firmware", str(my_info.get('firmwareVersion', '—'))),
+                    (tr("ID do Nó"),  "id",       user.get('id', '—')),
+                    (tr("Modelo HW"), "hw_model", user.get('hwModel', '—')),
+                    (tr("Firmware"),  "firmware", str(my_info.get('firmwareVersion', '—'))),
                 ]
                 fields_rw = [
-                    ("Nome Longo",       "long_name",   user.get('longName', '')),
-                    ("Nome Curto",       "short_name",  user.get('shortName', '')),
-                    ("Licenciado (Ham)", "is_licensed", user.get('isLicensed', False)),
+                    (tr("Nome Longo"),       "long_name",   user.get('longName', '')),
+                    (tr("Nome Curto"),       "short_name",  user.get('shortName', '')),
+                    (tr("Licenciado (Ham)"), "is_licensed", user.get('isLicensed', False)),
                 ]
         except Exception as e:
             logger.warning(f"Erro ao ler info dispositivo: {e}")
@@ -938,13 +991,13 @@ class ConfigTab(QWidget):
                 f"border:1px solid {BORDER_COLOR};border-radius:4px;padding:4px 8px;"
             )
             lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            form.addRow(self._make_label(label), lbl)
+            form.addRow(self._make_label(tr(label)), lbl)
         if fields_rw:
             sep = QFrame()
             sep.setFrameShape(QFrame.HLine)
             sep.setStyleSheet(f"color:{BORDER_COLOR};")
             form.addRow(sep)
-            note = QLabel("✏  Campos editáveis — guardar usa setOwner()")
+            note = QLabel(tr("✏  Campos editáveis — guardar usa setOwner()"))
             note.setStyleSheet(f"color:{TEXT_MUTED};font-size:10px;font-style:italic;")
             form.addRow(note)
         for label, key, val in fields_rw:
@@ -976,12 +1029,12 @@ class ConfigTab(QWidget):
         form.setLabelAlignment(Qt.AlignRight)
         form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
         if not fields:
-            form.addRow(QLabel("Nenhum campo disponível para esta secção."))
+            form.addRow(QLabel(tr("Nenhum campo disponível para esta secção.")))
         else:
             for label, field_type, field_name, current_val, extra in fields:
                 w = self._create_field_widget(field_type, current_val, extra)
                 if w:
-                    form.addRow(self._make_label(label), w)
+                    form.addRow(self._make_label(tr(label)), w)
                     self._config_widgets[sec_key][field_name] = w
         scroll.setWidget(content)
         lay = QVBoxLayout(page)
@@ -1101,19 +1154,20 @@ class ConfigTab(QWidget):
 
     def _save_config(self):
         if not self._iface or not self._local_node:
-            QMessageBox.warning(self, "Sem Conexão", "Não está conectado a nenhum nó.")
+            QMessageBox.warning(self, tr("Sem Conexão"), tr("Não está conectado a nenhum nó."))
             return
         reply = QMessageBox.question(
-            self, "Guardar Configuração",
-            "Deseja guardar todas as alterações de configuração no nó?\n\n"
-            "⚠  O nó irá reiniciar após guardar para aplicar as configurações.\n"
-            "    A ligação TCP será temporariamente perdida e restabelecida.",
+            self, tr("Guardar Configuração"),
+            (tr("Deseja guardar todas as alterações de configuração no nó?\n\n")
+             + tr("⚠  O nó irá reiniciar após guardar para aplicar as configurações.\n")
+             + tr("A ligação TCP será temporariamente perdida e restabelecida.")),
+            
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply != QMessageBox.Yes:
             return
 
-        self.status_label.setText("A guardar…")
+        self.status_label.setText(tr("A guardar…"))
         errors         = []
         saved_sections = set()
 
@@ -1254,23 +1308,23 @@ class ConfigTab(QWidget):
                     errors.append(f"setOwner: {e}")
 
             if saved_sections:
-                self.status_label.setText(f"✅ {len(saved_sections)} secção(ões) guardadas")
-                msg = f"Configuração guardada!\n{len(saved_sections)} secção(ões) enviadas ao nó."
+                self.status_label.setText(tr("✅ {n} secção(ões) guardadas", n=len(saved_sections)))
+                msg = tr("Configuração guardada!\n{n} secção(ões) enviadas ao nó.", n=len(saved_sections))
                 if errors:
                     msg += f"\n\n⚠ {len(errors)} aviso(s):\n" + "\n".join(errors[:8])
-                QMessageBox.information(self, "Configuração Guardada", msg)
+                QMessageBox.information(self, tr("Configuração Guardada"), msg)
                 self.reboot_required.emit()
             else:
-                self.status_label.setText("⚠ Nada guardado")
-                msg = "Não foram detectadas alterações para guardar."
+                self.status_label.setText(tr("⚠ Nada guardado"))
+                msg = tr("Não foram detectadas alterações para guardar.")
                 if errors:
                     msg += f"\n\nErros:\n" + "\n".join(errors[:8])
-                QMessageBox.information(self, "Sem Alterações", msg)
+                QMessageBox.information(self, tr("Sem Alterações"), msg)
 
         except Exception as e:
             logger.error(f"Erro ao guardar configuração: {e}", exc_info=True)
-            self.status_label.setText("❌ Erro ao guardar")
-            QMessageBox.critical(self, "Erro", f"Erro ao guardar configuração:\n{e}")
+            self.status_label.setText(tr("❌ Erro ao guardar"))
+            QMessageBox.critical(self, tr("Erro"), tr("Erro ao guardar configuração:\n{e}", e=e))
 
     def _on_section_changed(self, row: int):
         if 0 <= row < self.stack.count():
@@ -1347,7 +1401,7 @@ class ConfigTab(QWidget):
             vl.setSpacing(4)
 
             note = QLabel(
-                "💡  Uma mensagem por linha · Separadas por | no firmware · Máx. 200 chars total"
+                tr("canned_hint")
             )
             note.setStyleSheet(f"color:{TEXT_MUTED};font-size:10px;font-style:italic;")
             note.setWordWrap(True)
@@ -1356,7 +1410,7 @@ class ConfigTab(QWidget):
             te = QTextEdit()
             te.setObjectName("canned_te")
             te.setPlaceholderText(
-                "Escreva uma mensagem por linha.\nExemplo:\nOlá!\nA caminho\nChegarei em 10 min\nSEM SINAL"
+                tr("canned_placeholder")
             )
             te.setFixedHeight(130)
             te.setStyleSheet(
@@ -1368,7 +1422,7 @@ class ConfigTab(QWidget):
                 msgs = [m.strip() for m in current_val.split('|') if m.strip()]
                 te.setPlainText('\n'.join(msgs))
 
-            char_label = QLabel("0 / 200 caracteres")
+            char_label = QLabel(tr("0 / 200 caracteres"))
             char_label.setStyleSheet(f"color:{TEXT_MUTED};font-size:10px;")
 
             def _update_count():
@@ -1379,7 +1433,7 @@ class ConfigTab(QWidget):
                 )
                 n = len(pipe_str)
                 color = ACCENT_GREEN if n <= 200 else ACCENT_RED
-                char_label.setText(f"{n} / 200 caracteres")
+                char_label.setText(tr("{n} / 200 caracteres", n=n))
                 char_label.setStyleSheet(f"color:{color};font-size:10px;")
 
             te.textChanged.connect(_update_count)

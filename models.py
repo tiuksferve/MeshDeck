@@ -7,6 +7,7 @@ import os
 import logging
 from typing import Optional, Dict, Any, Set, List
 from datetime import datetime, timedelta
+from i18n import tr
 
 from PyQt5.QtCore import (
     Qt, QAbstractTableModel, QSortFilterProxyModel,
@@ -149,12 +150,27 @@ def _safe_update(target: dict, source: dict) -> None:
 # Modelo de dados — tabela de nós
 # ---------------------------------------------------------------------------
 class NodeTableModel(QAbstractTableModel):
+    # Static fallback used only for column count (do not use for display)
     HEADERS = [
-        "⭐", "📩", "🗺", "📡",
+        "⭐", "📧", "🗺", "📡",
         "ID String", "ID Num", "Nome Longo", "Nome Curto", "Último Contato",
         "SNR (dB)", "Hops", "Via", "Latitude", "Longitude", "Altitude (m)",
         "Bateria (%)", "Modelo", "Último Tipo",
     ]
+
+    @classmethod
+    def translated_headers(cls):
+        """Returns headers translated to the current UI language."""
+        return [
+            "⭐", "📧", "🗺", "📡",
+            "ID String", "ID Num",
+            tr("Nome Longo"), tr("Nome Curto"), tr("Último Contato"),
+            "SNR (dB)", "Hops", "Via", "Latitude", "Longitude", "Altitude (m)",
+            tr("Bateria (%)"), tr("Modelo"), tr("Último Tipo"),
+        ]
+
+    # Alias so any code that called get_headers() still works
+    get_headers = translated_headers
 
     COL_FAV        = 0
     COL_DM         = 1
@@ -240,19 +256,19 @@ class NodeTableModel(QAbstractTableModel):
 
         if role == Qt.ToolTipRole:
             if is_local:
-                return f"🏠 Este é o seu nó local · {node_id}"
+                return tr("🏠 Este é o seu nó local · {id}", id=node_id)
             if col == self.COL_FAV:
-                return "Clique para remover dos favoritos" if _FAVORITES.is_favorite(node_id) \
-                       else "Clique para adicionar aos favoritos"
+                return tr("Clique para remover dos favoritos") if _FAVORITES.is_favorite(node_id) \
+                       else tr("Clique para adicionar aos favoritos")
             if col == self.COL_MAP:
                 has_gps = (node.get('latitude') is not None and node.get('longitude') is not None)
-                return "Ver no mapa" if has_gps else "Sem dados de posição"
+                return tr("Ver no mapa") if has_gps else tr("Sem dados de posição")
             if col == self.COL_DM:
                 if not isinstance(node.get("last_heard"), datetime):
-                    return "DM indisponível — nó nunca contactado"
+                    return tr("DM indisponível — nó nunca contactado")
                 has_key = bool(node.get('public_key', ''))
-                return "Enviar DM 🔒 PKI (chave pública conhecida)" if has_key \
-                       else "Enviar DM 🔓 PSK (chave de canal)"
+                return tr("DM — PKI (chave pública conhecida)") if has_key \
+                       else tr("DM — PSK (chave de canal)")
 
         return None
 
@@ -265,7 +281,7 @@ class NodeTableModel(QAbstractTableModel):
             if not isinstance(node.get("last_heard"), datetime):
                 return "·"
             has_key = bool(node.get('public_key', ''))
-            return "🔒" if has_key else "📩"
+            return "📧"
         if col == self.COL_MAP:
             has_gps = (node.get('latitude') is not None and node.get('longitude') is not None)
             return "🗺" if has_gps else "·"
@@ -276,7 +292,7 @@ class NodeTableModel(QAbstractTableModel):
             4:  lambda n: n.get("id_string", ""),
             5:  lambda n: str(n.get("id_num", "")),
             6:  lambda n: ("🏠 " + (n.get("long_name", "") or "—")) if is_local
-                           else (n.get("long_name", "") or "⏳ Aguardando Info"),
+                           else (n.get("long_name", "") or tr("⏳ Aguardando Info")),
             7:  lambda n: (n.get("short_name", "") or "--"),
             8:  lambda n: (n["last_heard"].strftime("%Y-%m-%d %H:%M:%S")
                            if isinstance(n.get("last_heard"), datetime)
@@ -296,7 +312,7 @@ class NodeTableModel(QAbstractTableModel):
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
-            return self.HEADERS[section]
+            return self.get_headers()[section]
         return None
 
     # FIX-4: aceita também nodeNum int para bloqueio precoce
