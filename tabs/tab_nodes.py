@@ -413,7 +413,6 @@ class MapWidget(QWidget):
             name        = node.get('long_name') or node.get('id_string', '')
             short       = node.get('short_name') or node.get('id_string', '')
             has_key     = bool(node.get('public_key', ''))
-            enc_icon    = "🔒" if has_key else "🔓"
             node_id     = node.get('id_string', '')
             is_fav      = _FAVORITES.is_favorite(node_id)
             fav_star    = "⭐ " if is_fav else ""
@@ -459,7 +458,7 @@ class MapWidget(QWidget):
                 f"<tr><td>📡</td><td>Via: <b>{via}</b></td></tr>"
                 f"<tr><td>📶</td><td>SNR: {snr_str}</td></tr>"
                 f"<tr><td>🔋</td><td>{batt_str}</td></tr>"
-                f"<tr><td>{enc_icon}</td><td>DM: {'PKI' if has_key else 'PSK'}</td></tr>"
+                f"<tr><td>📧</td><td>DM: {'PKI' if has_key else 'PSK'}</td></tr>"
                 f"<tr><td>🕐</td><td>{html.escape(lh_str)}</td></tr>"
                 f"</table>"
                 + (f"<div style='color:#00ff88;font-size:11px;margin-top:4px'>● {tr('Seleccionado')}</div>"

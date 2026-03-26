@@ -932,15 +932,20 @@ class MainWindow(QMainWindow):
                 self._pending_traceroute_dest = None
 
         if not is_mine:
-            # Traceroute enviado por outro nó — pergunta se o utilizador quer ver
+            # Traceroute directed at us from a remote node.
+            # origin_id = packet['to'] = local node (we are the target)
+            # dest_id   = packet['from'] = remote (who sent the traceroute to us)
+            # Display: Origem = remote (who initiated), Destino = local (us)
             origin_name = resolve_name(origin_id)
             dest_name   = resolve_name(dest_id)
+            notif_origem  = dest_name    # remote initiator
+            notif_destino = origin_name  # local node (us)
             reply = QMessageBox.question(
                 self,
                 tr("Traceroute de terceiro recebido"),
-                (tr("Foi recebido um traceroute entre:\n\n")
-                 + f"  {tr('Origem:')}  {origin_name}\n"
-                 + f"  {tr('Destino:')} {dest_name}\n\n"
+                (tr("Foi recebido um traceroute direcionado ao nó local:\n\n")
+                 + f"  {tr('Origem:')}  {notif_origem}\n"
+                 + f"  {tr('Destino:')} {notif_destino}\n\n"
                  + tr("Deseja visualizar o resultado?")),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
@@ -974,20 +979,52 @@ class MainWindow(QMainWindow):
                 )
             return lines
 
-        # Use translated labels for both sent and received traceroutes.
-        # For received (is_mine=False): origin/dest are both remote nodes — show as-is.
-        name_a, name_b = origin_name, dest_name
+        # Display logic:
+        # is_mine=True  (we sent):     Origem=local,  Destino=remote
+        # is_mine=False (we received): Origem=remote, Destino=local
+        # In the protocol packet: origin_id=packet['to']=local when is_mine=True,
+        # and origin_id=packet['to']=remote when is_mine=False.
+        if is_mine:
+            # We initiated: local is origin, remote is destination
+            lbl_a     = tr("Origem:")
+            lbl_b     = tr("Destino:")
+            name_a    = origin_name   # local node
+            name_b    = dest_name     # remote
+            fwd_label = tr("Rota de ida") + "  (" + tr("origem") + " → " + tr("destino") + ")"
+            bck_label = tr("Rota de volta") + " (" + tr("destino") + " → " + tr("origem") + ")"
+        else:
+            # We received: remote is origin, local is destination
+            lbl_a     = tr("Origem:")
+            lbl_b     = tr("Destino:")
+            name_a    = dest_name     # remote (packet['from'] = who sent the traceroute to us)
+            name_b    = origin_name   # local node (packet['to'] = us)
+            fwd_label = tr("Rota de ida") + "  (" + tr("origem") + " → " + tr("destino") + ")"
+            bck_label = tr("Rota de volta") + " (" + tr("destino") + " → " + tr("origem") + ")"
+
+        # For received traceroutes, swap which edges are "ida" vs "volta":
+        # forward_edges in protocol = local→remote (origin_id→dest_id)
+        # When received: display origem=remote, destino=local
+        # So protocol's "forward" (local→remote) = display "volta" (destino→origem)
+        # And protocol's "back" (remote→local)   = display "ida"   (origem→destino)
+        if is_mine:
+            display_fwd = forward_edges
+            display_bck = back_edges
+            n_fwd = len(forward_edges)
+            n_bck = len(back_edges)
+        else:
+            display_fwd = back_edges     # remote→local = "ida" from remote's perspective
+            display_bck = forward_edges  # local→remote = "volta" from remote's perspective
+            n_fwd = len(back_edges)
+            n_bck = len(forward_edges)
 
         body = (
-            tr("Origem:") + f"     {name_a}\n"
-            + tr("Destino:") + f"    {name_b}\n"
-            + tr("Hops ida:   {n}", n=len(forward_edges)) + "\n"
-            + tr("Hops volta: {n}", n=len(back_edges)) + "\n\n"
+            lbl_a + f"     {name_a}\n"
+            + lbl_b + f"    {name_b}\n"
+            + tr("Hops ida:   {n}", n=n_fwd) + "\n"
+            + tr("Hops volta: {n}", n=n_bck) + "\n\n"
             + "\n".join(
-                build_section(forward_edges,
-                    tr("Rota de ida") + "  (" + tr("origem") + " → " + tr("destino") + ")") +
-                build_section(back_edges,
-                    tr("Rota de volta") + " (" + tr("destino") + " → " + tr("origem") + ")")
+                build_section(display_fwd, fwd_label) +
+                build_section(display_bck, bck_label)
             )
         )
 

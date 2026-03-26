@@ -93,7 +93,7 @@ class MessagesTab(QWidget):
         sep.setStyleSheet(f"color:{BORDER_COLOR};margin:2px 0;")
         lv.addWidget(sep)
 
-        self._dm_hdr = QLabel(tr("📩  Mensagens Directas"))
+        self._dm_hdr = QLabel(tr("📧  Mensagens Directas"))
         dm_hdr = self._dm_hdr
         dm_hdr.setStyleSheet(
             f"color:{ACCENT_PURPLE};font-weight:bold;font-size:11px;"
@@ -178,7 +178,7 @@ class MessagesTab(QWidget):
         if hasattr(self, '_chan_hdr'):
             self._chan_hdr.setText(tr("📻  Canais"))
         if hasattr(self, '_dm_hdr'):
-            self._dm_hdr.setText(tr("📩  Mensagens Directas"))
+            self._dm_hdr.setText(tr("📧  Mensagens Directas"))
         # Refresh the empty-state page if currently shown
         if hasattr(self, '_web') and hasattr(self, '_ctx_channel'):
             self._web.setHtml(self._empty_state_html())
@@ -349,7 +349,7 @@ class MessagesTab(QWidget):
         enc_tag = " 🔒 PKI" if has_key else " 🔓 PSK"
         label  = f"{long_}  ({short})" if long_ and short and long_ != short else (long_ or short or node_id)
 
-        self.conv_header.setText(f"📩  DM  →  {html.escape(label)}{enc_tag}")
+        self.conv_header.setText(f"📧  DM  →  {html.escape(label)}{enc_tag}")
         self.conv_header.setStyleSheet(
             f"color:{ACCENT_PURPLE};font-weight:bold;font-size:13px;"
             f"padding:6px 10px;background:{DM_BG};"
@@ -362,7 +362,7 @@ class MessagesTab(QWidget):
         self.btn_send.setStyleSheet(
             f"background-color:#2a1a4a;color:{ACCENT_PURPLE};border-color:{ACCENT_PURPLE};"
         )
-        self.btn_send.setText(tr("📩  Enviar DM"))
+        self.btn_send.setText(tr("📧  Enviar DM"))
         self._display_conversation(key)
         self.send_input.setFocus()
 
@@ -529,7 +529,7 @@ class MessagesTab(QWidget):
         is_dm  = self._is_dm_key(key)
         bg     = DM_BG if is_dm else DARK_BG
         color  = ACCENT_PURPLE if is_dm else ACCENT_BLUE
-        icon   = "📩" if is_dm else "💬"
+        icon   = "📧" if is_dm else "💬"
         lbl    = f"DM: {self._ctx_dm_id}" if is_dm else f"Canal #{self._ctx_channel}"
         return (
             f"<html><meta charset='utf-8'><body style='background:{bg};color:{TEXT_MUTED};"
@@ -576,9 +576,9 @@ body{{background:{bg};color:{TEXT_PRIMARY};
         if prev_date is None or msg_date != prev_date:
             today = datetime.now().date()
             if msg_date == today:
-                ds = "&#8212; Hoje &#8212;"
+                ds = f"&#8212; {tr("Hoje")} &#8212;"
             elif msg_date == today - timedelta(days=1):
-                ds = "&#8212; Ontem &#8212;"
+                ds = f"&#8212; {tr("Ontem")} &#8212;"
             else:
                 ds = f"&#8212; {msg_date.strftime('%d/%m/%Y')} &#8212;"
             parts.append(f'<div class="date-sep">{ds}</div>')

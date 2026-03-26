@@ -152,7 +152,7 @@ def _safe_update(target: dict, source: dict) -> None:
 class NodeTableModel(QAbstractTableModel):
     # Static fallback used only for column count (do not use for display)
     HEADERS = [
-        "⭐", "📩", "🗺", "📡",
+        "⭐", "📧", "🗺", "📡",
         "ID String", "ID Num", "Nome Longo", "Nome Curto", "Último Contato",
         "SNR (dB)", "Hops", "Via", "Latitude", "Longitude", "Altitude (m)",
         "Bateria (%)", "Modelo", "Último Tipo",
@@ -162,7 +162,7 @@ class NodeTableModel(QAbstractTableModel):
     def translated_headers(cls):
         """Returns headers translated to the current UI language."""
         return [
-            "⭐", "📩", "🗺", "📡",
+            "⭐", "📧", "🗺", "📡",
             "ID String", "ID Num",
             tr("Nome Longo"), tr("Nome Curto"), tr("Último Contato"),
             "SNR (dB)", "Hops", "Via", "Latitude", "Longitude", "Altitude (m)",
@@ -267,8 +267,8 @@ class NodeTableModel(QAbstractTableModel):
                 if not isinstance(node.get("last_heard"), datetime):
                     return tr("DM indisponível — nó nunca contactado")
                 has_key = bool(node.get('public_key', ''))
-                return tr("Enviar DM 🔒 PKI (chave pública conhecida)") if has_key \
-                       else tr("Enviar DM 🔓 PSK (chave de canal)")
+                return tr("DM — PKI (chave pública conhecida)") if has_key \
+                       else tr("DM — PSK (chave de canal)")
 
         return None
 
@@ -281,7 +281,7 @@ class NodeTableModel(QAbstractTableModel):
             if not isinstance(node.get("last_heard"), datetime):
                 return "·"
             has_key = bool(node.get('public_key', ''))
-            return "🔒" if has_key else "📩"
+            return "📧"
         if col == self.COL_MAP:
             has_gps = (node.get('latitude') is not None and node.get('longitude') is not None)
             return "🗺" if has_gps else "·"

@@ -52,8 +52,8 @@ _STRINGS: dict = {
     "Pesquisar por ID, nome longo ou curto…":
                                     {"pt": "Pesquisar por ID, nome longo ou curto…",
                                      "en": "Search by ID, long name or short name…"},
-    "hint_bar":                     {"pt": "💡 ⭐ → Favorito  ·  📩/🔒 → DM  ·  🗺 → Mapa  ·  📡 → Traceroute  ·  ",
-                                     "en": "💡 ⭐ → Favourite  ·  📩/🔒 → DM  ·  🗺 → Map  ·  📡 → Traceroute  ·  "},
+    "hint_bar":                     {"pt": "💡 ⭐ → Favorito  ·  📧 → DM  ·  🗺 → Mapa  ·  📡 → Traceroute  ·  ",
+                                     "en": "💡 ⭐ → Favourite  ·  📧 → DM  ·  🗺 → Map  ·  📡 → Traceroute  ·  "},
     "hint_fav":                     {"pt": "⭐ Favorito (fixo no topo)  &nbsp;",
                                      "en": "⭐ Favourite (pinned at top)  &nbsp;"},
     "hint_nofav":                   {"pt": "☆ Não favorito",                 "en": "☆ Not a favourite"},
@@ -115,6 +115,8 @@ _STRINGS: dict = {
     "DM indisponível — nó nunca contactado":
                                     {"pt": "DM indisponível — nó nunca contactado",
                                      "en": "DM unavailable — node never contacted"},
+    "DM — PKI (chave pública conhecida)": {"pt": "DM — PKI (chave pública conhecida)", "en": "DM — PKI (public key known)"},
+    "DM — PSK (chave de canal)":           {"pt": "DM — PSK (chave de canal)",          "en": "DM — PSK (channel key)"},
     "Enviar DM 🔒 PKI (chave pública conhecida)":
                                     {"pt": "Enviar DM 🔒 PKI (chave pública conhecida)",
                                      "en": "Send DM 🔒 PKI (public key known)"},
@@ -172,6 +174,7 @@ _STRINGS: dict = {
     "Fechar":                       {"pt": "Fechar",                            "en": "Close"},
     "Traceroute de terceiro recebido":
                                     {"pt": "Traceroute de terceiro recebido",   "en": "Third-party traceroute received"},
+    "Foi recebido um traceroute direcionado ao nó local:\n\n": {"pt": "Foi recebido um traceroute direcionado ao nó local:\n\n", "en": "A traceroute directed at the local node was received:\n\n"},
     "Foi recebido um traceroute entre:\n\n":
                                     {"pt": "Foi recebido um traceroute entre:\n\n",
                                      "en": "A traceroute was received between:\n\n"},
@@ -203,13 +206,13 @@ _STRINGS: dict = {
 
     # ── Aba Mensagens ─────────────────────────────────────────────────────────
     "📻  Canais":                   {"pt": "📻  Canais",                        "en": "📻  Channels"},
-    "📩  Mensagens Directas":       {"pt": "📩  Mensagens Directas",            "en": "📩  Direct Messages"},
+    "📧  Mensagens Directas":       {"pt": "📧  Mensagens Directas",            "en": "📧  Direct Messages"},
     "Seleccione um canal ou nó":    {"pt": "Seleccione um canal ou nó",         "en": "Select a channel or node"},
     "Seleccione um canal ou nó para enviar mensagem…":
                                     {"pt": "Seleccione um canal ou nó para enviar mensagem…",
                                      "en": "Select a channel or node to send a message…"},
     "📤  Enviar":                   {"pt": "📤  Enviar",                        "en": "📤  Send"},
-    "📩  Enviar DM":                {"pt": "📩  Enviar DM",                     "en": "📩  Send DM"},
+    "📧  Enviar DM":                {"pt": "📧  Enviar DM",                     "en": "📧  Send DM"},
     "Mensagem para #{n} · {name}…": {"pt": "Mensagem para #{n} · {name}…",     "en": "Message to #{n} · {name}…"},
     "Mensagem directa para {name}…":{"pt": "Mensagem directa para {name}…",    "en": "Direct message to {name}…"},
     "Canal {n}":                    {"pt": "Canal {n}",                         "en": "Channel {n}"},
@@ -419,6 +422,8 @@ _STRINGS: dict = {
     "📍 Posição enviada para a rede (via firmware).": {"pt": "📍 Posição enviada para a rede (via firmware).", "en": "📍 Position sent to the network (via firmware)."},
     "pos_no_coords_msg":            {"pt": "O nó local não tem posição disponível.\n\nVerifique se:\n  • O GPS está activo e já adquiriu sinal, ou\n  • Está definida uma posição fixa em Configurações → Posição/GPS\n    (campos Latitude fixa / Longitude fixa).", "en": "The local node has no position available.\n\nCheck:\n  • GPS is active and has acquired a signal, or\n  • A fixed position is set in Settings → Position/GPS\n    (Fixed Latitude / Fixed Longitude fields)."},
     "Não conectado.":               {"pt": "Não conectado.",                  "en": "Not connected."},
+    "Hoje":                         {"pt": "Hoje",                           "en": "Today"},
+    "Ontem":                        {"pt": "Ontem",                          "en": "Yesterday"},
     "⚙ Config. do No Local":       {"pt": "⚙ Config. do No Local",             "en": "⚙ Local Node Config"},
     "Secções":                      {"pt": "Secções",                           "en": "Sections"},
     "Não conectado":                {"pt": "Não conectado",                     "en": "Not connected"},
