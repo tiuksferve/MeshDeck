@@ -5,7 +5,7 @@ Importado por todos os outros módulos.
 import logging
 
 APP_VERSION = "1.0.0-beta.1"
-APP_NAME    = "Meshtastic Monitor"
+APP_NAME    = "MeshDeck"
 from meshtastic import BROADCAST_NUM
 
 logging.getLogger().setLevel(logging.INFO)

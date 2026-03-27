@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-main.py — Ponto de entrada da aplicação Meshtastic Monitor.
+main.py — Ponto de entrada da aplicação MeshDeck.
 Instancia a MainWindow e inicia o loop Qt.
 
 Uso:
     python3 main.py
-    # ou dentro da pasta meshtastic_monitor/:
-    python3 -m meshtastic_monitor.main
+    # ou dentro da pasta meshdeck/:
+    python3 -m meshdeck.main
 """
 import sys
 import time
@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
         self._pkt_timestamps: list = []
 
         # Idioma — carrega preferência guardada (default: English)
-        _qs = QSettings("CT7BRA", "MeshtasticMonitor")
+        _qs = QSettings("CT7BRA", "MeshDeck")
         _saved_lang = _qs.value("language", "en")
         from i18n import set_language as _set_lang
         _set_lang(_saved_lang)
@@ -243,7 +243,7 @@ class MainWindow(QMainWindow):
         # ── Menu Sobre ─────────────────────────────────────────────────────
         self._about_menu  = menu_bar.addMenu(tr("ℹ️  Sobre"))
         about_menu = self._about_menu
-        self._act_info = QAction(tr("📋  Sobre Meshtastic Monitor"), self)
+        self._act_info = QAction(tr("📋  Sobre MeshDeck"), self)
         self._act_info.triggered.connect(self._show_about_dialog)
         about_menu.addAction(self._act_info)
 
@@ -274,7 +274,7 @@ class MainWindow(QMainWindow):
         logo_lbl.setFixedSize(28, 28)
         top.addWidget(logo_lbl)
 
-        title_lbl = QLabel("  Meshtastic Monitor")
+        title_lbl = QLabel("  MeshDeck")
         title_lbl.setStyleSheet(
             f"color:{ACCENT_GREEN};font-size:16px;font-weight:bold;letter-spacing:1px;"
         )
@@ -1162,7 +1162,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "act_reset_nodedb"):  self.act_reset_nodedb.setText(tr("🗑  Reset NodeDB"))
         if hasattr(self, "_act_console"):    self._act_console.setText(tr("🖥  Consola de logs…"))
         if hasattr(self, "act_sound"):       self.act_sound.setText(tr("🔔  Som em nova mensagem"))
-        if hasattr(self, "_act_info"):       self._act_info.setText(tr("📋  Sobre Meshtastic Monitor"))
+        if hasattr(self, "_act_info"):       self._act_info.setText(tr("📋  Sobre MeshDeck"))
 
         # ── Connection indicator ──────────────────────────────────────────
         connected = (getattr(self, "worker", None) is not None and
@@ -1216,7 +1216,7 @@ class MainWindow(QMainWindow):
 
     def _on_sound_toggled(self, enabled: bool):
         self._sound_enabled = enabled
-        QSettings("CT7BRA", "MeshtasticMonitor").setValue("sound_enabled", enabled)
+        QSettings("CT7BRA", "MeshDeck").setValue("sound_enabled", enabled)
         msg = tr("🔔 Som de notificação activado") if enabled else tr("🔔 Som de notificação silenciado")
         self.statusBar().showMessage(msg, 3000)
 
@@ -1250,7 +1250,7 @@ class MainWindow(QMainWindow):
     def _show_about_dialog(self):
         """Diálogo de apresentação da aplicação."""
         dlg = QDialog(self)
-        dlg.setWindowTitle(tr("Sobre o Meshtastic Monitor"))
+        dlg.setWindowTitle(tr("Sobre o MeshDeck"))
         dlg.setMinimumWidth(460)
         dlg.setWindowFlags(dlg.windowFlags() & ~Qt.WindowContextHelpButtonHint)
 
@@ -1259,7 +1259,7 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(28, 24, 28, 20)
 
         # Título
-        lbl_title = QLabel("📡  Meshtastic Monitor")
+        lbl_title = QLabel("📡  MeshDeck")
         lbl_title.setStyleSheet(
             f"color:{ACCENT_GREEN};font-size:20px;font-weight:bold;"
         )
@@ -1512,7 +1512,7 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setStyleSheet(APP_STYLESHEET)
-    app.setApplicationName("Meshtastic Monitor")
+    app.setApplicationName("MeshDeck")
     window = MainWindow()
     window.show()
     sys.exit(app.exec_())

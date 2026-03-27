@@ -40,7 +40,7 @@ class ConnectionDialog(QDialog):
         # Ensure dialog always opens in English the first time
         # (QSettings may have saved "pt" from a previous run — we still honour it,
         #  but the spec says the dialog must default to English on first use)
-        if not QSettings("CT7BRA", "MeshtasticMonitor").contains("language"):
+        if not QSettings("CT7BRA", "MeshDeck").contains("language"):
             set_language("en")
 
         root = QVBoxLayout(self)
@@ -154,7 +154,7 @@ class ConnectionDialog(QDialog):
         if not lang:
             return
         set_language(lang)
-        QSettings("CT7BRA", "MeshtasticMonitor").setValue("language", lang)
+        QSettings("CT7BRA", "MeshDeck").setValue("language", lang)
         self._retranslate_ui()          # update this dialog immediately
         self.language_changed.emit(lang) # notify MainWindow
 

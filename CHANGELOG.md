@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **Meshtastic Monitor** are documented in this file.  
+All notable changes to **MeshDeck** are documented in this file.  
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).  
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -68,4 +68,4 @@ First public release.
 > (ClockworkPi uConsole CM4) with a live Meshtastic network. Expect occasional
 > rough edges; bug reports and pull requests are welcome.
 
-[1.0.0-beta.1]: https://github.com/ct7bra/meshtastic-monitor/releases/tag/v1.0.0-beta.1
+[1.0.0-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.0-beta.1

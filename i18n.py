@@ -1,5 +1,5 @@
 """
-i18n.py — Internacionalização do Meshtastic Monitor.
+i18n.py — Internacionalização do MeshDeck.
 
 Suporta Português (pt) e English (en).
 O idioma activo é definido em set_language() e lido via tr().
@@ -36,7 +36,7 @@ def tr(key: str, **kwargs) -> str:
 _STRINGS: dict = {
 
     # ── Janela principal ──────────────────────────────────────────────────────
-    "app_title":                    {"pt": "Meshtastic Monitor {v}",          "en": "Meshtastic Monitor {v}"},
+    "app_title":                    {"pt": "MeshDeck {v}",          "en": "MeshDeck {v}"},
     "Nó local: —":                  {"pt": "Nó local: —",                     "en": "Local node: —"},
     "Nó local: {name} [{short}]":   {"pt": "Nó local: {name} [{short}]",      "en": "Local node: {name} [{short}]"},
     "Nós: {total}":                 {"pt": "Nós: {total}",                    "en": "Nodes: {total}"},
@@ -91,7 +91,7 @@ _STRINGS: dict = {
                                     {"pt": "Activa beep do sistema ao receber mensagem não lida",
                                      "en": "Activates system beep on unread message"},
     "ℹ️  Sobre":                    {"pt": "ℹ️  Sobre",                       "en": "ℹ️  About"},
-    "📋  Sobre Meshtastic Monitor": {"pt": "📋  Sobre Meshtastic Monitor",    "en": "📋  About Meshtastic Monitor"},
+    "📋  Sobre MeshDeck": {"pt": "📋  Sobre MeshDeck",    "en": "📋  About MeshDeck"},
 
     # ── Lista de Nós — cabeçalhos ─────────────────────────────────────────────
     "Nome Longo":                   {"pt": "Nome Longo",                       "en": "Long Name"},
@@ -607,7 +607,7 @@ _STRINGS: dict = {
                                      "en": "Settings have been sent to the node.\nThe node is restarting to apply them.\n\nWait before reconnecting to ensure\nthe TCP service is available again."},
     "🔌  Aguarde {n}s…":           {"pt": "🔌  Aguarde {n}s…",                "en": "🔌  Please wait {n}s…"},
     "🔌  Reconectar agora":        {"pt": "🔌  Reconectar agora",              "en": "🔌  Reconnect now"},
-    "Sobre o Meshtastic Monitor":   {"pt": "Sobre o Meshtastic Monitor",        "en": "About Meshtastic Monitor"},
+    "Sobre o MeshDeck":   {"pt": "Sobre o MeshDeck",        "en": "About MeshDeck"},
     "Versão {v}  ·  2025":         {"pt": "Versão {v}  ·  2025",              "en": "Version {v}  ·  2025"},
     "uconsole_line":                 {"pt": "Desenvolvido e optimizado para o ClockworkPi uConsole CM4.",
                                      "en": "Developed and optimised for the ClockworkPi uConsole CM4."},
