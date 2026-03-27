@@ -56,7 +56,6 @@ class MeshtasticWorker(QObject):
         self._connected = False
         self._known_nodes: Set[str] = set()
         self._channels:    Dict[int, tuple] = {}
-        self._poll_last_seen: Dict[str, int] = {}   # nid → lastHeard timestamp
         self._reconnect_attempts = 0
         self._reconnect_timer    = QTimer(self)
         self._reconnect_timer.setSingleShot(True)
@@ -77,7 +76,6 @@ class MeshtasticWorker(QObject):
         try:
             logger.info(f"Conectando a {self.hostname}:{self.port} …")
             self._known_nodes.clear()
-            self._poll_last_seen.clear()
             self._reconnect_attempts = 0
             pub.subscribe(self._on_connection_established, "meshtastic.connection.established")
             pub.subscribe(self._on_connection_lost,        "meshtastic.connection.lost")
@@ -158,7 +156,6 @@ class MeshtasticWorker(QObject):
                     pass
                 self.iface = None
             self._known_nodes.clear()
-            self._poll_last_seen.clear()
             # Re-subscreve handlers pubsub
             for topic, handler in [
                 ("meshtastic.connection.established", self._on_connection_established),
@@ -565,27 +562,6 @@ class MeshtasticWorker(QObject):
             self.nodes_batch.emit(list(deduped.items()))
         return len(deduped)
 
-    def _poll_nodedb(self):
-        """
-        Safety-net polling — sincroniza o NodeDB completo a cada 30s.
-        Equivalente ao comportamento das apps iOS/Android: lê iface.nodesByNum
-        e emite updates para todos os nós. Apanha nós novos e actualizações
-        que a biblioteca não emitiu via pubsub (frequente com meshtasticd via TCP).
-        """
-        if not self.iface or not self._connected:
-            return
-        try:
-            nodes_src = getattr(self.iface, 'nodesByNum', None) or {}
-            count = 0
-            for raw_key, node in nodes_src.items():
-                if not isinstance(node, dict):
-                    continue
-                self._emit_node(node.get('num') or raw_key, node)
-                count += 1
-            logger.debug(f"Poll NodeDB: {count} nós sincronizados")
-        except Exception as e:
-            logger.debug(f"Erro no poll NodeDB: {e}")
-
     def _on_connection_established(self, interface=None):
         """Chamado pela thread interna do TCPInterface — delega para thread Qt."""
         logger.info("Conexão estabelecida — a delegar para thread Qt…")
@@ -599,23 +575,36 @@ class MeshtasticWorker(QObject):
         self._reconnect_timer.stop()
         self._connect_watchdog.stop()
         self._known_nodes.clear()
-        self._poll_last_seen.clear()
         self.reconnect_status.emit(0, 0)   # 0 = reconectado com sucesso
         self.connection_changed.emit(True)
 
-        # FIX-4: bloqueia inserção do nó local ANTES do batch inicial
+        # Determina o ID do nó local com a melhor fonte disponível:
+        # 1ª opção — getMyNodeInfo() (mais fiável, lê do NodeDB completo)
+        # 2ª opção — localNode.nodeNum convertido para !hex (fallback rápido)
+        # O ID é registado ANTES do batch para que o proxy bloqueie o nó local.
+        local_num = None
+        my_id     = None
         try:
             if self.iface and self.iface.localNode:
-                local_num  = self.iface.localNode.nodeNum
-                local_id   = f"!{int(local_num):08x}" if local_num else None
-                logger.info(f"Nó local: num={local_num} id={local_id}")
-                # Emite sinal auxiliar para que MainWindow configure os modelos imediatamente
-                if local_id:
+                local_num = self.iface.localNode.nodeNum
+                if local_num:
                     self._local_num_known = local_num
-                    self._local_id_known  = local_id
-                    self.my_node_id_ready.emit(local_id)   # bloqueia proxy antes do batch
+                    self._local_id_known  = f"!{int(local_num):08x}"
         except Exception as e:
             logger.warning(f"Não foi possível determinar nodeNum local: {e}")
+
+        try:
+            my_id = self._get_my_node_id()
+            if my_id:
+                self._local_id_known = my_id   # ID canónico confirmado
+        except Exception as e:
+            logger.warning(f"_get_my_node_id falhou: {e}")
+
+        # Emite my_node_id_ready exactamente uma vez, com o melhor ID disponível
+        final_id = my_id or self._local_id_known
+        if final_id:
+            logger.info(f"Nó local: num={local_num} id={final_id}")
+            self.my_node_id_ready.emit(final_id)
 
         # Carga inicial completa
         try:
@@ -624,7 +613,7 @@ class MeshtasticWorker(QObject):
         except Exception as e:
             logger.error(f"Erro ao carregar NodeDB inicial: {e}", exc_info=True)
 
-        # FIX-6: NeighborInfo inicial do NodeDB
+        # NeighborInfo inicial do NodeDB
         try:
             nodes_src = getattr(self.iface, 'nodesByNum', None) or {}
             for raw_key, node in nodes_src.items():
@@ -650,11 +639,6 @@ class MeshtasticWorker(QObject):
 
         # Metadados do nó local
         try:
-            my_id = self._get_my_node_id()
-            if my_id:
-                self.my_node_id_ready.emit(my_id)
-
-            local_num  = self.iface.localNode.nodeNum if self.iface and self.iface.localNode else None
             local_user = {}
             if local_num and hasattr(self.iface, "nodesByNum"):
                 local_user = self.iface.nodesByNum.get(local_num, {}).get("user", {})
@@ -662,7 +646,7 @@ class MeshtasticWorker(QObject):
                 local_user = self.iface.nodes.get(my_id, {}).get("user", {})
             ln  = local_user.get("longName", "")
             sn  = local_user.get("shortName", "")
-            nid = local_user.get("id", my_id or "")
+            nid = local_user.get("id", final_id or "")
 
             gps_enabled  = False
             has_position = False
@@ -756,7 +740,6 @@ class MeshtasticWorker(QObject):
             pk = user.get('publicKey') or user.get('public_key')
             if pk:
                 try:
-                    _b64 = base64
                     if isinstance(pk, bytes):
                         updates['public_key'] = base64.b64encode(pk).decode()
                     else:

@@ -43,20 +43,6 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
      10. Intervalos        — intervalo entre pacotes por nó
     """
 
-    # Static keys for internal routing; labels translated at runtime via get_sections()
-    SECTIONS = [
-        ("📊 Visão Geral",      "overview"),
-        ("📡 Canal & Airtime",  "channel"),
-        ("📶 Qualidade RF",     "rf"),
-        ("📦 Tráfego",          "traffic"),
-        ("🔋 Nós & Bateria",    "nodes"),
-        ("✅ Fiabilidade",      "reliability"),
-        ("⏱ Latência",         "latency"),
-        ("🔗 Vizinhança",       "neighbors"),
-        ("📏 Alcance & Links",  "range_links"),
-        ("⏰ Intervalos",       "intervals"),
-    ]
-
     @classmethod
     def get_sections(cls):
         """Returns sections with translated labels."""
@@ -213,15 +199,18 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
             self._reset_data()
             self._render_section(self._section_list.currentRow())
 
-    # Sections that show a waiting screen when empty — need full reload on transition
-    _WAITING_CHECK = {
-        'intervals':   lambda self: bool(self._data_intervals()['rows']),
-        'neighbors':   lambda self: bool(self._nb_links),
-        'range_links': lambda self: bool(self._data_range_links()['rows']),
-        'rf':          lambda self: bool(self._snr_values or self._hops_values),
-        'channel':     lambda self: bool(self._ch_util or self._air_tx),
-        'nodes':       lambda self: bool(self._battery or self._packets),
-    }
+    def _section_has_data(self, key: str) -> bool:
+        """Indica se a secção `key` já tem dados suficientes para sair do ecrã de espera."""
+        if key == 'intervals':   return bool(self._data_intervals()['rows'])
+        if key == 'neighbors':   return bool(self._nb_links)
+        if key == 'range_links': return bool(self._data_range_links()['rows'])
+        if key == 'rf':          return bool(self._snr_values or self._hops_values)
+        if key == 'channel':     return bool(self._ch_util or self._air_tx)
+        if key == 'nodes':       return bool(self._battery or self._packets)
+        return True   # secções sem ecrã de espera consideram-se sempre com dados
+
+    # Secções que mostram ecrã de espera enquanto não há dados
+    _WAITING_SECTIONS = {'intervals', 'neighbors', 'range_links', 'rf', 'channel', 'nodes'}
 
     def _refresh_current(self):
         """Actualiza os dados da secção activa.
@@ -234,16 +223,15 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
         if not key:
             return
 
-        # If this section can show a waiting screen, check whether data has arrived
-        # and a full re-render is needed to switch from waiting to data view.
-        check = self._WAITING_CHECK.get(key)
-        if check is not None:
-            has_data_now = check(self)
-            was_waiting  = getattr(self, '_was_waiting', {}).get(key, True)
+        # Se esta secção pode mostrar ecrã de espera, verifica se os dados chegaram
+        # e se é necessário recarregar completamente para sair do ecrã de espera.
+        if key in self._WAITING_SECTIONS:
             if not hasattr(self, '_was_waiting'):
                 self._was_waiting = {}
+            has_data_now = self._section_has_data(key)
+            was_waiting  = self._was_waiting.get(key, True)
             if has_data_now and was_waiting:
-                # Transition: waiting → data — full reload required
+                # Transição: espera → dados — recarrega HTML completo
                 self._was_waiting[key] = False
                 row = self._section_list.currentRow()
                 if row >= 0:

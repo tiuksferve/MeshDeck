@@ -22,7 +22,6 @@ class MetricsDataMixin:
 
     def _reset_data(self):
         """Inicializa / limpa todas as estruturas de dados de métricas."""
-        from collections import deque
         self._start_time  = time.time()
 
         # Mapa de nomes curtos: nid → short_name (actualizado em cada pacote)
