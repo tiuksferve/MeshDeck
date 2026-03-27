@@ -6,14 +6,14 @@ daemon.
 Built and optimised for the **ClockworkPi uConsole CM4**, but runs on any
 Linux/macOS/Windows system with Python 3 and PyQt5.
 
-**Version:** 1.0.beta &nbsp;·&nbsp; **Callsign:** CT7BRA
+**Version:** 1.0.0-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Year:** 2026
 
 ---
 
 ## 🌐 Languages
 
 The interface supports **English** and **Português**, selectable in the
-connection dialog. The preference is saved between sessions.
+connection dialog. The preference is saved between sessions via `QSettings`.
 
 ---
 
@@ -23,10 +23,11 @@ connection dialog. The preference is saved between sessions.
 
 - Full list of all visible network nodes with automatic updates
 - **Columns:** ID String, ID Num, Long Name, Short Name, Last Contact, SNR,
-  Hops, Via (RF/MQTT), Latitude, Longitude, Battery (%), Hardware Model, Last
-  Packet Type
+  Hops, Via (RF/MQTT), Latitude, Longitude, Altitude (m), Battery (%), Hardware
+  Model, Last Packet Type
 - **Local node pinned at top** with amber background and 🏠 prefix
-- **Favourites** with highlighted yellow background, pinned below local node (⭐)
+- **Favourites** managed directly in the node firmware (⭐), pinned below the
+  local node with highlighted yellow background
 - Real-time search by ID, long name or short name
 - Double-click any node to view full details of the last received packet
 - **Quick actions directly from the list:**
@@ -79,7 +80,6 @@ connection dialog. The preference is saved between sessions.
   - "Show on Map" button (when destination has GPS)
 - 30-second cooldown between traceroutes to protect the channel
 - Notification dialog when a traceroute directed at the local node is received
-  (with option to view results)
 
 ### ⚙️ Full Node Configuration
 
@@ -148,6 +148,14 @@ without any manual intervention needed.
 - 30-second safety-net polling to keep NodeDB in sync
 - `rxTime` fallback to `datetime.now()` (compatible with TCP daemon)
 - Local node always visible and pinned at the top of the list
+- Compatible with both Wayland and X11
+
+### ⭐ Favourites
+
+Favourites are managed **directly in the local node firmware** via
+`setFavorite()` / `removeFavorite()`. No local file is used — the firmware
+NodeDB is always the source of truth, ensuring favourites persist across
+sessions and devices with no auxiliary files required.
 
 ### 🔔 Sound Notifications
 
@@ -164,7 +172,7 @@ without any manual intervention needed.
 - **Send Manual Position** — via `localNode.setPosition()` or manual fallback
   (Ctrl+P)
 - **Reset NodeDB** — clears the firmware's node database
-- **Log Console** — real-time log of the TCP communication
+- **Log Console** — real-time log of the TCP communication (in English)
 
 ---
 
@@ -173,8 +181,8 @@ without any manual intervention needed.
 ```
 meshtastic_monitor/
 ├── main.py              ← Entry point · MainWindow · signal wiring
-├── constants.py         ← Colours, Qt styles, APP_STYLESHEET, map themes
-├── models.py            ← FavoritesStore, NodeTableModel, NodeFilterProxyModel
+├── constants.py         ← Colours, Qt styles, APP_STYLESHEET
+├── models.py            ← FirmwareFavorites, NodeTableModel, NodeFilterProxyModel
 ├── worker.py            ← MeshtasticWorker — TCP/pubsub/packet processing
 ├── dialogs.py           ← ConnectionDialog, ConsoleWindow, RebootWaitDialog
 ├── i18n.py              ← Internationalisation system (PT/EN), tr() function
@@ -225,14 +233,6 @@ is automatically saved via `QSettings`.
 
 ---
 
-## 🗂 Favourites File
-
-Favourites are stored in `~/.meshtastic_monitor_favorites.json` with full node
-data (name, GPS coordinates, public key), so they appear even when not present
-in the firmware NodeDB.
-
----
-
 ## 📡 Meshtastic Firmware Requirements
 
 | Feature | Minimum version |
@@ -241,6 +241,7 @@ in the firmware NodeDB.
 | NeighborInfo over LoRa | ≥ 2.5.13 |
 | Traceroute with SNR | ≥ 2.3.2 |
 | Private channel for NeighborInfo | ≥ 2.5.13 |
+| Firmware-managed favourites | ≥ 2.3.0 |
 
 > **Note:** NeighborInfo over LoRa requires a **private** primary channel — the
 > public channel (LongFast/ShortFast with default key) blocks this traffic since
@@ -252,7 +253,7 @@ in the firmware NodeDB.
 
 **CT7BRA — Tiago Veiga**  
 Python 3 · PyQt5 · Meshtastic · Leaflet · Chart.js  
-Optimised for ClockworkPi uConsole CM4
+Optimised for ClockworkPi uConsole CM4 · 2026
 
 ---
 
@@ -263,13 +264,16 @@ artificial intelligence assistant. The AI actively collaborated across multiple
 development sessions, contributing to:
 
 - Code architecture and refactoring (separation into modules and mixins)
-- Complete internationalisation system (i18n) for Portuguese and English
+- Complete internationalisation system (i18n) for Portuguese and English with
+  full UI coverage
 - Implementation of all 10 real-time metric sections
 - Traceroute system with correct origin/destination logic for sent and received
   traceroutes
 - Bug detection and fixing (NodeDB duplicates, map race conditions, Qt signal
-  leaks, waiting-screen transition logic)
+  leaks, duplicate connection signal emission)
+- Migration of favourites from a local JSON file to native firmware management
 - Performance analysis and optimisations for the CM4 hardware
+- Full translation of all UI strings and log messages to English
 
 The code was reviewed, tested and validated by the author on real hardware
 (ClockworkPi uConsole CM4) with a live Meshtastic network.

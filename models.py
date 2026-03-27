@@ -1,8 +1,7 @@
 """
-models.py — Modelos de dados: FavoritesStore, NodeTableModel,
+models.py — Modelos de dados: FirmwareFavorites, NodeTableModel,
 NodeFilterProxyModel e a função auxiliar _safe_update.
 """
-import json
 import os
 import logging
 from typing import Optional, Dict, Any, Set, List

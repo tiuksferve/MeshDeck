@@ -5,14 +5,14 @@ Interface gráfica avançada para monitorização, comunicação e análise de r
 Desenvolvida e optimizada para o **ClockworkPi uConsole CM4**, mas funciona em
 qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
 
-**Versão:** 1.0.beta &nbsp;·&nbsp; **Callsign:** CT7BRA
+**Versão:** 1.0.0-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
 
 ---
 
 ## 🌐 Idiomas
 
 A interface suporta **Português** e **English**, seleccionáveis no diálogo de
-ligação. A preferência é guardada entre sessões.
+ligação. A preferência é guardada entre sessões via `QSettings`.
 
 ---
 
@@ -21,11 +21,12 @@ ligação. A preferência é guardada entre sessões.
 ### 📋 Lista de Nós em Tempo Real
 
 - Lista completa de todos os nós visíveis na rede com actualização automática
-- **Colunas:** ID, Nome Longo, Nome Curto, Último Contacto, SNR, Hops, Via
-  (RF/MQTT), Latitude, Longitude, Bateria (%), Modelo de Hardware, Último Tipo
-  de Pacote
+- **Colunas:** ID String, ID Num, Nome Longo, Nome Curto, Último Contacto, SNR,
+  Hops, Via (RF/MQTT), Latitude, Longitude, Altitude (m), Bateria (%), Modelo
+  de Hardware, Último Tipo de Pacote
 - **Nó local fixado no topo** com fundo âmbar e prefixo 🏠
-- **Favoritos** com fundo amarelo destacado, fixados abaixo do nó local (⭐)
+- **Favoritos** geridos directamente no firmware do nó (⭐), fixados abaixo do
+  nó local com fundo amarelo destacado
 - Pesquisa em tempo real por ID, nome longo ou nome curto
 - Duplo clique sobre qualquer nó para ver os detalhes completos do último pacote
 - **Acções rápidas directamente da lista:**
@@ -84,7 +85,7 @@ ligação. A preferência é guardada entre sessões.
 
 - **Canais:** nome, PSK (Base64/hex/aleatório), papel, uplink/downlink MQTT,
   silenciar, precisão de posição
-- **Utilizador:** nome longo, nome curto, licenciado Ham (setOwner)
+- **Utilizador:** nome longo, nome curto, licenciado Ham (via setOwner)
 - **Todas as secções de configuração do firmware:**
 
 | Secção | Campos principais |
@@ -102,7 +103,7 @@ ligação. A preferência é guardada entre sessões.
 | 📦 Store & Forward | Activar, registos, janela histórico, servidor |
 | 📏 Range Test | Activar, intervalo, CSV |
 | 📊 Telemetria | Intervalos: dispositivo/ambiente/energia/saúde |
-| 💬 Msgs Pre-definidas | Área de texto (uma por linha, máx 200 chars) + encoder rotativo |
+| 💬 Msgs Pré-definidas | Área de texto (uma por linha, máx 200 chars) + encoder rotativo |
 | 🎙 Audio / Codec2 | Activar, PTT GPIO, bitrate, GPIOs I2S |
 | 🔧 Hardware Remoto | Activar, acesso a pinos indefinidos |
 | 🔗 Neighbor Info | Activar, intervalo, transmitir via LoRa |
@@ -111,7 +112,8 @@ ligação. A preferência é guardada entre sessões.
 | 🧮 Paxcounter | Activar, intervalo |
 | 🔐 Segurança | Canal admin, managed mode, serial debug |
 
-- Transacção atómica — firmware reinicia apenas uma vez
+- Transacção atómica — firmware reinicia apenas uma vez após guardar todas as
+  alterações
 - Guardar robusto com conversão de enums via descritor protobuf
 - Reconstrução automática da UI ao mudar idioma (todos os labels actualizados)
 
@@ -147,6 +149,14 @@ dados sem necessidade de intervenção manual.
 - Polling de segurança a cada 30s para manter o NodeDB sincronizado
 - Fallback de `rxTime` para `datetime.now()` (compatível com daemon TCP)
 - Nó local sempre visível e fixado no topo da lista
+- Compatível com Wayland e X11
+
+### ⭐ Favoritos
+
+Os favoritos são geridos **directamente no firmware** do nó local via
+`setFavorite()` / `removeFavorite()`. Não é usado nenhum ficheiro local — a
+fonte de verdade é sempre o NodeDB do firmware, garantindo que os favoritos
+persistem entre sessões e dispositivos sem qualquer ficheiro auxiliar.
 
 ### 🔔 Notificações Sonoras
 
@@ -163,7 +173,7 @@ dados sem necessidade de intervenção manual.
 - **Enviar Posição Manual** — via `localNode.setPosition()` ou fallback manual
   (Ctrl+P)
 - **Resetar NodeDB** — limpa a base de dados de nós do firmware
-- **Console de Log** — log em tempo real da comunicação TCP
+- **Console de Log** — log em tempo real da comunicação TCP (em inglês)
 
 ---
 
@@ -172,8 +182,8 @@ dados sem necessidade de intervenção manual.
 ```
 meshtastic_monitor/
 ├── main.py              ← Ponto de entrada · MainWindow · ligação de sinais
-├── constants.py         ← Cores, estilos Qt, APP_STYLESHEET, temas do mapa
-├── models.py            ← FavoritesStore, NodeTableModel, NodeFilterProxyModel
+├── constants.py         ← Cores, estilos Qt, APP_STYLESHEET
+├── models.py            ← FirmwareFavorites, NodeTableModel, NodeFilterProxyModel
 ├── worker.py            ← MeshtasticWorker — TCP/pubsub/processamento de pacotes
 ├── dialogs.py           ← ConnectionDialog, ConsoleWindow, RebootWaitDialog
 ├── i18n.py              ← Sistema de internacionalização (PT/EN), função tr()
@@ -220,15 +230,7 @@ python3 main.py
 
 No primeiro arranque (ou sem preferência guardada), o diálogo de ligação abre
 em inglês. Seleccione o idioma no selector antes de ligar. A preferência é
-guardada automaticamente em `QSettings`.
-
----
-
-## 🗂 Ficheiro de Favoritos
-
-Os favoritos são guardados em `~/.meshtastic_monitor_favorites.json` com dados
-completos do nó (nome, GPS, chave pública), permitindo que apareçam mesmo
-quando não estão no NodeDB do firmware.
+guardada automaticamente via `QSettings`.
 
 ---
 
@@ -240,6 +242,7 @@ quando não estão no NodeDB do firmware.
 | NeighborInfo via LoRa | ≥ 2.5.13 |
 | Traceroute com SNR | ≥ 2.3.2 |
 | Canal NeighborInfo privado | ≥ 2.5.13 |
+| Favoritos no firmware | ≥ 2.3.0 |
 
 > **Nota:** NeighborInfo via LoRa requer canal primário **privado** — o canal
 > público (LongFast/ShortFast com chave padrão) bloqueia este tráfego desde o
@@ -251,7 +254,7 @@ quando não estão no NodeDB do firmware.
 
 **CT7BRA — Tiago Veiga**  
 Python 3 · PyQt5 · Meshtastic · Leaflet · Chart.js  
-Optimizado para ClockworkPi uConsole CM4
+Optimizado para ClockworkPi uConsole CM4 · 2026
 
 ---
 
@@ -261,12 +264,15 @@ Este projecto foi desenvolvido com o apoio do **Claude** (Anthropic), um
 assistente de inteligência artificial. A IA colaborou activamente em múltiplas
 sessões de desenvolvimento, contribuindo para:
 
-- Arquitectura e refactoring do código (separação em módulos/mixins)
-- Sistema de internacionalização (i18n) completo PT/EN
+- Arquitectura e refactoring do código (separação em módulos e mixins)
+- Sistema de internacionalização (i18n) completo PT/EN com cobertura total da UI
 - Implementação das 10 secções de métricas em tempo real
 - Sistema de traceroutes com lógica de origem/destino correcta
-- Detecção e correcção de bugs (duplicados no NodeDB, condições de corrida no mapa, fugas de sinais Qt)
-- Análise de performance e optimizações para o CM4
+- Detecção e correcção de bugs (duplicados no NodeDB, condições de corrida no
+  mapa, fugas de sinais Qt, emissão dupla de sinais de ligação)
+- Migração dos favoritos de ficheiro JSON local para firmware nativo
+- Análise de performance e optimizações para o hardware CM4
+- Tradução completa de toda a UI e mensagens de log para inglês
 
 O código foi revisto, testado e validado pelo autor em hardware real
 (ClockworkPi uConsole CM4) com uma rede Meshtastic activa.
