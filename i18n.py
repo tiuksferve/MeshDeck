@@ -64,6 +64,7 @@ _STRINGS: dict = {
     "GPS activo mas posição ainda não disponível":
                                     {"pt": "GPS activo mas posição ainda não disponível",
                                      "en": "GPS active but position not yet available"},
+    "GPS desactivado":              {"pt": "GPS desactivado",                  "en": "GPS disabled"},
     "nó local tooltip":             {"pt": "Nó local  ·  {long_name} [{short_name}]  ·  {node_id}\nGPS: {gps_tip}",
                                      "en": "Local node  ·  {long_name} [{short_name}]  ·  {node_id}\nGPS: {gps_tip}"},
 
@@ -187,6 +188,8 @@ _STRINGS: dict = {
                                     {"pt": "Aguarde {n}s até o traceroute anterior terminar.",
                                      "en": "Wait {n}s for the previous traceroute to finish."},
     "Traceroute já existente":      {"pt": "Traceroute já existente",           "en": "Traceroute already exists"},
+    "traceroute_existente_msg":     {"pt": "Já existe um traceroute para {name} na lista.\n\nDeseja enviar um novo traceroute mesmo assim?",
+                                     "en": "A traceroute for {name} already exists in the list.\n\nDo you want to send a new traceroute anyway?"},
     "Já existe um traceroute para {name} na lista.\n\n":
                                     {"pt": "Já existe um traceroute para {name} na lista.\n\n",
                                      "en": "A traceroute for {name} already exists in the list.\n\n"},
