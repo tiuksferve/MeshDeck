@@ -576,9 +576,9 @@ body{{background:{bg};color:{TEXT_PRIMARY};
         if prev_date is None or msg_date != prev_date:
             today = datetime.now().date()
             if msg_date == today:
-                ds = f"&#8212; {tr("Hoje")} &#8212;"
+                ds = f"&#8212; {tr('Hoje')} &#8212;"
             elif msg_date == today - timedelta(days=1):
-                ds = f"&#8212; {tr("Ontem")} &#8212;"
+                ds = f"&#8212; {tr('Ontem')} &#8212;"
             else:
                 ds = f"&#8212; {msg_date.strftime('%d/%m/%Y')} &#8212;"
             parts.append(f'<div class="date-sep">{ds}</div>')
