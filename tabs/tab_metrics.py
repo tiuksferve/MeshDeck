@@ -91,7 +91,7 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
         ll.setContentsMargins(0, 8, 0, 0)
         ll.setSpacing(0)
 
-        lbl = QLabel("  Métricas")
+        lbl = QLabel(f"  {tr('Métricas')}")
         lbl.setStyleSheet(
             f"color:{TEXT_MUTED};font-size:10px;font-weight:bold;"
             f"padding:4px 12px 8px 12px;letter-spacing:1px;"

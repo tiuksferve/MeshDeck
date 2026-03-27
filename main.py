@@ -584,7 +584,7 @@ class MainWindow(QMainWindow):
     def _on_connection_changed(self, connected: bool):
         if connected:
             host = f"{self._hostname}:{self._port}"
-            self.conn_indicator.setText(f"🟢  {host}")
+            self.conn_indicator.setText(tr("🟢  {host}", host=host))
             self.conn_indicator.setStyleSheet(
                 f"color:{ACCENT_GREEN};font-weight:bold;font-size:12px;"
                 f"background:{PANEL_BG};padding:4px 12px;"
@@ -967,7 +967,7 @@ class MainWindow(QMainWindow):
         dest_name    = resolve_name(dest_id)
         total_links  = len(forward_edges) + len(back_edges)
         self._show_countdown_message(
-            f"📡 Traceroute: {origin_name} → {dest_name}  ({total_links} links)", 30
+            tr("traceroute_status", origin=origin_name, dest=dest_name, n=total_links), 30
         )
 
         if not forward_edges and not back_edges:

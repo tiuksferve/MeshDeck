@@ -125,7 +125,7 @@ class ChannelsTab(QWidget):
             self.status_lbl.setText(tr("✅  {n} canal(ais) carregados", n=len(self._channels)))
         except Exception as e:
             logger.error(f"Erro ao carregar canais: {e}", exc_info=True)
-            self.status_lbl.setText(f"❌  Erro: {e}")
+            self.status_lbl.setText(tr("err_generic", err=e))
 
     def _clear_rows(self):
         for row in self._channel_widgets:
@@ -243,7 +243,7 @@ class ChannelsTab(QWidget):
 
         except Exception as e:
             logger.error(f"Erro ao guardar canais: {e}", exc_info=True)
-            self.status_lbl.setText(f"❌ Erro: {e}")
+            self.status_lbl.setText(tr("err_generic", err=e))
             QMessageBox.critical(self, tr("Erro"), tr("Erro ao guardar canais:\n{e}", e=e))
 
 
@@ -873,7 +873,7 @@ class ConfigTab(QWidget):
             self.status_label.setText(tr("✅ Configuração carregada"))
         except Exception as e:
             logger.error(f"Erro ao carregar configuração: {e}", exc_info=True)
-            self._show_placeholder(f"Erro ao carregar: {e}")
+            self._show_placeholder(tr("err_load_config", err=e))
             self.status_label.setText(tr("❌ Erro ao carregar"))
 
     def _build_config_ui(self):

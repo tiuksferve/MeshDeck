@@ -86,7 +86,7 @@ class MeshtasticWorker(QObject):
             self.iface = TCPInterface(self.hostname, self.port)
         except Exception as e:
             self.error_occurred.emit(
-                f"Falha ao criar interface TCP ({self.hostname}:{self.port}): {e}"
+                tr("err_tcp_create", host=self.hostname, port=self.port, err=e)
             )
             logger.exception("Erro ao iniciar worker")
 
@@ -197,7 +197,7 @@ class MeshtasticWorker(QObject):
 
     def send_message(self, channel_index: int, text: str):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Não conectado — impossível enviar mensagem.")
+            self.error_occurred.emit(tr("err_send_msg"))
             return
         try:
             result = self.iface.sendText(text, channelIndex=channel_index, wantAck=True)
@@ -205,11 +205,11 @@ class MeshtasticWorker(QObject):
             logger.info(f"Canal {channel_index} msg enviada (pkt_id={pkt_id:#010x})")
             self.channel_message_sent.emit(channel_index, text, pkt_id)
         except Exception as e:
-            self.error_occurred.emit(f"Erro ao enviar mensagem: {e}")
+            self.error_occurred.emit(tr("err_send_msg_detail", err=e))
 
     def reset_nodedb(self):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Não conectado — impossível resetar NodeDB.")
+            self.error_occurred.emit(tr("err_reset_nodedb_nc"))
             return
         try:
             local_node = self.iface.localNode
@@ -224,11 +224,11 @@ class MeshtasticWorker(QObject):
             self.nodedb_reset.emit()
         except Exception as e:
             logger.error(f"Erro ao resetar NodeDB: {e}", exc_info=True)
-            self.error_occurred.emit(f"Erro ao resetar NodeDB: {e}")
+            self.error_occurred.emit(tr("err_reset_nodedb", err=e))
 
     def send_traceroute(self, dest_id: str, hop_limit: int = 3):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Não conectado — impossível enviar traceroute.")
+            self.error_occurred.emit(tr("err_traceroute_nc"))
             return
         try:
             r = mesh_pb2.RouteDiscovery()
@@ -243,7 +243,7 @@ class MeshtasticWorker(QObject):
             logger.info(f"Traceroute enviado para {dest_id} (hopLimit={hop_limit})")
         except Exception as e:
             logger.error(f"Erro ao enviar traceroute: {e}", exc_info=True)
-            self.error_occurred.emit(f"Erro ao enviar traceroute: {e}")
+            self.error_occurred.emit(tr("err_traceroute", err=e))
 
     def send_position(self):
         """
@@ -353,7 +353,7 @@ class MeshtasticWorker(QObject):
         try:
             local_node = self.iface.localNode
             if not local_node:
-                self.error_occurred.emit("Nó local não disponível.")
+                self.error_occurred.emit(tr("err_nodeinfo_nc"))
                 return
             local_num  = local_node.nodeNum
             me         = (self.iface.nodesByNum.get(local_num, {})
@@ -366,11 +366,11 @@ class MeshtasticWorker(QObject):
             logger.info(f"send_node_info: via setOwner ('{long_name}' / '{short_name}')")
         except Exception as e:
             logger.error(f"Erro ao enviar NODEINFO: {e}", exc_info=True)
-            self.error_occurred.emit(f"Erro ao enviar Info do Nó: {e}")
+            self.error_occurred.emit(tr("err_nodeinfo", err=e))
 
     def send_direct_message(self, dest_id: str, text: str):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Não conectado — impossível enviar DM.")
+            self.error_occurred.emit(tr("err_dm_nc"))
             return
         try:
 
@@ -406,14 +406,8 @@ class MeshtasticWorker(QObject):
                 except Exception as pki_err:
                     err_str = str(pki_err)
                     if 'PKI_UNKNOWN_PUBKEY' in err_str or 'unknown' in err_str.lower():
-                        # FIX-3: mensagem de erro simplificada
                         logger.warning(f"DM PKI falhou para {dest_id}: {pki_err}")
-                        self.error_occurred.emit(
-                            f"Não foi possível enviar DM encriptado (PKI) para {dest_id}.\n\n"
-                            "O rádio ainda não tem a chave pública deste nó.\n"
-                            "Aguarde que ele se anuncie na rede (pode demorar alguns minutos)\n"
-                            "ou clique em  📡 Nó → Enviar Info do Nó  para anunciar a sua chave."
-                        )
+                        self.error_occurred.emit(tr("err_dm_pki", dest=dest_id))
                         return
                     raise
 
@@ -427,7 +421,7 @@ class MeshtasticWorker(QObject):
 
         except Exception as e:
             logger.error(f"Erro ao enviar DM para {dest_id}: {e}", exc_info=True)
-            self.error_occurred.emit(f"Erro ao enviar DM: {e}")
+            self.error_occurred.emit(tr("err_dm", err=e))
 
     def _on_text_message(self, packet, interface=None):
         try:

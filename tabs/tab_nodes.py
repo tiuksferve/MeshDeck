@@ -455,10 +455,10 @@ class MapWidget(QWidget):
                 f"<hr style='margin:4px 0;border-color:#30363d'>"
                 f"<table style='border-spacing:2px 2px;width:100%'>"
                 f"<tr><td>🆔</td><td>{html.escape(str(node_id))}</td></tr>"
-                f"<tr><td>📡</td><td>Via: <b>{via}</b></td></tr>"
-                f"<tr><td>📶</td><td>SNR: {snr_str}</td></tr>"
+                f"<tr><td>📡</td><td>{tr('popup_via')} <b>{via}</b></td></tr>"
+                f"<tr><td>📶</td><td>{tr('popup_snr')} {snr_str}</td></tr>"
                 f"<tr><td>🔋</td><td>{batt_str}</td></tr>"
-                f"<tr><td>📧</td><td>DM: {'PKI' if has_key else 'PSK'}</td></tr>"
+                f"<tr><td>📧</td><td>{tr('popup_dm')} {'PKI' if has_key else 'PSK'}</td></tr>"
                 f"<tr><td>🕐</td><td>{html.escape(lh_str)}</td></tr>"
                 f"</table>"
                 + (f"<div style='color:#00ff88;font-size:11px;margin-top:4px'>● {tr('Seleccionado')}</div>"
@@ -709,7 +709,7 @@ class MapWidget(QWidget):
         label        = f"{ts}\n→ {origin_short}\n  {loc_tag} {dest_short}"
         item = QListWidgetItem(label)
         item.setData(Qt.UserRole, rec['id'])
-        item.setToolTip(f"{origin_name} → {dest_name}\n{ts}")
+        item.setToolTip(tr("popup_traceroute_tip", origin=origin_name, dest=dest_name, ts=ts))
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
         item.setCheckState(Qt.Checked)   # marcado por omissão
         self._tr_blocking_signals = True
