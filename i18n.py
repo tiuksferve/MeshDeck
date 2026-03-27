@@ -1,5 +1,5 @@
 """
-i18n.py — Internacionalização do Meshtastic Monitor.
+i18n.py — Internacionalização do MeshDeck.
 
 Suporta Português (pt) e English (en).
 O idioma activo é definido em set_language() e lido via tr().
@@ -36,7 +36,7 @@ def tr(key: str, **kwargs) -> str:
 _STRINGS: dict = {
 
     # ── Janela principal ──────────────────────────────────────────────────────
-    "app_title":                    {"pt": "Meshtastic Monitor {v}",          "en": "Meshtastic Monitor {v}"},
+    "app_title":                    {"pt": "MeshDeck {v}",          "en": "MeshDeck {v}"},
     "Nó local: —":                  {"pt": "Nó local: —",                     "en": "Local node: —"},
     "Nó local: {name} [{short}]":   {"pt": "Nó local: {name} [{short}]",      "en": "Local node: {name} [{short}]"},
     "Nós: {total}":                 {"pt": "Nós: {total}",                    "en": "Nodes: {total}"},
@@ -53,10 +53,10 @@ _STRINGS: dict = {
                                     {"pt": "Pesquisar por ID, nome longo ou curto…",
                                      "en": "Search by ID, long name or short name…"},
     "hint_bar":                     {"pt": "💡 ⭐ → Favorito  ·  📧 → DM  ·  🗺 → Mapa  ·  📡 → Traceroute  ·  ",
-                                     "en": "💡 ⭐ → Favourite  ·  📧 → DM  ·  🗺 → Map  ·  📡 → Traceroute  ·  "},
+                                     "en": "💡 ⭐ → Favorite  ·  📧 → DM  ·  🗺 → Map  ·  📡 → Traceroute  ·  "},
     "hint_fav":                     {"pt": "⭐ Favorito (fixo no topo)  &nbsp;",
-                                     "en": "⭐ Favourite (pinned at top)  &nbsp;"},
-    "hint_nofav":                   {"pt": "☆ Não favorito",                 "en": "☆ Not a favourite"},
+                                     "en": "⭐ Favorite (pinned at top)  &nbsp;"},
+    "hint_nofav":                   {"pt": "☆ Não favorito",                 "en": "☆ Not a favorite"},
     "Duplo clique → Detalhes":      {"pt": "Duplo clique → Detalhes",         "en": "Double-click → Details"},
     "GPS activo com posição conhecida":
                                     {"pt": "GPS activo com posição conhecida",
@@ -91,7 +91,7 @@ _STRINGS: dict = {
                                     {"pt": "Activa beep do sistema ao receber mensagem não lida",
                                      "en": "Activates system beep on unread message"},
     "ℹ️  Sobre":                    {"pt": "ℹ️  Sobre",                       "en": "ℹ️  About"},
-    "📋  Sobre Meshtastic Monitor": {"pt": "📋  Sobre Meshtastic Monitor",    "en": "📋  About Meshtastic Monitor"},
+    "📋  Sobre MeshDeck": {"pt": "📋  Sobre MeshDeck",    "en": "📋  About MeshDeck"},
 
     # ── Lista de Nós — cabeçalhos ─────────────────────────────────────────────
     "Nome Longo":                   {"pt": "Nome Longo",                       "en": "Long Name"},
@@ -107,10 +107,10 @@ _STRINGS: dict = {
                                      "en": "🏠 This is your local node · {id}"},
     "Clique para remover dos favoritos":
                                     {"pt": "Clique para remover dos favoritos",
-                                     "en": "Click to remove from favourites"},
+                                     "en": "Click to remove from favorites"},
     "Clique para adicionar aos favoritos":
                                     {"pt": "Clique para adicionar aos favoritos",
-                                     "en": "Click to add to favourites"},
+                                     "en": "Click to add to favorites"},
     "Ver no mapa":                  {"pt": "Ver no mapa",                      "en": "View on map"},
     "Sem dados de posição":         {"pt": "Sem dados de posição",             "en": "No position data"},
     "DM indisponível — nó nunca contactado":
@@ -607,14 +607,14 @@ _STRINGS: dict = {
                                      "en": "Settings have been sent to the node.\nThe node is restarting to apply them.\n\nWait before reconnecting to ensure\nthe TCP service is available again."},
     "🔌  Aguarde {n}s…":           {"pt": "🔌  Aguarde {n}s…",                "en": "🔌  Please wait {n}s…"},
     "🔌  Reconectar agora":        {"pt": "🔌  Reconectar agora",              "en": "🔌  Reconnect now"},
-    "Sobre o Meshtastic Monitor":   {"pt": "Sobre o Meshtastic Monitor",        "en": "About Meshtastic Monitor"},
+    "Sobre o MeshDeck":   {"pt": "Sobre o MeshDeck",        "en": "About MeshDeck"},
     "Versão {v}  ·  2025":         {"pt": "Versão {v}  ·  2025",              "en": "Version {v}  ·  2025"},
     "uconsole_line":                 {"pt": "Desenvolvido e optimizado para o ClockworkPi uConsole CM4.",
                                      "en": "Developed and optimised for the ClockworkPi uConsole CM4."},
     "about_desc":                   {"pt": "Interface gráfica avançada para monitorização e comunicação\nem redes mesh Meshtastic via TCP ao daemon meshtasticd.\n\n",
                                      "en": "Advanced graphical interface for monitoring and communication\nover Meshtastic mesh networks via TCP to the meshtasticd daemon.\n\n"},
     "about_feat1":                  {"pt": "✅  Lista de nós em tempo real com pesquisa e favoritos\n",
-                                     "en": "✅  Real-time node list with search and favourites\n"},
+                                     "en": "✅  Real-time node list with search and favorites\n"},
     "about_feat2":                  {"pt": "🗺  Mapa Leaflet com traceroutes e métricas de rede\n",
                                      "en": "🗺  Leaflet map with traceroutes and network metrics\n"},
     "about_feat3":                  {"pt": "💬  Mensagens por canal e DM com suporte PKI/PSK\n",

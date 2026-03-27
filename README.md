@@ -1,4 +1,4 @@
-# 📡 Meshtastic Monitor — uConsole CM4
+# 📡 MeshDeck — uConsole CM4
 
 Advanced graphical interface for monitoring, communication and analysis of
 [Meshtastic](https://meshtastic.org) networks via TCP to the `meshtasticd`
@@ -179,7 +179,7 @@ sessions and devices with no auxiliary files required.
 ## 📁 Project Structure
 
 ```
-meshtastic_monitor/
+meshdeck/
 ├── main.py              ← Entry point · MainWindow · signal wiring
 ├── constants.py         ← Colours, Qt styles, APP_STYLESHEET
 ├── models.py            ← FirmwareFavorites, NodeTableModel, NodeFilterProxyModel
@@ -223,7 +223,7 @@ pip3 install meshtastic pypubsub --break-system-packages
 ## 🚀 Running
 
 ```bash
-cd meshtastic_monitor/
+cd meshdeck/
 python3 main.py
 ```
 
