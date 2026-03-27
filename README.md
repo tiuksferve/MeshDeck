@@ -1,278 +1,279 @@
 # 📡 Meshtastic Monitor — uConsole CM4
 
-Interface gráfica avançada para monitorização, comunicação e análise de redes
-[Meshtastic](https://meshtastic.org) via TCP ao daemon `meshtasticd`.  
-Desenvolvida e optimizada para o **ClockworkPi uConsole CM4**, mas funciona em
-qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
+Advanced graphical interface for monitoring, communication and analysis of
+[Meshtastic](https://meshtastic.org) networks via TCP to the `meshtasticd`
+daemon.  
+Built and optimised for the **ClockworkPi uConsole CM4**, but runs on any
+Linux/macOS/Windows system with Python 3 and PyQt5.
 
-**Versão:** 1.0.0-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
-
----
-
-## 🌐 Idiomas
-
-A interface suporta **Português** e **English**, seleccionáveis no diálogo de
-ligação. A preferência é guardada entre sessões via `QSettings`.
+**Version:** 1.0.0-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Year:** 2026
 
 ---
 
-## 🚀 Funcionalidades
+## 🌐 Languages
 
-### 📋 Lista de Nós em Tempo Real
+The interface supports **English** and **Português**, selectable in the
+connection dialog. The preference is saved between sessions via `QSettings`.
 
-- Lista completa de todos os nós visíveis na rede com actualização automática
-- **Colunas:** ID String, ID Num, Nome Longo, Nome Curto, Último Contacto, SNR,
-  Hops, Via (RF/MQTT), Latitude, Longitude, Altitude (m), Bateria (%), Modelo
-  de Hardware, Último Tipo de Pacote
-- **Nó local fixado no topo** com fundo âmbar e prefixo 🏠
-- **Favoritos** geridos directamente no firmware do nó (⭐), fixados abaixo do
-  nó local com fundo amarelo destacado
-- Pesquisa em tempo real por ID, nome longo ou nome curto
-- Duplo clique sobre qualquer nó para ver os detalhes completos do último pacote
-- **Acções rápidas directamente da lista:**
-  - 📧 Enviar DM (mensagem directa) — PKI (E2E) quando a chave pública é
-    conhecida, PSK como fallback
-  - 🗺 Centrar no mapa
-  - 📡 Enviar traceroute
-- Barra de dica inferior com legenda dos ícones de acção
-- Contador de nós totais e nós activos nas últimas 2 horas
+---
 
-### 🗺 Mapa Interactivo (Leaflet)
+## 🚀 Features
 
-- **4 temas de mapa:** 🌑 Escuro · ☀ Claro · 🗺 OpenStreetMap · 🛰 Satélite
-- **Marcadores coloridos por estado:**
-  - 🟢 Verde — nó seleccionado
-  - 🔴 Vermelho — pacote recebido agora
-  - 🔵 Azul — activo via RF
-  - 🟠 Laranja — via MQTT
-  - ⚫ Cinzento — inactivo (>2h)
-- **Traceroutes** com linhas verdes sólidas (ida/volta) e tooltips de SNR por
-  segmento
-- **Vizinhança NeighborInfo** — linhas roxas pontilhadas entre pares de nós
-  vizinhos com tooltip de SNR
-- **Legenda integrada** no canto inferior direito do mapa
-- Popup por nó com informações completas e botão de Traceroute inline
-- Painel esquerdo com lista de traceroutes (checkboxes para mostrar/ocultar)
-- Botão "Mostrar todas" para alternar visibilidade de todos os traceroutes
+### 📋 Real-Time Node List
 
-### 💬 Mensagens
+- Full list of all visible network nodes with automatic updates
+- **Columns:** ID String, ID Num, Long Name, Short Name, Last Contact, SNR,
+  Hops, Via (RF/MQTT), Latitude, Longitude, Altitude (m), Battery (%), Hardware
+  Model, Last Packet Type
+- **Local node pinned at top** with amber background and 🏠 prefix
+- **Favourites** managed directly in the node firmware (⭐), pinned below the
+  local node with highlighted yellow background
+- Real-time search by ID, long name or short name
+- Double-click any node to view full details of the last received packet
+- **Quick actions directly from the list:**
+  - 📧 Send DM (direct message) — PKI (E2E) when the public key is known, PSK
+    as fallback
+  - 🗺 Centre on map
+  - 📡 Send traceroute
+- Bottom hint bar with icon legend
+- Node counters: total and active (last 2 hours)
 
-- **Canais** múltiplos (Primary + Secondary, índices 0-7) com contador de não
-  lidos
-- **Mensagens Directas (DM):**
-  - 🔒 **PKI** (E2E encriptado) quando a chave pública do destinatário é
-    conhecida
-  - 🔓 **PSK** (chave de canal) como fallback automático
-  - Lista de DMs ordenada pela mensagem mais recente
-- Indicador ACK/NAK por mensagem enviada
-- Suporte a mensagens MQTT (☁)
-- Badge 🔴 na aba de Mensagens para mensagens não lidas
-- Separadores de data nas conversas ("Hoje", "Ontem", data exacta)
+### 🗺 Interactive Map (Leaflet)
+
+- **4 map themes:** 🌑 Dark · ☀ Light · 🗺 OpenStreetMap · 🛰 Satellite
+- **Colour-coded markers by state:**
+  - 🟢 Green — selected node
+  - 🔴 Red — packet just received
+  - 🔵 Blue — RF active
+  - 🟠 Orange — via MQTT
+  - ⚫ Grey — inactive (>2h)
+- **Traceroutes** — solid green lines (forward/return) with per-segment SNR
+  tooltips
+- **NeighborInfo neighbourhood** — purple dashed lines between directly
+  neighbouring nodes with SNR tooltip
+- **Built-in legend** in the bottom-right corner of the map
+- Per-node popup with full information and inline Traceroute button
+- Left panel with checkable traceroute history list
+- "Show all" toggle for all traceroute overlays
+
+### 💬 Messages
+
+- Multiple **channels** (Primary + Secondary, indices 0-7) with unread counters
+- **Direct Messages (DM):**
+  - 🔒 **PKI** (E2E encrypted) when the destination's public key is known
+  - 🔓 **PSK** (channel key) as automatic fallback
+  - DM list sorted by most recent activity
+- Per-sent-message ACK/NAK indicator
+- MQTT message support (☁)
+- 🔴 badge on the Messages tab for unread messages
+- Date separators in conversations ("Today", "Yesterday", exact date)
 
 ### 🗺 Traceroutes
 
-- Envio de traceroute para qualquer nó da lista ou popup do mapa
-- Diálogo de resultado com:
-  - **Quando enviamos:** Origem = nó local, Destino = nó remoto
-  - **Quando recebemos:** Origem = nó remoto (quem enviou), Destino = nó local
-  - Hops de ida e volta com SNR por segmento
-  - Indicadores de GPS por nó (📍 com coordenadas, ❓ sem)
-  - Botão "Mostrar no Mapa" (quando o destino tem GPS)
-- Cooldown de 30s entre traceroutes para proteger o canal
-- Notificação quando um traceroute dirigido ao nó local é recebido
+- Send traceroute to any node from the list or from the map popup
+- Result dialog showing:
+  - **When we send:** Origin = local node, Destination = remote node
+  - **When we receive:** Origin = remote node (who sent it), Destination = local
+    node
+  - Forward and return hops with per-segment SNR
+  - GPS indicators per node (📍 has coordinates, ❓ no coordinates)
+  - "Show on Map" button (when destination has GPS)
+- 30-second cooldown between traceroutes to protect the channel
+- Notification dialog when a traceroute directed at the local node is received
 
-### ⚙️ Configuração Completa do Nó
+### ⚙️ Full Node Configuration
 
-- **Canais:** nome, PSK (Base64/hex/aleatório), papel, uplink/downlink MQTT,
-  silenciar, precisão de posição
-- **Utilizador:** nome longo, nome curto, licenciado Ham (via setOwner)
-- **Todas as secções de configuração do firmware:**
+- **Channels:** name, PSK (Base64/hex/random), role, MQTT uplink/downlink,
+  mute, position precision
+- **User:** long name, short name, licensed Ham (via setOwner)
+- **All firmware configuration sections:**
 
-| Secção | Campos principais |
-|--------|------------------|
-| 💻 Dispositivo | Papel do nó, rebroadcast, GPIO, intervalo NodeInfo, TZ, serial |
-| 📍 Posição / GPS | Modo GPS, intervalos, smart broadcast, posição fixa, HDOP |
-| 🔋 Energia | Power saving, timers de desligamento, ADC, wait Bluetooth, SDS/LS |
-| 🌐 Rede / WiFi | SSID/PSK WiFi, NTP, Ethernet, IP estático, gateway, DNS |
-| 🖥 Display | Timeout, formato GPS, tipo OLED, flip, acordar por toque, brilho TFT |
-| 📡 LoRa | Preset, região, BW/SF/CR, TX power, hop limit, override de frequência |
-| 🔵 Bluetooth | Activar, modo de emparelhamento, PIN fixo |
-| ☁ MQTT | Servidor, TLS, JSON, map reporting, proxy para cliente |
-| 🔌 Serial | Baud rate, modo, GPIO, echo |
-| 🔔 Notif. Externa | GPIO, alertas para mensagem/bell, PWM buzzer |
-| 📦 Store & Forward | Activar, registos, janela histórico, servidor |
-| 📏 Range Test | Activar, intervalo, CSV |
-| 📊 Telemetria | Intervalos: dispositivo/ambiente/energia/saúde |
-| 💬 Msgs Pré-definidas | Área de texto (uma por linha, máx 200 chars) + encoder rotativo |
-| 🎙 Audio / Codec2 | Activar, PTT GPIO, bitrate, GPIOs I2S |
-| 🔧 Hardware Remoto | Activar, acesso a pinos indefinidos |
-| 🔗 Neighbor Info | Activar, intervalo, transmitir via LoRa |
-| 💡 Ilum. Ambiente | Estado LED, corrente, RGB |
-| 🔍 Sensor Detecção | GPIO, intervalos, pull-up, trigger high |
-| 🧮 Paxcounter | Activar, intervalo |
-| 🔐 Segurança | Canal admin, managed mode, serial debug |
+| Section | Key fields |
+|---------|-----------|
+| 💻 Device | Node role, rebroadcast, GPIO, NodeInfo interval, TZ, serial |
+| 📍 Position/GPS | GPS mode, intervals, smart broadcast, fixed position, HDOP |
+| 🔋 Power | Power saving, shutdown timers, ADC, Bluetooth wait, SDS/LS |
+| 🌐 Network/WiFi | WiFi SSID/PSK, NTP, Ethernet, static IP, gateway, DNS |
+| 🖥 Display | Timeout, GPS format, OLED type, flip, wake on tap, TFT brightness |
+| 📡 LoRa | Preset, region, BW/SF/CR, TX power, hop limit, frequency override |
+| 🔵 Bluetooth | Enable, pairing mode, fixed PIN |
+| ☁ MQTT | Server, TLS, JSON, map reporting, proxy to client |
+| 🔌 Serial | Baud rate, mode, GPIO, echo |
+| 🔔 Ext. Notification | GPIO, message/bell alerts, PWM buzzer |
+| 📦 Store & Forward | Enable, records, history window, server |
+| 📏 Range Test | Enable, interval, CSV |
+| 📊 Telemetry | Device/environment/power/health intervals |
+| 💬 Canned Messages | Text area (one per line, max 200 chars) + rotary encoder GPIOs |
+| 🎙 Audio/Codec2 | Enable, PTT GPIO, bitrate, I2S GPIOs |
+| 🔧 Remote Hardware | Enable, undefined pin access |
+| 🔗 Neighbor Info | Enable, interval, transmit over LoRa |
+| 💡 Ambient Lighting | LED state, current, RGB |
+| 🔍 Detection Sensor | GPIO, intervals, pull-up, trigger high |
+| 🧮 Paxcounter | Enable, interval |
+| 🔐 Security | Admin channel, managed mode, debug serial |
 
-- Transacção atómica — firmware reinicia apenas uma vez após guardar todas as
-  alterações
-- Guardar robusto com conversão de enums via descritor protobuf
-- Reconstrução automática da UI ao mudar idioma (todos os labels actualizados)
+- Atomic transaction — firmware reboots only once after saving all changes
+- Robust saving with enum conversion via protobuf descriptor
+- Full UI rebuild on language change (all field labels updated immediately)
 
-### 📊 Métricas em Tempo Real (10 Secções)
+### 📊 Real-Time Metrics (10 Sections)
 
-Actualização automática a cada 5 segundos via JavaScript sem recarregar o HTML.
+Auto-refreshes every 5 seconds via JavaScript without reloading the HTML page.
 
-| Secção | Tipo | O que mede |
-|--------|------|-----------|
-| 📊 Visão Geral | Misto | Resumo: pacotes, nós activos, SNR, taxa entrega, airtime |
-| 📡 Canal & Airtime | 🌐 Rede | Ch. utilization por nó, airtime TX, duty cycle EU (ETSI EN300.220) |
-| 📶 Qualidade RF | 🌐 Rede | Histograma SNR, distribuição de hops, avaliação automática da qualidade |
-| 📦 Tráfego | 🌐 Rede | Pacotes por tipo, pacotes/min (30 min), RF vs MQTT, padrão de routing |
-| 🔋 Nós & Bateria | 🌐 Rede | Bateria (⚡ Powered), tensão, uptime, modelo hardware, GPS |
-| ✅ Fiabilidade | 🏠 Local | ACK/NAK/pendente, taxa entrega, duplicados de rede, prob. colisão |
-| ⏱ Latência (RTT) | 🏠 Local | RTT médio/mín/máx/P90 entre envio e ACK do destinatário |
-| 🔗 Vizinhança | 🌐 Rede | Pares de vizinhos directos com SNR (NeighborInfo) |
-| 📏 Alcance & Links | 🌐 Rede | Distância km entre vizinhos com GPS (fórmula Haversine) |
-| ⏰ Intervalos | 🌐 Rede | Intervalo médio entre pacotes por nó (detecta nós agressivos) |
+| Section | Type | What it measures |
+|---------|------|-----------------|
+| 📊 Overview | Mixed | Executive summary: packets, active nodes, SNR, delivery rate, airtime |
+| 📡 Channel & Airtime | 🌐 Network | Ch. utilization per node, airtime TX, EU duty cycle (ETSI EN300.220, 10%/h) |
+| 📶 RF Quality | 🌐 Network | SNR histogram, hop distribution, automatic quality assessment |
+| 📦 Traffic | 🌐 Network | Packets by type, packets/min (30 min), RF vs MQTT, routing pattern |
+| 🔋 Nodes & Battery | 🌐 Network | Battery (⚡ Powered), voltage, uptime, hardware model, GPS count |
+| ✅ Reliability | 🏠 Local | ACK/NAK/pending, delivery rate, network duplicates, collision probability |
+| ⏱ Latency (RTT) | 🏠 Local | RTT avg/min/max/P90 between send and destination ACK |
+| 🔗 Neighbourhood | 🌐 Network | Direct neighbour pairs with SNR (NeighborInfo) |
+| 📏 Range & Links | 🌐 Network | km distance between GPS-equipped neighbours (Haversine formula) |
+| ⏰ Intervals | 🌐 Network | Average time between packets per node (detects aggressive nodes) |
 
-> **🏠 Métrica do Nó Local** — dados exclusivos ao nó local ligado  
-> **🌐 Métrica da Rede** — observação passiva de todos os pacotes recebidos
+> **🏠 Local Node Metric** — data refers exclusively to the connected local node  
+> **🌐 Network Metric** — passive observation of all received packets
 
-**Ecrãs de espera inteligentes:** Cada métrica detecta automaticamente quando
-dados suficientes chegam e faz a transição do ecrã de espera para a vista de
-dados sem necessidade de intervenção manual.
+**Smart waiting screens:** Each metric automatically detects when sufficient
+data has arrived and transitions from the waiting screen to the data view
+without any manual intervention needed.
 
-### 🔌 Conectividade e Robustez
+### 🔌 Connectivity and Robustness
 
-- Ligação TCP ao daemon **meshtasticd** (por defeito `localhost:4403`)
-- **Reconexão automática** com backoff exponencial: 15s → 30s → 60s → 120s
-- Watchdog de 12s por tentativa de conexão (detecta handshakes pendurados)
-- Polling de segurança a cada 30s para manter o NodeDB sincronizado
-- Fallback de `rxTime` para `datetime.now()` (compatível com daemon TCP)
-- Nó local sempre visível e fixado no topo da lista
-- Compatível com Wayland e X11
+- TCP connection to the **meshtasticd daemon** (default `localhost:4403`)
+- **Automatic reconnection** with exponential backoff: 15s → 30s → 60s → 120s
+- 12-second watchdog per connection attempt (detects hung handshakes)
+- 30-second safety-net polling to keep NodeDB in sync
+- `rxTime` fallback to `datetime.now()` (compatible with TCP daemon)
+- Local node always visible and pinned at the top of the list
+- Compatible with both Wayland and X11
 
-### ⭐ Favoritos
+### ⭐ Favourites
 
-Os favoritos são geridos **directamente no firmware** do nó local via
-`setFavorite()` / `removeFavorite()`. Não é usado nenhum ficheiro local — a
-fonte de verdade é sempre o NodeDB do firmware, garantindo que os favoritos
-persistem entre sessões e dispositivos sem qualquer ficheiro auxiliar.
+Favourites are managed **directly in the local node firmware** via
+`setFavorite()` / `removeFavorite()`. No local file is used — the firmware
+NodeDB is always the source of truth, ensuring favourites persist across
+sessions and devices with no auxiliary files required.
 
-### 🔔 Notificações Sonoras
+### 🔔 Sound Notifications
 
-- Som de notificação ao receber mensagens (activável/desactivável)
-- Cadeia de fallback multiplataforma:
-  - **Linux:** `aplay` (ALSA, tom 880 Hz gerado) → `paplay` (PulseAudio)
-  - **macOS:** `afplay` (som do sistema)
+- Notification sound when messages are received (toggleable)
+- Cross-platform fallback chain:
+  - **Linux:** `aplay` (ALSA, generated 880 Hz tone) → `paplay` (PulseAudio)
+  - **macOS:** `afplay` (system sound)
   - **Windows:** `winsound.MessageBeep`
   - **Fallback:** `QApplication.beep()`
 
-### 📤 Acções do Nó Local
+### 📤 Local Node Actions
 
-- **Enviar Info do Nó** — broadcast do NODEINFO_APP (Ctrl+I)
-- **Enviar Posição Manual** — via `localNode.setPosition()` ou fallback manual
+- **Send Node Info** — broadcast NODEINFO_APP (Ctrl+I)
+- **Send Manual Position** — via `localNode.setPosition()` or manual fallback
   (Ctrl+P)
-- **Resetar NodeDB** — limpa a base de dados de nós do firmware
-- **Console de Log** — log em tempo real da comunicação TCP (em inglês)
+- **Reset NodeDB** — clears the firmware's node database
+- **Log Console** — real-time log of the TCP communication (in English)
 
 ---
 
-## 📁 Estrutura do Projecto
+## 📁 Project Structure
 
 ```
 meshtastic_monitor/
-├── main.py              ← Ponto de entrada · MainWindow · ligação de sinais
-├── constants.py         ← Cores, estilos Qt, APP_STYLESHEET
+├── main.py              ← Entry point · MainWindow · signal wiring
+├── constants.py         ← Colours, Qt styles, APP_STYLESHEET
 ├── models.py            ← FirmwareFavorites, NodeTableModel, NodeFilterProxyModel
-├── worker.py            ← MeshtasticWorker — TCP/pubsub/processamento de pacotes
+├── worker.py            ← MeshtasticWorker — TCP/pubsub/packet processing
 ├── dialogs.py           ← ConnectionDialog, ConsoleWindow, RebootWaitDialog
-├── i18n.py              ← Sistema de internacionalização (PT/EN), função tr()
+├── i18n.py              ← Internationalisation system (PT/EN), tr() function
 ├── tabs/
-│   ├── tab_nodes.py     ← MapWidget (Leaflet, traceroutes, vizinhança)
-│   ├── tab_messages.py  ← MessagesTab (canais, DMs PKI/PSK)
+│   ├── tab_nodes.py     ← MapWidget (Leaflet, traceroutes, neighbourhood)
+│   ├── tab_messages.py  ← MessagesTab (channels, PKI/PSK DMs)
 │   ├── tab_config.py    ← ConfigTab, ChannelsTab, MESHTASTIC_CONFIG_DEFS
-│   ├── tab_metrics.py   ← MetricsTab (orquestração das 10 secções)
-│   ├── metrics_data.py  ← MetricsDataMixin (ingestão e cálculo de dados)
-│   └── metrics_render.py← MetricsRenderMixin (geração de HTML/JS/Chart.js)
+│   ├── tab_metrics.py   ← MetricsTab (orchestrates the 10 metric sections)
+│   ├── metrics_data.py  ← MetricsDataMixin (data ingestion and calculation)
+│   └── metrics_render.py← MetricsRenderMixin (HTML/JS/Chart.js generation)
 └── requirements.txt
 ```
 
 ---
 
-## ⚙️ Instalação
+## ⚙️ Installation
 
 ```bash
 pip install -r requirements.txt
-# ou directamente:
+# or directly:
 pip install meshtastic PyQt5 PyQtWebEngine pypubsub
 ```
 
-### No uConsole CM4 (Debian/Ubuntu/Raspbian)
+### On uConsole CM4 (Debian/Ubuntu/Raspbian)
 
 ```bash
 sudo apt install python3-pyqt5 python3-pyqt5.qtwebengine python3-pip
 pip3 install meshtastic pypubsub --break-system-packages
 ```
 
-**Requisitos:**
-- Python 3.9 ou superior
-- `meshtasticd` em execução e acessível na porta 4403
-- Display (X11 ou Wayland) para a interface gráfica Qt
+**Requirements:**
+- Python 3.9 or higher
+- `meshtasticd` running and accessible on port 4403
+- Display (X11 or Wayland) for the Qt graphical interface
 
 ---
 
-## 🚀 Execução
+## 🚀 Running
 
 ```bash
 cd meshtastic_monitor/
 python3 main.py
 ```
 
-No primeiro arranque (ou sem preferência guardada), o diálogo de ligação abre
-em inglês. Seleccione o idioma no selector antes de ligar. A preferência é
-guardada automaticamente via `QSettings`.
+On first run (or with no saved preference), the connection dialog opens in
+English. Select your language in the selector before connecting. The preference
+is automatically saved via `QSettings`.
 
 ---
 
-## 📡 Requisitos do Firmware Meshtastic
+## 📡 Meshtastic Firmware Requirements
 
-| Funcionalidade | Versão mínima |
-|---------------|--------------|
-| DM PKI (E2E) | ≥ 2.3.0 |
-| NeighborInfo via LoRa | ≥ 2.5.13 |
-| Traceroute com SNR | ≥ 2.3.2 |
-| Canal NeighborInfo privado | ≥ 2.5.13 |
-| Favoritos no firmware | ≥ 2.3.0 |
+| Feature | Minimum version |
+|---------|----------------|
+| PKI DM (E2E encrypted) | ≥ 2.3.0 |
+| NeighborInfo over LoRa | ≥ 2.5.13 |
+| Traceroute with SNR | ≥ 2.3.2 |
+| Private channel for NeighborInfo | ≥ 2.5.13 |
+| Firmware-managed favourites | ≥ 2.3.0 |
 
-> **Nota:** NeighborInfo via LoRa requer canal primário **privado** — o canal
-> público (LongFast/ShortFast com chave padrão) bloqueia este tráfego desde o
+> **Note:** NeighborInfo over LoRa requires a **private** primary channel — the
+> public channel (LongFast/ShortFast with default key) blocks this traffic since
 > firmware 2.5.13.
 
 ---
 
-## 🧑‍💻 Desenvolvido por
+## 🧑‍💻 Developed by
 
 **CT7BRA — Tiago Veiga**  
 Python 3 · PyQt5 · Meshtastic · Leaflet · Chart.js  
-Optimizado para ClockworkPi uConsole CM4 · 2026
+Optimised for ClockworkPi uConsole CM4 · 2026
 
 ---
 
-## 🤖 Nota sobre Inteligência Artificial
+## 🤖 A Note on Artificial Intelligence
 
-Este projecto foi desenvolvido com o apoio do **Claude** (Anthropic), um
-assistente de inteligência artificial. A IA colaborou activamente em múltiplas
-sessões de desenvolvimento, contribuindo para:
+This project was developed with the support of **Claude** (Anthropic), an
+artificial intelligence assistant. The AI actively collaborated across multiple
+development sessions, contributing to:
 
-- Arquitectura e refactoring do código (separação em módulos e mixins)
-- Sistema de internacionalização (i18n) completo PT/EN com cobertura total da UI
-- Implementação das 10 secções de métricas em tempo real
-- Sistema de traceroutes com lógica de origem/destino correcta
-- Detecção e correcção de bugs (duplicados no NodeDB, condições de corrida no
-  mapa, fugas de sinais Qt, emissão dupla de sinais de ligação)
-- Migração dos favoritos de ficheiro JSON local para firmware nativo
-- Análise de performance e optimizações para o hardware CM4
-- Tradução completa de toda a UI e mensagens de log para inglês
+- Code architecture and refactoring (separation into modules and mixins)
+- Complete internationalisation system (i18n) for Portuguese and English with
+  full UI coverage
+- Implementation of all 10 real-time metric sections
+- Traceroute system with correct origin/destination logic for sent and received
+  traceroutes
+- Bug detection and fixing (NodeDB duplicates, map race conditions, Qt signal
+  leaks, duplicate connection signal emission)
+- Migration of favourites from a local JSON file to native firmware management
+- Performance analysis and optimisations for the CM4 hardware
+- Full translation of all UI strings and log messages to English
 
-O código foi revisto, testado e validado pelo autor em hardware real
-(ClockworkPi uConsole CM4) com uma rede Meshtastic activa.
+The code was reviewed, tested and validated by the author on real hardware
+(ClockworkPi uConsole CM4) with a live Meshtastic network.
