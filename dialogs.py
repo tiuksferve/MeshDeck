@@ -4,7 +4,6 @@ ConsoleWindow (log em tempo real) e RebootWaitDialog.
 """
 import logging
 from i18n import tr, set_language, get_language
-from i18n import tr, set_language, get_language
 import sys
 from typing import Optional
 
@@ -266,7 +265,6 @@ class ConsoleWindow(QWidget):
         root.addWidget(self._text)
 
         self._all_lines: list = []
-        self._line_count = 0
 
         # Ligação do handler de logging
         self.log_signal.connect(self._append_line)
@@ -285,7 +283,6 @@ class ConsoleWindow(QWidget):
         if not flt or flt in text.lower():
             self._text.append(text)
             self._text.moveCursor(self._text.textCursor().End)
-        self._line_count += 1
         self._lbl_count.setText(tr("{n} linhas", n=len(self._all_lines)))
 
     def _apply_filter(self, text: str):

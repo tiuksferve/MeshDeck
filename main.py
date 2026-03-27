@@ -9,19 +9,20 @@ Uso:
     python3 -m meshtastic_monitor.main
 """
 import sys
+import time
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QByteArray, QSettings
-from i18n import tr, get_language
+from PyQt5.QtCore import Qt, QTimer, QByteArray, QSettings
+from i18n import tr
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QTableView, QHeaderView, QSplitter, QFrame,
     QTabWidget, QSizePolicy, QMessageBox, QDialog, QAction, QMenuBar,
     QAbstractItemView, QPushButton, QTextEdit
 )
-from PyQt5.QtGui import QFont, QColor, QPainter, QPixmap
+from PyQt5.QtGui import QFont, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 
 from constants import (
@@ -104,6 +105,13 @@ def _play_notification_sound():
 
 
 class MainWindow(QMainWindow):
+    # Índices das abas — alterar aqui se a ordem mudar
+    TAB_NODES    = 0
+    TAB_MESSAGES = 1
+    TAB_MAP      = 2
+    TAB_METRICS  = 3
+    TAB_CONFIG   = 4
+
     def __init__(self):
         super().__init__()
         self.worker: Optional[MeshtasticWorker] = None
@@ -453,6 +461,7 @@ class MainWindow(QMainWindow):
             self.worker.stop()
             self.worker.deleteLater()
             self.worker = None
+        _FAVORITES.set_interface(None)
         self.source_model.set_local_node_id("")
         self.source_model.clear_all_nodes()
         # FIX-8: reseta contador sem interferência do filtro
@@ -575,7 +584,7 @@ class MainWindow(QMainWindow):
     def _on_connection_changed(self, connected: bool):
         if connected:
             host = f"{self._hostname}:{self._port}"
-            self.conn_indicator.setText(f"🟢  {host}")
+            self.conn_indicator.setText(tr("🟢  {host}", host=host))
             self.conn_indicator.setStyleSheet(
                 f"color:{ACCENT_GREEN};font-weight:bold;font-size:12px;"
                 f"background:{PANEL_BG};padding:4px 12px;"
@@ -609,7 +618,7 @@ class MainWindow(QMainWindow):
         self.source_model.set_local_node_id(node_id, node_num)
         self.proxy_model.set_local_node_id(node_id)
         self.messages_tab.set_my_node_id(node_id)
-        logger.info(f"Nó local registado: id={node_id} num={node_num}")
+        logger.info(f"Local node registered: id={node_id} num={node_num}")
 
     def _poll_nodedb(self):
         """FIX-5: polling como safety-net — não redesenha se nada mudou."""
@@ -617,7 +626,7 @@ class MainWindow(QMainWindow):
             try:
                 self.worker._sync_nodedb()
             except Exception as e:
-                logger.debug(f"Erro no poll NodeDB: {e}")
+                logger.debug(f"NodeDB poll error: {e}")
 
     def _on_nodes_batch(self, batch: list):
         if not batch:
@@ -666,7 +675,7 @@ class MainWindow(QMainWindow):
                 nid, data["long_name"], data["short_name"], data["public_key"]
             )
 
-        if self.tab_widget.currentIndex() == 2:   # Mapa
+        if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._map_debounce.start()
 
     def _on_node_updated(self, node_id_string: str, node_data: dict, packet):
@@ -676,7 +685,7 @@ class MainWindow(QMainWindow):
         if packet is not None:
             self.map_widget.mark_node_active(node_id_string)
             # Garante redesenho do mapa para mostrar cor vermelha
-            if self.tab_widget.currentIndex() == 2:   # Mapa
+            if self.tab_widget.currentIndex() == self.TAB_MAP:
                 self._map_debounce.start()
         self.messages_tab.update_node_name(
             node_id_string,
@@ -691,8 +700,9 @@ class MainWindow(QMainWindow):
             has_pos = (node_data.get('latitude') is not None or
                        node_data.get('longitude') is not None)
             if has_pos:
+                self._local_has_pos = True
                 self._update_local_node_label(True)
-        if self.tab_widget.currentIndex() == 2:   # Mapa
+        if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._map_debounce.start()  # debounce: reagrupa updates rápidos
 
     def _on_node_updated_metrics(self, node_id_string: str, node_data: dict, packet):
@@ -717,10 +727,11 @@ class MainWindow(QMainWindow):
 
     def _on_local_node_ready(self, long_name: str, short_name: str, node_id: str,
                              gps_enabled: bool, has_position: bool):
-        self._local_long_name  = long_name
-        self._local_short_name = short_name
+        self._local_long_name   = long_name
+        self._local_short_name  = short_name
         self._local_node_id_str = node_id
         self._local_gps_enabled = gps_enabled
+        self._local_has_pos     = has_position
         self._update_local_node_label(has_position)
         # Sincronizar favoritos do firmware (iface pronta neste ponto)
         QTimer.singleShot(500, self._sync_firmware_favorites)
@@ -768,9 +779,9 @@ class MainWindow(QMainWindow):
                     node_id, local_data["long_name"], local_data["short_name"],
                     local_data["public_key"]
                 )
-                logger.info(f"Nó local inserido na tabela: {node_id}")
+                logger.info(f"Local node inserted in table: {node_id}")
             except Exception as e:
-                logger.debug(f"Erro ao inserir nó local na tabela: {e}")
+                logger.debug(f"Error inserting local node in table: {e}")
 
     def _update_local_node_label(self, has_position: bool):
         long_name   = getattr(self, '_local_long_name',   '')
@@ -786,7 +797,7 @@ class MainWindow(QMainWindow):
             gps_tip  = tr("GPS activo mas posição ainda não disponível")
         else:
             gps_icon = "📵"
-            gps_tip  = "GPS desactivado"
+            gps_tip  = tr("GPS desactivado")
 
         parts = []
         if long_name:  parts.append(long_name)
@@ -803,7 +814,7 @@ class MainWindow(QMainWindow):
         self.proxy_model.set_filter_text(text)
         self.messages_tab.set_filter_text(text)
         # FIX-8: contador NÃO muda com pesquisa — reflecte sempre o total real
-        if self.tab_widget.currentIndex() == 2:   # Mapa
+        if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._refresh_map()
 
     def _on_double_click(self, index):
@@ -832,7 +843,7 @@ class MainWindow(QMainWindow):
         elif col == NodeTableModel.COL_DM:
             # Só activo se nó já contactado
             if node_id and isinstance(node.get("last_heard"), datetime):
-                self.tab_widget.setCurrentIndex(1)   # Mensagens
+                self.tab_widget.setCurrentIndex(self.TAB_MESSAGES)
                 self.messages_tab.activate_dm_for_node(node_id)
 
         elif col == NodeTableModel.COL_MAP:
@@ -884,8 +895,7 @@ class MainWindow(QMainWindow):
         if existing:
             reply = QMessageBox.question(
                 self, tr("Traceroute já existente"),
-                f"Já existe um traceroute para {name} na lista.\n\n"
-                f"Deseja enviar um novo traceroute mesmo assim?",
+                tr("traceroute_existente_msg", name=name),
                 QMessageBox.Yes | QMessageBox.Cancel,
                 QMessageBox.Cancel,
             )
@@ -957,7 +967,7 @@ class MainWindow(QMainWindow):
         dest_name    = resolve_name(dest_id)
         total_links  = len(forward_edges) + len(back_edges)
         self._show_countdown_message(
-            f"📡 Traceroute: {origin_name} → {dest_name}  ({total_links} links)", 30
+            tr("traceroute_status", origin=origin_name, dest=dest_name, n=total_links), 30
         )
 
         if not forward_edges and not back_edges:
@@ -1093,7 +1103,7 @@ class MainWindow(QMainWindow):
             def _show_on_map():
                 self.map_widget.show_traceroute_on_map(
                     _fwd, _bck, _nodes, _oid, _did, _on, _dn)
-                self.tab_widget.setCurrentIndex(2)  # Mapa
+                self.tab_widget.setCurrentIndex(self.TAB_MAP)  # Mapa
                 dlg.accept()
             btn_map.clicked.connect(_show_on_map)
             btn_row.addWidget(btn_map)
@@ -1120,10 +1130,9 @@ class MainWindow(QMainWindow):
         self.map_widget.set_selected_node(node_id)
         self._refresh_map()
         QTimer.singleShot(800, lambda: self.map_widget.clear_auto_pan())
-        self.tab_widget.setCurrentIndex(2)  # Mapa
+        self.tab_widget.setCurrentIndex(self.TAB_MAP)  # Mapa
 
     # ── Notificação de mensagem não lida na aba ────────────────────────────
-    MSG_TAB_INDEX   = 1      # índice da aba Mensagens na ordem actual
 
     def _on_language_changed(self, lang: str):
         """Called when user picks a new language in the connection dialog.
@@ -1133,11 +1142,11 @@ class MainWindow(QMainWindow):
         self._refresh_hint_bar()
 
         # ── Tabs ──────────────────────────────────────────────────────────
-        self.tab_widget.setTabText(0, tr("📋  Lista de Nós"))
-        self.tab_widget.setTabText(1, tr("💬  Mensagens"))
-        self.tab_widget.setTabText(2, tr("🗺  Mapa"))
-        self.tab_widget.setTabText(3, tr("📈 Métricas"))
-        self.tab_widget.setTabText(4, tr("⚙ Configurações"))
+        self.tab_widget.setTabText(self.TAB_NODES,    tr("📋  Lista de Nós"))
+        self.tab_widget.setTabText(self.TAB_MESSAGES, tr("💬  Mensagens"))
+        self.tab_widget.setTabText(self.TAB_MAP,      tr("🗺  Mapa"))
+        self.tab_widget.setTabText(self.TAB_METRICS,  tr("📈 Métricas"))
+        self.tab_widget.setTabText(self.TAB_CONFIG,   tr("⚙ Configurações"))
 
         # ── Menus (titles) ────────────────────────────────────────────────
         if hasattr(self, "_conn_menu"):   self._conn_menu.setTitle(tr("🔌  Conexão"))
@@ -1213,19 +1222,19 @@ class MainWindow(QMainWindow):
 
     def _on_messages_unread(self):
         """Mostra indicador vermelho na aba Mensagens e beep se som activo."""
-        if self.tab_widget.currentIndex() != self.MSG_TAB_INDEX:
-            self.tab_widget.setTabText(self.MSG_TAB_INDEX, tr("💬  Mensagens") + "  🔴")
+        if self.tab_widget.currentIndex() != self.TAB_MESSAGES:
+            self.tab_widget.setTabText(self.TAB_MESSAGES, tr("💬  Mensagens") + "  🔴")
             if self._sound_enabled:
                 _play_notification_sound()
 
     def _clear_messages_badge(self):
         """Remove o indicador da aba Mensagens."""
-        self.tab_widget.setTabText(self.MSG_TAB_INDEX, tr("💬  Mensagens"))
+        self.tab_widget.setTabText(self.TAB_MESSAGES, tr("💬  Mensagens"))
 
     def _on_tab_changed(self, index):
-        if index == 2:   # Mapa (índice 2 na nova ordem)
+        if index == self.TAB_MAP:
             self._refresh_map()
-        if index == self.MSG_TAB_INDEX:
+        if index == self.TAB_MESSAGES:
             self._clear_messages_badge()
 
     def _update_node_count(self):
@@ -1257,7 +1266,7 @@ class MainWindow(QMainWindow):
         lbl_title.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_title)
 
-        lbl_version = QLabel(tr("Versão {v}  ·  2025", v=APP_VERSION))
+        lbl_version = QLabel(tr("Versão {v}  ·  2026", v=APP_VERSION))
         lbl_version.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         lbl_version.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_version)
@@ -1330,7 +1339,10 @@ class MainWindow(QMainWindow):
         """Abre/mostra a janela de consola de logs (não-bloqueante)."""
         self._console_window.show()
         self._console_window.raise_()
-        self._console_window.activateWindow()
+        # activateWindow() não é suportado em Wayland e gera aviso no log — omitir nessa plataforma
+        from PyQt5.QtGui import QGuiApplication
+        if QGuiApplication.platformName() != "wayland":
+            self._console_window.activateWindow()
 
     def _refresh_map(self):
         # O mapa mostra nós com last_heard válido (mesma regra da lista),
@@ -1426,7 +1438,6 @@ class MainWindow(QMainWindow):
 
     def _on_packet_stats(self, pkt: dict):
         """Actualiza o indicador de SNR/pkt·min na status bar a cada pacote recebido."""
-        import time
         now = time.time()
 
         # SNR do pacote (pode não existir em pacotes MQTT ou sem rádio)

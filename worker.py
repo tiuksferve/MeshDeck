@@ -56,7 +56,6 @@ class MeshtasticWorker(QObject):
         self._connected = False
         self._known_nodes: Set[str] = set()
         self._channels:    Dict[int, tuple] = {}
-        self._poll_last_seen: Dict[str, int] = {}   # nid → lastHeard timestamp
         self._reconnect_attempts = 0
         self._reconnect_timer    = QTimer(self)
         self._reconnect_timer.setSingleShot(True)
@@ -75,9 +74,8 @@ class MeshtasticWorker(QObject):
         if self.iface is not None:
             return
         try:
-            logger.info(f"Conectando a {self.hostname}:{self.port} …")
+            logger.info(f"Connecting to {self.hostname}:{self.port}…")
             self._known_nodes.clear()
-            self._poll_last_seen.clear()
             self._reconnect_attempts = 0
             pub.subscribe(self._on_connection_established, "meshtastic.connection.established")
             pub.subscribe(self._on_connection_lost,        "meshtastic.connection.lost")
@@ -88,9 +86,9 @@ class MeshtasticWorker(QObject):
             self.iface = TCPInterface(self.hostname, self.port)
         except Exception as e:
             self.error_occurred.emit(
-                f"Falha ao criar interface TCP ({self.hostname}:{self.port}): {e}"
+                tr("err_tcp_create", host=self.hostname, port=self.port, err=e)
             )
-            logger.exception("Erro ao iniciar worker")
+            logger.exception("Error starting worker")
 
     def stop(self):
         self._reconnect_timer.stop()
@@ -112,7 +110,7 @@ class MeshtasticWorker(QObject):
             try:
                 self.iface.close()
             except Exception as e:
-                logger.error(f"Erro ao fechar: {e}")
+                logger.error(f"Error closing interface: {e}")
             finally:
                 self.iface      = None
                 self._connected = False
@@ -120,7 +118,7 @@ class MeshtasticWorker(QObject):
 
     def _on_connection_lost(self, interface=None):
         """Chamado pela thread interna do TCPInterface — delega para thread Qt."""
-        logger.warning("Ligação perdida — a delegar para thread Qt…")
+        logger.warning("Connection lost — delegating to Qt thread…")
         QMetaObject.invokeMethod(self, "_handle_connection_lost", Qt.QueuedConnection)
 
     @pyqtSlot()
@@ -137,7 +135,7 @@ class MeshtasticWorker(QObject):
         idx    = min(self._reconnect_attempts, len(delays) - 1)
         delay  = delays[idx]
         self._reconnect_attempts += 1
-        logger.info(f"Reconexão #{self._reconnect_attempts} em {delay//1000}s…")
+        logger.info(f"Reconnect #{self._reconnect_attempts} in {delay//1000}s…")
         self.reconnect_status.emit(self._reconnect_attempts, delay // 1000)
         self._reconnect_timer.start(delay)
 
@@ -158,7 +156,6 @@ class MeshtasticWorker(QObject):
                     pass
                 self.iface = None
             self._known_nodes.clear()
-            self._poll_last_seen.clear()
             # Re-subscreve handlers pubsub
             for topic, handler in [
                 ("meshtastic.connection.established", self._on_connection_established),
@@ -173,12 +170,12 @@ class MeshtasticWorker(QObject):
                 except Exception:
                     pass
                 pub.subscribe(handler, topic)
-            logger.info(f"A reconectar a {self.hostname}:{self.port}…")
+            logger.info(f"Reconnecting to {self.hostname}:{self.port}…")
             self.iface = TCPInterface(self.hostname, self.port)
             # Watchdog: 12s para o evento pubsub chegar; caso contrário tenta de novo
             self._connect_watchdog.start(12_000)
         except Exception as e:
-            logger.warning(f"Reconexão falhada: {e}")
+            logger.warning(f"Reconnection failed: {e}")
             self._connect_watchdog.stop()
             self._schedule_reconnect()
 
@@ -189,7 +186,7 @@ class MeshtasticWorker(QObject):
         """
         if self._connected:
             return
-        logger.warning("Watchdog: sem conexão após 12s — a reagendar tentativa…")
+        logger.warning("Watchdog: no connection after 12s — rescheduling attempt…")
         if self.iface:
             try:
                 self.iface.close()
@@ -200,38 +197,38 @@ class MeshtasticWorker(QObject):
 
     def send_message(self, channel_index: int, text: str):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Não conectado — impossível enviar mensagem.")
+            self.error_occurred.emit(tr("err_send_msg"))
             return
         try:
             result = self.iface.sendText(text, channelIndex=channel_index, wantAck=True)
             pkt_id = result.id if result and hasattr(result, 'id') else 0
-            logger.info(f"Canal {channel_index} msg enviada (pkt_id={pkt_id:#010x})")
+            logger.info(f"Channel {channel_index} message sent (pkt_id={pkt_id:#010x})")
             self.channel_message_sent.emit(channel_index, text, pkt_id)
         except Exception as e:
-            self.error_occurred.emit(f"Erro ao enviar mensagem: {e}")
+            self.error_occurred.emit(tr("err_send_msg_detail", err=e))
 
     def reset_nodedb(self):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Não conectado — impossível resetar NodeDB.")
+            self.error_occurred.emit(tr("err_reset_nodedb_nc"))
             return
         try:
             local_node = self.iface.localNode
             if hasattr(local_node, 'resetNodeDb'):
                 local_node.resetNodeDb()
-                logger.info("NodeDB resetado via localNode.resetNodeDb()")
+                logger.info("NodeDB reset via localNode.resetNodeDb()")
             else:
                 p = admin_pb2.AdminMessage()
                 p.nodedb_reset = 1
                 self.iface.localNode._sendAdmin(p)
-                logger.info("NodeDB resetado via admin packet")
+                logger.info("NodeDB reset via admin packet")
             self.nodedb_reset.emit()
         except Exception as e:
-            logger.error(f"Erro ao resetar NodeDB: {e}", exc_info=True)
-            self.error_occurred.emit(f"Erro ao resetar NodeDB: {e}")
+            logger.error(f"Error resetting NodeDB: {e}", exc_info=True)
+            self.error_occurred.emit(tr("err_reset_nodedb", err=e))
 
     def send_traceroute(self, dest_id: str, hop_limit: int = 3):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Não conectado — impossível enviar traceroute.")
+            self.error_occurred.emit(tr("err_traceroute_nc"))
             return
         try:
             r = mesh_pb2.RouteDiscovery()
@@ -243,10 +240,10 @@ class MeshtasticWorker(QObject):
                 hopLimit=hop_limit,
                 channelIndex=0,
             )
-            logger.info(f"Traceroute enviado para {dest_id} (hopLimit={hop_limit})")
+            logger.info(f"Traceroute sent to {dest_id} (hopLimit={hop_limit})")
         except Exception as e:
-            logger.error(f"Erro ao enviar traceroute: {e}", exc_info=True)
-            self.error_occurred.emit(f"Erro ao enviar traceroute: {e}")
+            logger.error(f"Error sending traceroute: {e}", exc_info=True)
+            self.error_occurred.emit(tr("err_traceroute", err=e))
 
     def send_position(self):
         """
@@ -281,14 +278,14 @@ class MeshtasticWorker(QObject):
                     # Sem argumentos → firmware usa a posição interna (GPS ou fixa)
                 )
                 sent_via_api = True
-                logger.info("send_position: enviado via localNode.setPosition()")
+                logger.info("send_position: sent via localNode.setPosition()")
                 self.position_sent.emit(True, tr("📍 Posição enviada para a rede (via firmware)."))
                 return
             except TypeError:
                 # Versões mais antigas da lib exigem lat/lon explícitos
                 pass
             except Exception as api_err:
-                logger.debug(f"send_position: setPosition() falhou ({api_err}), tentando fallback")
+                logger.debug(f"send_position: setPosition() failed ({api_err}), trying fallback")
 
             # ── Tentativa 2: lê coordenadas da cache e envia manualmente ──
             # Procura em nodesByNum (cache do daemon) e também na config fixa
@@ -315,13 +312,13 @@ class MeshtasticWorker(QObject):
                             lon_i = int(fixed_lon * 1e7) if isinstance(fixed_lon, float) else int(fixed_lon)
                             if fixed_alt:
                                 pos_data['altitude'] = int(fixed_alt)
-                            logger.info(f"send_position: usando posição fixa da config ({lat_i/1e7:.6f}, {lon_i/1e7:.6f})")
+                            logger.info(f"send_position: using fixed position from config ({lat_i/1e7:.6f}, {lon_i/1e7:.6f})")
                 except Exception as cfg_err:
-                    logger.debug(f"send_position: não leu posição fixa da config: {cfg_err}")
+                    logger.debug(f"send_position: could not read fixed position from config: {cfg_err}")
 
             if not lat_i or not lon_i:
                 msg = tr("pos_no_coords_msg")
-                logger.warning("send_position: sem coordenadas — abortar")
+                logger.warning("send_position: no coordinates — aborting")
                 self.position_sent.emit(False, msg)
                 return
 
@@ -343,11 +340,11 @@ class MeshtasticWorker(QObject):
                 channelIndex=0,
             )
             msg = tr("📍 Posição enviada ({lat}, {lon}).", lat=f"{lat_i/1e7:.6f}", lon=f"{lon_i/1e7:.6f}")
-            logger.info(msg)
+            logger.info(f"Position sent ({lat_i/1e7:.6f}, {lon_i/1e7:.6f})")
             self.position_sent.emit(True, msg)
 
         except Exception as e:
-            logger.error(f"Erro ao enviar posição: {e}", exc_info=True)
+            logger.error(f"Error sending position: {e}", exc_info=True)
             self.position_sent.emit(False, tr("Erro ao enviar posição: {msg}", msg=str(e)))
 
     def send_node_info(self):
@@ -356,7 +353,7 @@ class MeshtasticWorker(QObject):
         try:
             local_node = self.iface.localNode
             if not local_node:
-                self.error_occurred.emit("Nó local não disponível.")
+                self.error_occurred.emit(tr("err_nodeinfo_nc"))
                 return
             local_num  = local_node.nodeNum
             me         = (self.iface.nodesByNum.get(local_num, {})
@@ -368,12 +365,12 @@ class MeshtasticWorker(QObject):
             local_node.setOwner(long_name=long_name, short_name=short_name)
             logger.info(f"send_node_info: via setOwner ('{long_name}' / '{short_name}')")
         except Exception as e:
-            logger.error(f"Erro ao enviar NODEINFO: {e}", exc_info=True)
-            self.error_occurred.emit(f"Erro ao enviar Info do Nó: {e}")
+            logger.error(f"Error sending NODEINFO: {e}", exc_info=True)
+            self.error_occurred.emit(tr("err_nodeinfo", err=e))
 
     def send_direct_message(self, dest_id: str, text: str):
         if not self.iface or not self._connected:
-            self.error_occurred.emit("Não conectado — impossível enviar DM.")
+            self.error_occurred.emit(tr("err_dm_nc"))
             return
         try:
 
@@ -403,25 +400,19 @@ class MeshtasticWorker(QObject):
                         pkiEncrypted=True,
                     )
                     pkt_id = result.id if result and hasattr(result, 'id') else 0
-                    logger.info(f"DM PKI enviado para {dest_id} (pkt_id={pkt_id:#010x})")
+                    logger.info(f"DM PKI sent to {dest_id} (pkt_id={pkt_id:#010x})")
                     self.dm_sent.emit(dest_id, text, True, pkt_id)
                     return
                 except Exception as pki_err:
                     err_str = str(pki_err)
                     if 'PKI_UNKNOWN_PUBKEY' in err_str or 'unknown' in err_str.lower():
-                        # FIX-3: mensagem de erro simplificada
-                        logger.warning(f"DM PKI falhou para {dest_id}: {pki_err}")
-                        self.error_occurred.emit(
-                            f"Não foi possível enviar DM encriptado (PKI) para {dest_id}.\n\n"
-                            "O rádio ainda não tem a chave pública deste nó.\n"
-                            "Aguarde que ele se anuncie na rede (pode demorar alguns minutos)\n"
-                            "ou clique em  📡 Nó → Enviar Info do Nó  para anunciar a sua chave."
-                        )
+                        logger.warning(f"DM PKI failed for {dest_id}: {pki_err}")
+                        self.error_occurred.emit(tr("err_dm_pki", dest=dest_id))
                         return
                     raise
 
             # Fallback PSK
-            logger.info(f"DM para {dest_id}: sem publicKey → PSK canal 0")
+            logger.info(f"DM to {dest_id}: no publicKey → PSK channel 0")
             result = self.iface.sendText(
                 text, destinationId=dest_id, wantAck=True, channelIndex=0,
             )
@@ -429,8 +420,8 @@ class MeshtasticWorker(QObject):
             self.dm_sent.emit(dest_id, text, False, pkt_id)
 
         except Exception as e:
-            logger.error(f"Erro ao enviar DM para {dest_id}: {e}", exc_info=True)
-            self.error_occurred.emit(f"Erro ao enviar DM: {e}")
+            logger.error(f"Error sending DM to {dest_id}: {e}", exc_info=True)
+            self.error_occurred.emit(tr("err_dm", err=e))
 
     def _on_text_message(self, packet, interface=None):
         try:
@@ -492,7 +483,7 @@ class MeshtasticWorker(QObject):
                                 else:
                                     node_entry['user']['publicKey'] = str(pk_raw)
                     except Exception as e:
-                        logger.debug(f"Não actualizou publicKey de {from_id}: {e}")
+                        logger.debug(f"Could not update publicKey for {from_id}: {e}")
 
             _rx = packet.get('rxTime') or 0
             pkt_safe = {
@@ -530,7 +521,7 @@ class MeshtasticWorker(QObject):
 
             self.message_received.emit(channel, from_id, text, pkt_safe)
         except Exception as e:
-            logger.error(f"Erro no handler de texto: {e}", exc_info=True)
+            logger.error(f"Error in text message handler: {e}", exc_info=True)
 
     def _sync_nodedb(self) -> int:
         if not self.iface or not self._connected:
@@ -565,30 +556,9 @@ class MeshtasticWorker(QObject):
             self.nodes_batch.emit(list(deduped.items()))
         return len(deduped)
 
-    def _poll_nodedb(self):
-        """
-        Safety-net polling — sincroniza o NodeDB completo a cada 30s.
-        Equivalente ao comportamento das apps iOS/Android: lê iface.nodesByNum
-        e emite updates para todos os nós. Apanha nós novos e actualizações
-        que a biblioteca não emitiu via pubsub (frequente com meshtasticd via TCP).
-        """
-        if not self.iface or not self._connected:
-            return
-        try:
-            nodes_src = getattr(self.iface, 'nodesByNum', None) or {}
-            count = 0
-            for raw_key, node in nodes_src.items():
-                if not isinstance(node, dict):
-                    continue
-                self._emit_node(node.get('num') or raw_key, node)
-                count += 1
-            logger.debug(f"Poll NodeDB: {count} nós sincronizados")
-        except Exception as e:
-            logger.debug(f"Erro no poll NodeDB: {e}")
-
     def _on_connection_established(self, interface=None):
         """Chamado pela thread interna do TCPInterface — delega para thread Qt."""
-        logger.info("Conexão estabelecida — a delegar para thread Qt…")
+        logger.info("Connection established — delegating to Qt thread…")
         QMetaObject.invokeMethod(self, "_handle_connection_established", Qt.QueuedConnection)
 
     @pyqtSlot()
@@ -599,32 +569,45 @@ class MeshtasticWorker(QObject):
         self._reconnect_timer.stop()
         self._connect_watchdog.stop()
         self._known_nodes.clear()
-        self._poll_last_seen.clear()
         self.reconnect_status.emit(0, 0)   # 0 = reconectado com sucesso
         self.connection_changed.emit(True)
 
-        # FIX-4: bloqueia inserção do nó local ANTES do batch inicial
+        # Determina o ID do nó local com a melhor fonte disponível:
+        # 1ª opção — getMyNodeInfo() (mais fiável, lê do NodeDB completo)
+        # 2ª opção — localNode.nodeNum convertido para !hex (fallback rápido)
+        # O ID é registado ANTES do batch para que o proxy bloqueie o nó local.
+        local_num = None
+        my_id     = None
         try:
             if self.iface and self.iface.localNode:
-                local_num  = self.iface.localNode.nodeNum
-                local_id   = f"!{int(local_num):08x}" if local_num else None
-                logger.info(f"Nó local: num={local_num} id={local_id}")
-                # Emite sinal auxiliar para que MainWindow configure os modelos imediatamente
-                if local_id:
+                local_num = self.iface.localNode.nodeNum
+                if local_num:
                     self._local_num_known = local_num
-                    self._local_id_known  = local_id
-                    self.my_node_id_ready.emit(local_id)   # bloqueia proxy antes do batch
+                    self._local_id_known  = f"!{int(local_num):08x}"
         except Exception as e:
-            logger.warning(f"Não foi possível determinar nodeNum local: {e}")
+            logger.warning(f"Could not determine local nodeNum: {e}")
+
+        try:
+            my_id = self._get_my_node_id()
+            if my_id:
+                self._local_id_known = my_id   # ID canónico confirmado
+        except Exception as e:
+            logger.warning(f"_get_my_node_id failed: {e}")
+
+        # Emite my_node_id_ready exactamente uma vez, com o melhor ID disponível
+        final_id = my_id or self._local_id_known
+        if final_id:
+            logger.info(f"Local node: num={local_num} id={final_id}")
+            self.my_node_id_ready.emit(final_id)
 
         # Carga inicial completa
         try:
             loaded = self._sync_nodedb()
-            logger.info(f"NodeDB inicial: {loaded} nós carregados")
+            logger.info(f"Initial NodeDB: {loaded} nodes loaded")
         except Exception as e:
-            logger.error(f"Erro ao carregar NodeDB inicial: {e}", exc_info=True)
+            logger.error(f"Error loading initial NodeDB: {e}", exc_info=True)
 
-        # FIX-6: NeighborInfo inicial do NodeDB
+        # NeighborInfo inicial do NodeDB
         try:
             nodes_src = getattr(self.iface, 'nodesByNum', None) or {}
             for raw_key, node in nodes_src.items():
@@ -646,15 +629,10 @@ class MeshtasticWorker(QObject):
                 if neighbors:
                     self.neighbor_info_received.emit(from_id, neighbors)
         except Exception as e:
-            logger.debug(f"Erro ao carregar NeighborInfo inicial: {e}")
+            logger.debug(f"Error loading initial NeighborInfo: {e}")
 
         # Metadados do nó local
         try:
-            my_id = self._get_my_node_id()
-            if my_id:
-                self.my_node_id_ready.emit(my_id)
-
-            local_num  = self.iface.localNode.nodeNum if self.iface and self.iface.localNode else None
             local_user = {}
             if local_num and hasattr(self.iface, "nodesByNum"):
                 local_user = self.iface.nodesByNum.get(local_num, {}).get("user", {})
@@ -662,7 +640,7 @@ class MeshtasticWorker(QObject):
                 local_user = self.iface.nodes.get(my_id, {}).get("user", {})
             ln  = local_user.get("longName", "")
             sn  = local_user.get("shortName", "")
-            nid = local_user.get("id", my_id or "")
+            nid = local_user.get("id", final_id or "")
 
             gps_enabled  = False
             has_position = False
@@ -686,7 +664,7 @@ class MeshtasticWorker(QObject):
 
             self.local_node_ready.emit(ln, sn, nid, gps_enabled, has_position)
         except Exception as e:
-            logger.error(f"Erro ao obter metadados locais: {e}")
+            logger.error(f"Error getting local node metadata: {e}")
 
         self.interface_ready.emit(self.iface)
         self._attempt_load_channels(retry_count=0)
@@ -702,7 +680,7 @@ class MeshtasticWorker(QObject):
                 if node.get('user', {}).get('id') and node.get('isMe'):
                     return node['user']['id']
         except Exception as e:
-            logger.error(f"Erro ao obter ID local: {e}")
+            logger.error(f"Error getting local node ID: {e}")
         return None
 
     def _attempt_load_channels(self, retry_count=0):
@@ -756,7 +734,6 @@ class MeshtasticWorker(QObject):
             pk = user.get('publicKey') or user.get('public_key')
             if pk:
                 try:
-                    _b64 = base64
                     if isinstance(pk, bytes):
                         updates['public_key'] = base64.b64encode(pk).decode()
                     else:
@@ -776,7 +753,7 @@ class MeshtasticWorker(QObject):
             updates['last_packet_type'] = 'NODEINFO_APP'
             self.node_updated.emit(from_id_string, updates, packet)
         except Exception as e:
-            logger.debug(f"Erro em _on_receive_user: {e}")
+            logger.debug(f"Error in _on_receive_user: {e}")
 
     def _on_packet_received(self, packet, interface=None):
         try:
@@ -817,7 +794,7 @@ class MeshtasticWorker(QObject):
                         except (TypeError, ValueError):
                             pass
                     if is_local:
-                        logger.debug(f'Loopback ignorado: portnum={portnum} from={from_id_string}')
+                        logger.debug(f'Loopback ignored: portnum={portnum} from={from_id_string}')
                         return
 
             if portnum == 'TEXT_MESSAGE_APP':
@@ -861,7 +838,7 @@ class MeshtasticWorker(QObject):
                                 status = 'ack'
                         self.message_status_updated.emit(request_id, status, error_reason or 'NONE')
                 except Exception as e:
-                    logger.debug(f"Erro ao processar ROUTING_APP: {e}")
+                    logger.debug(f"Error processing ROUTING_APP: {e}")
                 # Actualiza last_heard e last_packet_type do remetente
                 _rout_updates: Dict[str, Any] = {'last_packet_type': 'ROUTING_APP'}
                 if from_id_num:
@@ -933,7 +910,7 @@ class MeshtasticWorker(QObject):
                         dest_str   = num_to_id(dest_num) or '?'
                         self.traceroute_result.emit(forward_edges, back_edges, origin_str, dest_str)
                 except Exception as e:
-                    logger.debug(f"Erro ao processar TRACEROUTE_APP: {e}", exc_info=True)
+                    logger.debug(f"Error processing TRACEROUTE_APP: {e}", exc_info=True)
                 # Actualiza last_heard e last_packet_type do remetente
                 _tr_updates: Dict[str, Any] = {'last_packet_type': 'TRACEROUTE_APP'}
                 if from_id_num:
@@ -966,11 +943,11 @@ class MeshtasticWorker(QObject):
                         if neighbors:
                             self.neighbor_info_received.emit(from_id_string, neighbors)
                             logger.info(
-                                f"NeighborInfo de {from_id_string}: "
-                                f"{len(neighbors)} vizinhos"
+                                f"NeighborInfo from {from_id_string}: "
+                                f"{len(neighbors)} neighbors"
                             )
                 except Exception as e:
-                    logger.debug(f"Erro ao processar NEIGHBORINFO_APP: {e}")
+                    logger.debug(f"Error processing NEIGHBORINFO_APP: {e}")
                 # Continua para o processamento genérico de updates
 
             updates: Dict[str, Any] = {}
@@ -1076,7 +1053,7 @@ class MeshtasticWorker(QObject):
                 self.node_updated.emit(from_id_string, updates, packet)
 
         except Exception as e:
-            logger.error(f"Erro no processamento de pacote: {e}", exc_info=True)
+            logger.error(f"Error processing packet: {e}", exc_info=True)
 
     @staticmethod
     def _extract_position(pos: dict, updates: dict):
@@ -1164,5 +1141,5 @@ class MeshtasticWorker(QObject):
             ])
             return True
         except Exception as e:
-            logger.error(f"Erro ao carregar canais: {e}", exc_info=True)
+            logger.error(f"Error loading channels: {e}", exc_info=True)
             return False

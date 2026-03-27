@@ -69,16 +69,16 @@ class FirmwareFavorites:
     def _send_to_firmware(self, node_id: str, favorite: bool):
         """Envia setFavorite ou removeFavorite ao nó local via AdminMessage."""
         if not self._iface:
-            logger.warning("FirmwareFavorites: sem interface — não foi possível persistir")
+            logger.warning("FirmwareFavorites: no interface — could not persist")
             return
         try:
             local = self._iface.localNode
             if favorite:
                 local.setFavorite(node_id)
-                logger.info(f"Favorito adicionado no firmware: {node_id}")
+                logger.info(f"Favourite added in firmware: {node_id}")
             else:
                 local.removeFavorite(node_id)
-                logger.info(f"Favorito removido do firmware: {node_id}")
+                logger.info(f"Favourite removed from firmware: {node_id}")
         except Exception as e:
             logger.warning(f"FirmwareFavorites._send_to_firmware: {e}")
 
@@ -367,7 +367,7 @@ class NodeTableModel(QAbstractTableModel):
             self._node_index[node_id_string] = row
             self.endInsertRows()
             is_local = self._is_local_node(node_id_string, node_data.get('id_num'))
-            logger.info(f"Modelo: NOVO nó {node_id_string} inserido{'  [LOCAL]' if is_local else ''}")
+            logger.info(f"Model: NEW node {node_id_string} inserted{'  [LOCAL]' if is_local else ''}")
             self.node_inserted.emit()
 
     def set_selected_highlight(self, node_id_string: Optional[str]):

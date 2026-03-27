@@ -288,13 +288,3 @@ def _is_broadcast(to_num) -> bool:
         return n in _BROADCAST_NUMS or n == 0
     except (TypeError, ValueError):
         return True
-
-
-MAP_THEMES = [
-    ("🌑 Escuro",        "CartoDB dark_matter",  ""),
-    ("☀ Claro",         "CartoDB positron",      ""),
-    ("🗺 OpenStreetMap", "OpenStreetMap",         ""),
-    ("🛰 Satélite",
-     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-     "Tiles &copy; Esri"),
-]
