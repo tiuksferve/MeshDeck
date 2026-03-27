@@ -1266,7 +1266,7 @@ class MainWindow(QMainWindow):
         lbl_title.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_title)
 
-        lbl_version = QLabel(tr("Versão {v}  ·  2025", v=APP_VERSION))
+        lbl_version = QLabel(tr("Versão {v}  ·  2026", v=APP_VERSION))
         lbl_version.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;")
         lbl_version.setAlignment(Qt.AlignCenter)
         root.addWidget(lbl_version)
@@ -1339,7 +1339,10 @@ class MainWindow(QMainWindow):
         """Abre/mostra a janela de consola de logs (não-bloqueante)."""
         self._console_window.show()
         self._console_window.raise_()
-        self._console_window.activateWindow()
+        # activateWindow() não é suportado em Wayland e gera aviso no log — omitir nessa plataforma
+        from PyQt5.QtGui import QGuiApplication
+        if QGuiApplication.platformName() != "wayland":
+            self._console_window.activateWindow()
 
     def _refresh_map(self):
         # O mapa mostra nós com last_heard válido (mesma regra da lista),
