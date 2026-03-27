@@ -259,7 +259,7 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
                 f"if(window._metricsUpdateData) window._metricsUpdateData({payload});"
             )
         except Exception as e:
-            logger.debug(f"MetricsTab refresh: {e}")
+            logger.debug(f"MetricsTab refresh error: {e}")
 
     def _on_auto_refresh(self):
         """Chamado pelo timer de 5s — actualiza só os dados via runJavaScript.

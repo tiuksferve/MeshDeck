@@ -124,7 +124,7 @@ class ChannelsTab(QWidget):
             self._rebuild_ui()
             self.status_lbl.setText(tr("✅  {n} canal(ais) carregados", n=len(self._channels)))
         except Exception as e:
-            logger.error(f"Erro ao carregar canais: {e}", exc_info=True)
+            logger.error(f"Error loading channels: {e}", exc_info=True)
             self.status_lbl.setText(tr("err_generic", err=e))
 
     def _clear_rows(self):
@@ -168,7 +168,7 @@ class ChannelsTab(QWidget):
             self._rebuild_ui()
             self.status_lbl.setText(tr("➕  Canal {n} adicionado — edite e guarde", n=idx))
         except Exception as e:
-            logger.error(f"Erro ao criar canal: {e}", exc_info=True)
+            logger.error(f"Error creating channel: {e}", exc_info=True)
             QMessageBox.critical(self, tr("Erro"), tr("Não foi possível criar canal:\n{e}", e=e))
 
     def _remove_channel(self, index: int):
@@ -242,7 +242,7 @@ class ChannelsTab(QWidget):
                 self._load_channels()
 
         except Exception as e:
-            logger.error(f"Erro ao guardar canais: {e}", exc_info=True)
+            logger.error(f"Error saving channels: {e}", exc_info=True)
             self.status_lbl.setText(tr("err_generic", err=e))
             QMessageBox.critical(self, tr("Erro"), tr("Erro ao guardar canais:\n{e}", e=e))
 
@@ -403,11 +403,11 @@ class _ChannelRow(QWidget):
                         # Assume Base64 (formato das apps iOS/Android)
                         settings.psk = base64.b64decode(psk_str)
                 except Exception as _e:
-                    logger.warning(f"PSK inválido '{psk_str}': {_e}")
+                    logger.warning(f"Invalid PSK '{psk_str}': {_e}")
             if hasattr(settings, 'module_settings'):
                 settings.module_settings.position_precision = self.w_pos_prec.value()
         except Exception as e:
-            logger.warning(f"Erro ao aplicar canal {self._ch_index}: {e}")
+            logger.warning(f"Error applying channel {self._ch_index}: {e}")
 
 
 
@@ -872,7 +872,7 @@ class ConfigTab(QWidget):
             self.btn_save.setEnabled(True)
             self.status_label.setText(tr("✅ Configuração carregada"))
         except Exception as e:
-            logger.error(f"Erro ao carregar configuração: {e}", exc_info=True)
+            logger.error(f"Error loading configuration: {e}", exc_info=True)
             self._show_placeholder(tr("err_load_config", err=e))
             self.status_label.setText(tr("❌ Erro ao carregar"))
 
@@ -916,7 +916,7 @@ class ConfigTab(QWidget):
                     snake   = re.sub(r'(?<!^)(?=[A-Z])', '_', sub_attr).lower()
                     sub_obj = getattr(cfg_root, snake, None)
         except Exception as e:
-            logger.warning(f"Erro ao aceder {sec_key}: {e}")
+            logger.warning(f"Error accessing {sec_key}: {e}")
 
         # Tenta carregar as mensagens pré-definidas (campo especial via AdminMessage)
         canned_msgs_value = None
@@ -929,9 +929,9 @@ class ConfigTab(QWidget):
                     canned_msgs_value = ln._cannedMessageModuleMessages or ""
                 elif hasattr(ln, 'getCannedMessages'):
                     canned_msgs_value = ln.getCannedMessages() or ""
-                logger.debug(f"Canned messages carregadas: {canned_msgs_value!r}")
+                logger.debug(f"Canned messages loaded: {canned_msgs_value!r}")
             except Exception as e:
-                logger.debug(f"Não carregou canned messages: {e}")
+                logger.debug(f"Could not load canned messages: {e}")
 
         result = []
         for label, field_name, field_type, extra in field_defs:
@@ -948,7 +948,7 @@ class ConfigTab(QWidget):
                         obj = getattr(obj, part, None)
                     current_val = obj
                 except Exception as e:
-                    logger.debug(f"Não leu {sec_key}.{field_name}: {e}")
+                    logger.debug(f"Could not read {sec_key}.{field_name}: {e}")
             result.append((label, field_type, field_name, current_val, extra))
         return result
 
@@ -983,7 +983,7 @@ class ConfigTab(QWidget):
                     (tr("Licenciado (Ham)"), "is_licensed", user.get('isLicensed', False)),
                 ]
         except Exception as e:
-            logger.warning(f"Erro ao ler info dispositivo: {e}")
+            logger.warning(f"Error reading device info: {e}")
         for label, key, val in fields_ro:
             lbl = QLabel(str(val) if val is not None else "—")
             lbl.setStyleSheet(
@@ -1095,7 +1095,7 @@ class ConfigTab(QWidget):
                     #    em vez de bloquear o save completo
                     default_v = next((v for v in enum_type.values if v.number == 0), None)
                     if default_v is not None:
-                        logger.debug(f"Enum '{value}' não reconhecido para {field_name}, usando default {default_v.name}")
+                        logger.debug(f"Enum '{value}' not recognised for {field_name}, using default {default_v.name}")
                         return default_v.number, None
                     return None, f"Valor de enum inválido '{value}' para {field_name}"
                 try:
@@ -1177,7 +1177,7 @@ class ConfigTab(QWidget):
             try:
                 self._local_node.beginSettingsTransaction()
             except Exception as e:
-                logger.debug(f"beginSettingsTransaction não suportado ou falhou: {e}")
+                logger.debug(f"beginSettingsTransaction not supported or failed: {e}")
 
             # ── Recolhe dados do owner (aplica no fim, após writeConfigs) ──
             owner_long  = None
@@ -1291,7 +1291,7 @@ class ConfigTab(QWidget):
             try:
                 self._local_node.commitSettingsTransaction()
             except Exception as e:
-                logger.debug(f"commitSettingsTransaction não suportado ou falhou: {e}")
+                logger.debug(f"commitSettingsTransaction not supported or failed: {e}")
 
             # ── setOwner após commit — garante que o nome é gravado ───
             # O setOwner envia AdminMessage directamente ao firmware;
@@ -1322,7 +1322,7 @@ class ConfigTab(QWidget):
                 QMessageBox.information(self, tr("Sem Alterações"), msg)
 
         except Exception as e:
-            logger.error(f"Erro ao guardar configuração: {e}", exc_info=True)
+            logger.error(f"Error saving configuration: {e}", exc_info=True)
             self.status_label.setText(tr("❌ Erro ao guardar"))
             QMessageBox.critical(self, tr("Erro"), tr("Erro ao guardar configuração:\n{e}", e=e))
 

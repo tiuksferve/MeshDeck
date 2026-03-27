@@ -618,7 +618,7 @@ class MainWindow(QMainWindow):
         self.source_model.set_local_node_id(node_id, node_num)
         self.proxy_model.set_local_node_id(node_id)
         self.messages_tab.set_my_node_id(node_id)
-        logger.info(f"Nó local registado: id={node_id} num={node_num}")
+        logger.info(f"Local node registered: id={node_id} num={node_num}")
 
     def _poll_nodedb(self):
         """FIX-5: polling como safety-net — não redesenha se nada mudou."""
@@ -626,7 +626,7 @@ class MainWindow(QMainWindow):
             try:
                 self.worker._sync_nodedb()
             except Exception as e:
-                logger.debug(f"Erro no poll NodeDB: {e}")
+                logger.debug(f"NodeDB poll error: {e}")
 
     def _on_nodes_batch(self, batch: list):
         if not batch:
@@ -779,9 +779,9 @@ class MainWindow(QMainWindow):
                     node_id, local_data["long_name"], local_data["short_name"],
                     local_data["public_key"]
                 )
-                logger.info(f"Nó local inserido na tabela: {node_id}")
+                logger.info(f"Local node inserted in table: {node_id}")
             except Exception as e:
-                logger.debug(f"Erro ao inserir nó local na tabela: {e}")
+                logger.debug(f"Error inserting local node in table: {e}")
 
     def _update_local_node_label(self, has_position: bool):
         long_name   = getattr(self, '_local_long_name',   '')
