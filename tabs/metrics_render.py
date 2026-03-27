@@ -145,7 +145,7 @@ class MetricsRenderMixin:
 </div>
 <div class="card" style="margin-top:16px">
   <h3>{tr("Top Nós por Pacotes")}</h3>
-  <table><tr><th>ID</th><th>{tr("Nome")}</th><th>{tr("Pacotes")}</th><th>Ch. Util.</th><th>{tr("Bateria")}</th></tr><tbody id="ov-node-tbody">{rows}</tbody></table>
+  <table><tr><th>{tr("Nome")}</th><th>{tr("Pacotes")}</th><th>Ch. Util.</th><th>{tr("Bateria")}</th></tr><tbody id="ov-node-tbody">{rows}</tbody></table>
 </div>
 <div class="updated" id="ov-updated">{tr('Sessão iniciada')} · {datetime.fromtimestamp(self._start_time).strftime('%H:%M:%S %d/%m/%Y')} · {tr('Actualizado:')} {self._now_str()}</div>
 <script>
@@ -163,7 +163,7 @@ window._metricsUpdateData = function(d) {{
     var e=document.getElementById(id); if(e) e.className='kpi '+(cls||'')+' ov-kpi';
   }}
   setKpi('ov-pkts', d.total_pkts, '');
-  setKpi('ov-active', d.n_active, d.unit_nos||' nós');
+  setKpi('ov-active', d.n_active, d.unit_nos||' nodes');
   setKpi('ov-ppm', d.ppm, '/min');
   setKpi('ov-snr', d.snr_avg, ' dB');
   setKpiClass('ov-snr', d.snr_avg!==null&&d.snr_avg>=0?'green':'orange');
@@ -483,7 +483,7 @@ window._metricsUpdateData = function(d) {{
   set('snr-avg', d.snr_avg !== null ? d.snr_avg + ' dB' : '—');
   set('snr-med', d.snr_med !== null ? d.snr_med + ' dB' : '—');
   set('snr-p10', d.snr_p10 !== null ? d.snr_p10 + ' dB' : '—');
-  set('snr-n', d.n + ' ' + (d.unit_amostras||'amostras'));
+  set('snr-n', d.n + ' ' + (d.unit_amostras||'samples'));
   if(d.assessment) setHtml('rf-assessment', d.assessment);
   if(window._snrChart && d.snr_counts.length > 0) {{
     window._snrChart.data.labels = d.snr_labels;
@@ -941,7 +941,7 @@ window._rttChart = new Chart(document.getElementById('rttChart'), {{
       x: {{ grid: {{ display: false }}, ticks: {{ color: '#8b949e' }} }}
     }},
     plugins: {{ legend: {{ display: false }},
-                tooltip: {{ callbacks: {{ label: ctx => ctx.parsed.y + ' ' + (window._rttMsgLabel||'mensagens') }} }} }}
+                tooltip: {{ callbacks: {{ label: ctx => ctx.parsed.y + ' ' + (window._rttMsgLabel||'messages') }} }} }}
   }}
 }});
 </script>
@@ -1345,7 +1345,7 @@ window._metricsUpdateData = function(d) {{
   if (!d || !d.rows) return;
   var tbody = document.getElementById('intervals-tbody');
   if (!tbody) return;
-  var LABELS = d.lbl_freq || {{'high':'Alta frequência','normal':'Normal','low':'Baixa frequência'}};
+  var LABELS = d.lbl_freq || {{'high':'High frequency','normal':'Normal','low':'Low frequency'}};
   var html = '';
   d.rows.forEach(function(r) {{
     var nid=r[0], nm=r[1], avg=r[2], mn=r[3], mx=r[4], cnt=r[5];
