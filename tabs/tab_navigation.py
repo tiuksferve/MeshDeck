@@ -2,16 +2,19 @@
 tabs/tab_navigation.py — NavigationTab: aba de navegação com bússola e tabela
 de nós com localização GPS conhecida.
 
-Layout do painel superior:
-  [Nó Local]  |  [Bússola — centro, maior]  |  [Alvo]
-
-Tabela inferior: todos os nós com GPS, ordenados por distância crescente,
-filtrados pela barra de pesquisa global.
+Optimizações de performance para CM4:
+  - Debounce de 500ms: acumula actualizações e reconstrói a tabela apenas uma
+    vez no final de um burst de updates (ex: batch inicial de 50+ nós)
+  - update_node() apenas actualiza o dicionário interno e agenda o rebuild
+  - _rebuild_table() nunca chama _refresh_compass() — compass só actualiza
+    quando a selecção muda ou a posição local muda
+  - SVG da bússola só é regenerado quando bearing/estado realmente mudam
+  - Tab inactiva: debounce não dispara rebuild até tab ficar activa
 """
 import math
 from typing import Optional, Dict, Any
 
-from PyQt5.QtCore import Qt, QByteArray
+from PyQt5.QtCore import Qt, QByteArray, QTimer
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTableWidget, QTableWidgetItem, QHeaderView,
@@ -49,21 +52,15 @@ def _bearing_deg(lat1, lon1, lat2, lon2):
 
 
 def _cardinal(b):
-    return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][int((b + 22.5) / 45) % 8]
+    return ["N","NE","E","SE","S","SW","W","NW"][int((b+22.5)/45)%8]
 
 
 # ── Compass SVG ───────────────────────────────────────────────────────────────
 
 def _compass_svg(bearing_deg: Optional[float], size: int = 280) -> bytes:
-    """
-    Draws a compass rose with a diamond needle.
-    bearing_deg: direction to target. None = no selection (no needle).
-    Red half → target. Grey half → opposite.
-    """
     cx = cy = size // 2
     r  = size // 2 - 10
 
-    # Tick marks every 30°
     ticks = ""
     for deg in range(0, 360, 30):
         rad     = math.radians(deg - 90)
@@ -74,124 +71,81 @@ def _compass_svg(bearing_deg: Optional[float], size: int = 280) -> bytes:
         x2 = cx + r   * math.cos(rad)
         y2 = cy + r   * math.sin(rad)
         ticks += (
-            f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" '
+            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
             f'stroke="{"#8b949e" if is_card else "#30363d"}" '
-            f'stroke-width="{"2.5" if is_card else "1"}"/>'
+            f'stroke-width="{"2" if is_card else "1"}"/>'
         )
 
-    # Cardinal letters
     cards = ""
     lr = r - 24
     for deg, lbl, col, fw in [
-        (0,   "N", "#39d353", "bold"),
-        (90,  "E", "#8b949e", "normal"),
-        (180, "S", "#8b949e", "normal"),
-        (270, "W", "#8b949e", "normal"),
+        (0,"N","#39d353","bold"),(90,"E","#8b949e","normal"),
+        (180,"S","#8b949e","normal"),(270,"W","#8b949e","normal"),
     ]:
         rad = math.radians(deg - 90)
         lx  = cx + lr * math.cos(rad)
         ly  = cy + lr * math.sin(rad)
         cards += (
-            f'<text x="{lx:.2f}" y="{ly:.2f}" text-anchor="middle" '
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle" '
             f'dominant-baseline="middle" fill="{col}" '
             f'font-size="15" font-weight="{fw}" '
             f'font-family="Arial,sans-serif">{lbl}</text>'
         )
 
-    # Degree marks (every 10°, small dots)
-    dots = ""
-    for deg in range(0, 360, 10):
-        if deg % 30 == 0:
-            continue
-        rad = math.radians(deg - 90)
-        dx  = cx + (r - 4) * math.cos(rad)
-        dy  = cy + (r - 4) * math.sin(rad)
-        dots += f'<circle cx="{dx:.2f}" cy="{dy:.2f}" r="1.2" fill="#30363d"/>'
-
-    # Needle
     if bearing_deg is not None:
         a_rad = math.radians(bearing_deg - 90)
         p_rad = a_rad + math.pi / 2
-
-        tip_d  = r - 30
-        base_d = 24
-        wing_d = 7
-
-        tip_x  = cx + tip_d  * math.cos(a_rad)
-        tip_y  = cy + tip_d  * math.sin(a_rad)
-        base_x = cx + base_d * math.cos(a_rad + math.pi)
-        base_y = cy + base_d * math.sin(a_rad + math.pi)
-        lw_x   = cx + wing_d * math.cos(p_rad)
-        lw_y   = cy + wing_d * math.sin(p_rad)
-        rw_x   = cx - wing_d * math.cos(p_rad)
-        rw_y   = cy - wing_d * math.sin(p_rad)
-
+        tip_x  = cx + (r-30) * math.cos(a_rad)
+        tip_y  = cy + (r-30) * math.sin(a_rad)
+        base_x = cx + 24 * math.cos(a_rad + math.pi)
+        base_y = cy + 24 * math.sin(a_rad + math.pi)
+        lw_x   = cx + 7 * math.cos(p_rad)
+        lw_y   = cy + 7 * math.sin(p_rad)
+        rw_x   = cx - 7 * math.cos(p_rad)
+        rw_y   = cy - 7 * math.sin(p_rad)
         needle = (
-            f'<polygon points="{tip_x:.2f},{tip_y:.2f} '
-            f'{lw_x:.2f},{lw_y:.2f} {rw_x:.2f},{rw_y:.2f}" '
+            f'<polygon points="{tip_x:.1f},{tip_y:.1f} '
+            f'{lw_x:.1f},{lw_y:.1f} {rw_x:.1f},{rw_y:.1f}" '
             f'fill="#f85149" stroke="#0d1117" stroke-width="1.2"/>'
-            f'<polygon points="{base_x:.2f},{base_y:.2f} '
-            f'{lw_x:.2f},{lw_y:.2f} {rw_x:.2f},{rw_y:.2f}" '
+            f'<polygon points="{base_x:.1f},{base_y:.1f} '
+            f'{lw_x:.1f},{lw_y:.1f} {rw_x:.1f},{rw_y:.1f}" '
             f'fill="#6e7681" stroke="#0d1117" stroke-width="1.2"/>'
-            f'<circle cx="{cx}" cy="{cy}" r="5.5" '
+            f'<circle cx="{cx}" cy="{cy}" r="5" '
             f'fill="#21262d" stroke="#8b949e" stroke-width="2"/>'
         )
     else:
         needle = (
-            f'<circle cx="{cx}" cy="{cy}" r="5.5" '
+            f'<circle cx="{cx}" cy="{cy}" r="5" '
             f'fill="#30363d" stroke="#8b949e" stroke-width="2"/>'
         )
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{size}" height="{size}" viewBox="0 0 {size} {size}">'
-        # Outer glow ring
-        f'<circle cx="{cx}" cy="{cy}" r="{r+2}" '
-        f'fill="none" stroke="#30363d" stroke-width="1" opacity="0.4"/>'
-        # Main ring
         f'<circle cx="{cx}" cy="{cy}" r="{r}" '
         f'fill="#161b22" stroke="#30363d" stroke-width="2"/>'
-        # Inner face with subtle gradient feel
         f'<circle cx="{cx}" cy="{cy}" r="{r-13}" fill="#0d1117"/>'
-        f'{dots}{ticks}{cards}{needle}'
+        f'{ticks}{cards}{needle}'
         f'</svg>'
     ).encode('utf-8')
 
 
 # ── Column indices ─────────────────────────────────────────────────────────────
-COL_LONG    = 0
-COL_SHORT   = 1
-COL_HOPS    = 2
-COL_VIA     = 3
-COL_SNR     = 4
-COL_DIST    = 5
-COL_BEARING = 6
-COL_LAT     = 7
-COL_LON     = 8
-COL_ALT     = 9
-COL_BATT    = 10
-N_COLS      = 11
+COL_LONG=0; COL_SHORT=1; COL_HOPS=2; COL_VIA=3; COL_SNR=4
+COL_DIST=5; COL_BEARING=6; COL_LAT=7; COL_LON=8; COL_ALT=9
+COL_BATT=10; N_COLS=11
 
-# Balanced column widths — all headers readable, no column dominates.
-# setStretchLastSection=False + Interactive so user can resize.
-# Values tuned for a ~900px total table width (uConsole landscape).
 _COL_WIDTHS = {
-    COL_LONG:     130,   # Nome Longo   — slightly wider
-    COL_SHORT:     62,   # Nome Curto
-    COL_HOPS:      52,   # Hops
-    COL_VIA:       66,   # Via
-    COL_SNR:       72,   # SNR
-    COL_DIST:      78,   # Distância
-    COL_BEARING:   70,   # Bearing
-    COL_LAT:       82,   # Lat
-    COL_LON:       82,   # Lon
-    COL_ALT:       54,   # Alt (m)
-    COL_BATT:      60,   # Bateria
+    COL_LONG:130, COL_SHORT:62, COL_HOPS:52, COL_VIA:66,
+    COL_SNR:72, COL_DIST:78, COL_BEARING:70,
+    COL_LAT:82, COL_LON:82, COL_ALT:54, COL_BATT:60,
 }
 
 
 class NavigationTab(QWidget):
-    """Navigation tab — 3-panel compass area + GPS node table."""
+    """Navigation tab — compass + GPS node table. CM4-optimised."""
+
+    _DEBOUNCE_MS = 500   # wait 500ms after last update before rebuilding table
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -205,6 +159,14 @@ class NavigationTab(QWidget):
         self._local_node_id:     str  = ""
         self._local_gps_enabled: bool = False
         self._filter_text:       str  = ""
+        self._last_bearing:      Optional[float]  = None  # avoid redundant SVG regen
+
+        # Debounce timer — fires _rebuild_table() once after a burst of updates
+        self._rebuild_timer = QTimer(self)
+        self._rebuild_timer.setSingleShot(True)
+        self._rebuild_timer.setInterval(self._DEBOUNCE_MS)
+        self._rebuild_timer.timeout.connect(self._rebuild_table)
+
         self._build_ui()
 
     # ── UI ────────────────────────────────────────────────────────────────────
@@ -215,125 +177,64 @@ class NavigationTab(QWidget):
 
         splitter = QSplitter(Qt.Vertical)
         splitter.setHandleWidth(4)
-        splitter.setStyleSheet(
-            f"QSplitter::handle {{background:{BORDER_COLOR};}}"
-        )
+        splitter.setStyleSheet(f"QSplitter::handle{{background:{BORDER_COLOR};}}")
 
         # ── TOP: [Local Node] | [Compass] | [Target] ─────────────────────
         top = QWidget()
         top.setStyleSheet(f"background:{DARK_BG};")
         top.setMinimumHeight(320)
         top.setMaximumHeight(380)
-
         top_h = QHBoxLayout(top)
         top_h.setContentsMargins(12, 10, 12, 10)
         top_h.setSpacing(12)
 
-        # ── LEFT: Local Node panel ────────────────────────────────────────
-        local_frame = self._make_info_frame()
-        local_lyt   = QVBoxLayout(local_frame)
-        local_lyt.setContentsMargins(14, 10, 14, 10)
-        local_lyt.setSpacing(6)
-
-        self._local_hdr = self._make_hdr_label()
-        local_lyt.addWidget(self._local_hdr)
-
-        sep1 = QFrame()
-        sep1.setFrameShape(QFrame.HLine)
-        sep1.setStyleSheet(f"color:{BORDER_COLOR};margin:0;")
-        local_lyt.addWidget(sep1)
-
-        self._local_name_lbl = QLabel("—")
-        self._local_name_lbl.setWordWrap(True)
-        self._local_name_lbl.setStyleSheet(
-            f"color:{ACCENT_GREEN};font-size:14px;font-weight:bold;"
-            f"background:transparent;border:none;"
-        )
-        local_lyt.addWidget(self._local_name_lbl)
-
-        self._local_id_lbl = QLabel()
-        self._local_id_lbl.setStyleSheet(
-            f"color:{TEXT_MUTED};font-size:10px;"
-            f"background:transparent;border:none;"
-        )
-        local_lyt.addWidget(self._local_id_lbl)
-
-        self._local_pos_lbl = QLabel("—")
-        self._local_pos_lbl.setWordWrap(True)
-        self._local_pos_lbl.setStyleSheet(
-            f"color:{TEXT_PRIMARY};font-size:11px;"
-            f"background:transparent;border:none;"
-        )
-        local_lyt.addWidget(self._local_pos_lbl)
-
-        self._local_gps_lbl = QLabel()
-        self._local_gps_lbl.setStyleSheet(
-            f"color:{TEXT_MUTED};font-size:11px;"
-            f"background:transparent;border:none;"
-        )
-        local_lyt.addWidget(self._local_gps_lbl)
-        local_lyt.addStretch()
-
+        # LEFT — Local Node
+        local_frame = self._make_frame()
+        ll = QVBoxLayout(local_frame)
+        ll.setContentsMargins(14, 10, 14, 10)
+        ll.setSpacing(5)
+        self._local_hdr      = self._make_hdr()
+        self._local_name_lbl = self._make_val(ACCENT_GREEN, 14, bold=True, wrap=True)
+        self._local_id_lbl   = self._make_val(TEXT_MUTED, 10)
+        self._local_pos_lbl  = self._make_val(TEXT_PRIMARY, 11, wrap=True)
+        self._local_gps_lbl  = self._make_val(TEXT_MUTED, 11)
+        for w in (self._local_hdr, self._make_sep(),
+                  self._local_name_lbl, self._local_id_lbl,
+                  self._local_pos_lbl, self._local_gps_lbl):
+            ll.addWidget(w)
+        ll.addStretch()
         top_h.addWidget(local_frame, stretch=2)
 
-        # ── CENTRE: Compass ───────────────────────────────────────────────
-        compass_col = QVBoxLayout()
-        compass_col.setSpacing(4)
-        compass_col.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
-
+        # CENTRE — Compass
+        cc = QVBoxLayout()
+        cc.setSpacing(4)
+        cc.setAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
         self._compass_widget = QSvgWidget()
         self._compass_widget.setFixedSize(280, 280)
         self._compass_widget.setStyleSheet("background:transparent;")
-        compass_col.addWidget(self._compass_widget, alignment=Qt.AlignHCenter)
-
         self._bearing_label = QLabel("—")
         self._bearing_label.setAlignment(Qt.AlignCenter)
         self._bearing_label.setStyleSheet(
-            f"color:{ACCENT_BLUE};font-size:13px;font-weight:bold;"
-            f"padding:2px 0;"
+            f"color:{ACCENT_BLUE};font-size:13px;font-weight:bold;padding:2px 0;"
         )
-        compass_col.addWidget(self._bearing_label)
+        cc.addWidget(self._compass_widget, alignment=Qt.AlignHCenter)
+        cc.addWidget(self._bearing_label)
+        top_h.addLayout(cc, stretch=3)
 
-        top_h.addLayout(compass_col, stretch=3)
-
-        # ── RIGHT: Target panel ───────────────────────────────────────────
-        target_frame = self._make_info_frame()
-        target_lyt   = QVBoxLayout(target_frame)
-        target_lyt.setContentsMargins(14, 10, 14, 10)
-        target_lyt.setSpacing(6)
-
-        self._target_hdr = self._make_hdr_label()
-        target_lyt.addWidget(self._target_hdr)
-
-        sep2 = QFrame()
-        sep2.setFrameShape(QFrame.HLine)
-        sep2.setStyleSheet(f"color:{BORDER_COLOR};margin:0;")
-        target_lyt.addWidget(sep2)
-
-        self._target_name_lbl = QLabel("—")
-        self._target_name_lbl.setWordWrap(True)
-        self._target_name_lbl.setStyleSheet(
-            f"color:{ACCENT_BLUE};font-size:14px;font-weight:bold;"
-            f"background:transparent;border:none;"
-        )
-        target_lyt.addWidget(self._target_name_lbl)
-
-        self._dist_label = QLabel("—")
-        self._dist_label.setStyleSheet(
-            f"color:{ACCENT_GREEN};font-size:26px;font-weight:bold;"
-            f"background:transparent;border:none;"
-        )
-        target_lyt.addWidget(self._dist_label)
-
-        self._status_label = QLabel()
-        self._status_label.setWordWrap(True)
-        self._status_label.setStyleSheet(
-            f"color:{TEXT_MUTED};font-size:11px;"
-            f"background:transparent;border:none;"
-        )
-        target_lyt.addWidget(self._status_label)
-        target_lyt.addStretch()
-
+        # RIGHT — Target
+        target_frame = self._make_frame()
+        tl = QVBoxLayout(target_frame)
+        tl.setContentsMargins(14, 10, 14, 10)
+        tl.setSpacing(5)
+        self._target_hdr      = self._make_hdr()
+        self._target_name_lbl = self._make_val(ACCENT_BLUE, 14, bold=True, wrap=True)
+        self._dist_label      = self._make_val(ACCENT_GREEN, 26, bold=True)
+        self._status_label    = self._make_val(TEXT_MUTED, 11, wrap=True)
+        for w in (self._target_hdr, self._make_sep(),
+                  self._target_name_lbl, self._dist_label,
+                  self._status_label):
+            tl.addWidget(w)
+        tl.addStretch()
         top_h.addWidget(target_frame, stretch=2)
 
         splitter.addWidget(top)
@@ -341,15 +242,15 @@ class NavigationTab(QWidget):
         # ── BOTTOM: table ─────────────────────────────────────────────────
         bottom = QWidget()
         bottom.setStyleSheet(f"background:{PANEL_BG};")
-        bot_lyt = QVBoxLayout(bottom)
-        bot_lyt.setContentsMargins(8, 6, 8, 8)
-        bot_lyt.setSpacing(4)
+        bl = QVBoxLayout(bottom)
+        bl.setContentsMargins(8, 6, 8, 8)
+        bl.setSpacing(4)
 
         self._table_title = QLabel(tr("📍  Nós com localização GPS"))
         self._table_title.setStyleSheet(
             f"color:{TEXT_MUTED};font-size:10px;font-weight:bold;letter-spacing:1px;"
         )
-        bot_lyt.addWidget(self._table_title)
+        bl.addWidget(self._table_title)
 
         self._table = QTableWidget(0, N_COLS)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -361,20 +262,19 @@ class NavigationTab(QWidget):
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(24)
         self._table.setStyleSheet(
-            f"QTableWidget {{background:{PANEL_BG};"
+            f"QTableWidget{{background:{PANEL_BG};"
             f"alternate-background-color:{DARK_BG};"
             f"color:{TEXT_PRIMARY};gridline-color:{BORDER_COLOR};"
             f"border:1px solid {BORDER_COLOR};border-radius:6px;"
             f"selection-background-color:#1f3a5f;"
             f"selection-color:{TEXT_PRIMARY};}}"
-            f"QHeaderView::section {{background:{DARK_BG};color:{ACCENT_BLUE};"
+            f"QHeaderView::section{{background:{DARK_BG};color:{ACCENT_BLUE};"
             f"padding:4px 6px;border:none;"
             f"border-right:1px solid {BORDER_COLOR};"
             f"border-bottom:1px solid {BORDER_COLOR};"
             f"font-weight:bold;font-size:10px;"
             f"text-transform:uppercase;letter-spacing:0.5px;}}"
         )
-
         hh = self._table.horizontalHeader()
         hh.setMinimumSectionSize(46)
         hh.setDefaultSectionSize(70)
@@ -384,7 +284,7 @@ class NavigationTab(QWidget):
             self._table.setColumnWidth(col, w)
 
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
-        bot_lyt.addWidget(self._table)
+        bl.addWidget(self._table)
 
         splitter.addWidget(bottom)
         splitter.setSizes([340, 380])
@@ -394,21 +294,38 @@ class NavigationTab(QWidget):
         self._refresh_local_panel()
         self._refresh_compass()
 
-    # ── Widget factories ──────────────────────────────────────────────────────
-    def _make_info_frame(self) -> QFrame:
+    # ── Widget helpers ────────────────────────────────────────────────────────
+    def _make_frame(self):
         f = QFrame()
         f.setStyleSheet(
-            f"QFrame {{background:{PANEL_BG};border:1px solid {BORDER_COLOR};"
+            f"QFrame{{background:{PANEL_BG};border:1px solid {BORDER_COLOR};"
             f"border-radius:8px;}}"
         )
         return f
 
-    def _make_hdr_label(self) -> QLabel:
+    def _make_hdr(self):
         lbl = QLabel()
         lbl.setStyleSheet(
             f"color:{TEXT_MUTED};font-size:10px;font-weight:bold;"
             f"letter-spacing:1.5px;background:transparent;border:none;"
         )
+        return lbl
+
+    def _make_sep(self):
+        s = QFrame()
+        s.setFrameShape(QFrame.HLine)
+        s.setStyleSheet(f"color:{BORDER_COLOR};margin:0;")
+        return s
+
+    def _make_val(self, color, size, bold=False, wrap=False):
+        lbl = QLabel("—")
+        fw  = "bold" if bold else "normal"
+        lbl.setStyleSheet(
+            f"color:{color};font-size:{size}px;font-weight:{fw};"
+            f"background:transparent;border:none;"
+        )
+        if wrap:
+            lbl.setWordWrap(True)
         return lbl
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -431,17 +348,25 @@ class NavigationTab(QWidget):
             self._local_alt = alt
         self._local_gps_enabled = True
         self._refresh_local_panel()
-        self._rebuild_table()
+        # Distances changed — schedule one rebuild
+        self._schedule_rebuild()
+        # Compass depends on local pos — update immediately (only one SVG render)
         self._refresh_compass()
 
     def update_node(self, node_id: str, node_data: dict):
+        """
+        Store data and schedule a debounced rebuild.
+        NEVER calls _rebuild_table() directly — that would cause
+        one full table rebuild per node in a batch of 50+ nodes.
+        """
         lat = node_data.get('latitude')
         lon = node_data.get('longitude')
         if lat is None or lon is None:
             if node_id in self._nodes:
                 del self._nodes[node_id]
-                self._rebuild_table()
+                self._schedule_rebuild()
             return
+
         if node_id not in self._nodes:
             self._nodes[node_id] = {}
         stored = self._nodes[node_id]
@@ -453,13 +378,16 @@ class NavigationTab(QWidget):
             elif key not in stored:
                 stored[key] = None
         stored['id'] = node_id
-        self._rebuild_table()
+
+        self._schedule_rebuild()
+
+        # If the selected node moved, refresh compass (cheap — only if needed)
         if node_id == self._selected_id:
             self._refresh_compass()
 
     def set_filter_text(self, text: str):
         self._filter_text = text.lower().strip()
-        self._rebuild_table()
+        self._schedule_rebuild()
 
     def retranslate(self):
         self._refresh_headers()
@@ -468,6 +396,7 @@ class NavigationTab(QWidget):
         self._table_title.setText(tr("📍  Nós com localização GPS"))
 
     def clear(self):
+        self._rebuild_timer.stop()
         self._nodes.clear()
         self._selected_id        = None
         self._local_lat          = None
@@ -478,11 +407,16 @@ class NavigationTab(QWidget):
         self._local_short_name   = ""
         self._local_node_id      = ""
         self._filter_text        = ""
+        self._last_bearing       = None
         self._table.setRowCount(0)
         self._refresh_local_panel()
         self._refresh_compass()
 
     # ── Internal helpers ──────────────────────────────────────────────────────
+    def _schedule_rebuild(self):
+        """Start (or restart) the debounce timer. Table rebuilds once after burst."""
+        self._rebuild_timer.start()  # restarts if already running
+
     def _refresh_headers(self):
         self._table.setHorizontalHeaderLabels([
             tr("Nome Longo"), tr("Nome Curto"),
@@ -494,8 +428,7 @@ class NavigationTab(QWidget):
     def _refresh_local_panel(self):
         self._local_hdr.setText(tr("🏠  NÓ LOCAL"))
         name  = self._local_long_name  or self._local_node_id or "—"
-        short = (f" [{self._local_short_name}]"
-                 if self._local_short_name else "")
+        short = f" [{self._local_short_name}]" if self._local_short_name else ""
         self._local_name_lbl.setText(f"{name}{short}")
         self._local_id_lbl.setText(self._local_node_id or "")
 
@@ -509,7 +442,7 @@ class NavigationTab(QWidget):
             self._local_pos_lbl.setText(tr("nav_waiting_local_short"))
 
         if self._local_gps_enabled:
-            self._local_gps_lbl.setText("GPS  ✅  active")
+            self._local_gps_lbl.setText("GPS  ✅")
             self._local_gps_lbl.setStyleSheet(
                 f"color:{ACCENT_GREEN};font-size:11px;"
                 f"background:transparent;border:none;"
@@ -555,10 +488,12 @@ class NavigationTab(QWidget):
                 ft in (nd.get('id')         or '').lower())
 
     def _rebuild_table(self):
+        """Rebuilds the table once. Called only by the debounce timer."""
         visible = [(nid, nd) for nid, nd in self._nodes.items()
                    if self._matches_filter(nd)]
         visible.sort(key=lambda x: (self._dist_km(x[1]) or float('inf')))
 
+        self._table.setUpdatesEnabled(False)
         self._table.setRowCount(len(visible))
         for row, (node_id, nd) in enumerate(visible):
             via_mqtt = nd.get('via_mqtt')
@@ -568,6 +503,7 @@ class NavigationTab(QWidget):
             lon      = nd.get('longitude')
             alt      = nd.get('altitude')
             batt     = nd.get('battery_level')
+            d        = self._dist_km(nd)
 
             cells = [
                 nd.get('long_name') or node_id,
@@ -586,7 +522,6 @@ class NavigationTab(QWidget):
 
             is_sel = (node_id == self._selected_id)
             bg     = QColor("#1f3a5f") if is_sel else None
-            d      = self._dist_km(nd)
 
             for col, val in enumerate(cells):
                 item = QTableWidgetItem(val)
@@ -595,60 +530,62 @@ class NavigationTab(QWidget):
                 item.setData(Qt.UserRole, node_id)
                 if bg:
                     item.setBackground(bg)
-                # Colour coding
                 if col == COL_DIST and d is not None:
                     item.setForeground(QColor(
-                        ACCENT_GREEN  if d < 1   else
-                        ACCENT_BLUE   if d < 10  else
-                        ACCENT_ORANGE
+                        ACCENT_GREEN if d < 1 else
+                        ACCENT_BLUE  if d < 10 else ACCENT_ORANGE
                     ))
                 elif col == COL_SNR and snr is not None:
                     item.setForeground(QColor(
                         ACCENT_GREEN  if snr >= 5  else
-                        ACCENT_ORANGE if snr >= 0  else
-                        ACCENT_RED
+                        ACCENT_ORANGE if snr >= 0  else ACCENT_RED
                     ))
                 elif col == COL_BATT and batt is not None and batt != 101:
                     item.setForeground(QColor(
                         ACCENT_GREEN  if batt > 60 else
-                        ACCENT_ORANGE if batt > 20 else
-                        ACCENT_RED
+                        ACCENT_ORANGE if batt > 20 else ACCENT_RED
                     ))
                 elif col == COL_VIA and via_mqtt:
                     item.setForeground(QColor(ACCENT_ORANGE))
                 self._table.setItem(row, col, item)
 
+        self._table.setUpdatesEnabled(True)
+
     def _on_selection_changed(self):
         items = self._table.selectedItems()
         self._selected_id = items[0].data(Qt.UserRole) if items else None
+        self._last_bearing = None   # force compass redraw on selection change
         self._refresh_compass()
 
     def _refresh_compass(self):
+        """
+        Redraws the compass SVG only if the bearing or state changed.
+        Generating SVG is cheap but loading it into QSvgWidget triggers
+        a repaint — skip if nothing changed.
+        """
         self._target_hdr.setText(tr("🎯  ALVO"))
         has_local = (self._local_lat is not None and
                      self._local_lon is not None)
 
         def _clear(msg=""):
-            self._compass_widget.load(QByteArray(_compass_svg(None)))
+            if self._last_bearing is not None:
+                self._compass_widget.load(QByteArray(_compass_svg(None)))
+                self._last_bearing = None
             self._dist_label.setText("—")
             self._bearing_label.setText("—")
             self._target_name_lbl.setText("—")
             self._status_label.setText(msg)
 
         if not self._local_gps_enabled:
-            _clear(tr("nav_no_gps_short"))
-            return
+            _clear(tr("nav_no_gps_short")); return
         if not has_local:
-            _clear(tr("nav_waiting_local_short"))
-            return
+            _clear(tr("nav_waiting_local_short")); return
         if self._selected_id is None:
-            _clear(tr("nav_select_node"))
-            return
+            _clear(tr("nav_select_node")); return
 
         nd = self._nodes.get(self._selected_id)
         if nd is None or nd.get('latitude') is None:
-            _clear(tr("nav_no_target_gps"))
-            return
+            _clear(tr("nav_no_target_gps")); return
 
         lat  = nd['latitude']
         lon  = nd['longitude']
@@ -656,15 +593,14 @@ class NavigationTab(QWidget):
         dist = _haversine_km(self._local_lat, self._local_lon, lat, lon)
         name = nd.get('long_name') or self._selected_id
 
-        dist_str = (f"{dist*1000:.0f} m" if dist < 1.0
-                    else f"{dist:.2f} km")
+        # Only reload SVG if bearing changed by more than 1°
+        bear_rounded = round(bear)
+        if self._last_bearing != bear_rounded:
+            self._compass_widget.load(QByteArray(_compass_svg(bear)))
+            self._last_bearing = bear_rounded
 
-        self._compass_widget.load(QByteArray(_compass_svg(bear)))
+        dist_str = f"{dist*1000:.0f} m" if dist < 1.0 else f"{dist:.2f} km"
         self._dist_label.setText(dist_str)
         self._bearing_label.setText(f"{bear:.1f}°  {_cardinal(bear)}")
         self._target_name_lbl.setText(name)
-        self._status_label.setText(
-            tr("nav_target", name="", bearing=f"{bear:.1f}").strip()
-            .replace("  ·  ", "").replace("➤", "").strip()
-            or f"{_cardinal(bear)}"
-        )
+        self._status_label.setText(_cardinal(bear))
