@@ -39,6 +39,7 @@ from tabs.tab_nodes import MapWidget
 from tabs.tab_messages import MessagesTab
 from tabs.tab_config import ConfigTab
 from tabs.tab_metrics import MetricsTab
+from tabs.tab_navigation import NavigationTab
 
 def _play_notification_sound():
     """Toca som de notificação cross-platform.
@@ -109,8 +110,9 @@ class MainWindow(QMainWindow):
     TAB_NODES    = 0
     TAB_MESSAGES = 1
     TAB_MAP      = 2
-    TAB_METRICS  = 3
-    TAB_CONFIG   = 4
+    TAB_NAV      = 3
+    TAB_METRICS  = 4
+    TAB_CONFIG   = 5
 
     def __init__(self):
         super().__init__()
@@ -342,6 +344,9 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.map_tab, tr("🗺  Mapa"))
         self._setup_map_tab()
 
+        self.nav_tab = NavigationTab()
+        self.tab_widget.addTab(self.nav_tab, tr("🧭  Navegação"))
+
         self.metrics_tab = MetricsTab()
         self.tab_widget.addTab(self.metrics_tab, tr("📈 Métricas"))
 
@@ -467,6 +472,7 @@ class MainWindow(QMainWindow):
         # FIX-8: reseta contador sem interferência do filtro
         self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
+        self.nav_tab.clear()
         self._init_worker()
 
     def _on_reboot_required(self):
@@ -488,6 +494,7 @@ class MainWindow(QMainWindow):
 
         # Limpa UI
         self.config_tab.clear_interface()
+        self.nav_tab.clear()
         self.source_model.clear_all_nodes()
         self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
@@ -509,6 +516,7 @@ class MainWindow(QMainWindow):
         if self.worker:
             self.worker.stop()
         self.config_tab.clear_interface()
+        self.nav_tab.clear()
         self.source_model.clear_all_nodes()
         self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
@@ -638,7 +646,6 @@ class MainWindow(QMainWindow):
             pos        = node.get('position', {})
             lat_i      = pos.get('latitudeI')
             lon_i      = pos.get('longitudeI')
-            # lastHeard=0 significa "desconhecido" no NodeDB — não sobrescrever com datetime inválido
             last_heard_raw = node.get('lastHeard')
             last_heard = None
             if last_heard_raw:
@@ -664,7 +671,9 @@ class MainWindow(QMainWindow):
             was_new = self.source_model.update_node_silent(nid, data)
             if was_new:
                 new_nodes.append((nid, data))
-
+            # Always feed nav_tab — covers both new and existing nodes with GPS.
+            # nav_tab.update_node() ignores nodes without lat/lon, so this is safe.
+            self.nav_tab.update_node(nid, data)
 
         self.source_model.refresh_all()
         self.proxy_model.invalidateFilter()
@@ -702,6 +711,14 @@ class MainWindow(QMainWindow):
             if has_pos:
                 self._local_has_pos = True
                 self._update_local_node_label(True)
+                lat = node_data.get('latitude')
+                lon = node_data.get('longitude')
+                if lat is not None and lon is not None:
+                    alt = node_data.get('altitude')
+                    self.nav_tab.update_local_position(lat, lon, alt)
+        else:
+            # Feed remote node position updates to navigation tab
+            self.nav_tab.update_node(node_id_string, node_data)
         if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._map_debounce.start()  # debounce: reagrupa updates rápidos
 
@@ -733,6 +750,21 @@ class MainWindow(QMainWindow):
         self._local_gps_enabled = gps_enabled
         self._local_has_pos     = has_position
         self._update_local_node_label(has_position)
+        self.nav_tab.set_local_node(node_id, long_name, short_name)
+        self.nav_tab.set_local_gps_enabled(gps_enabled)
+        if has_position:
+            # Try to pass initial local position if already known
+            if self.worker and self.worker.iface:
+                try:
+                    local_num = self.worker.iface.localNode.nodeNum
+                    if local_num and hasattr(self.worker.iface, 'nodesByNum'):
+                        pos = self.worker.iface.nodesByNum.get(local_num, {}).get('position', {})
+                        lat_i = pos.get('latitudeI')
+                        lon_i = pos.get('longitudeI')
+                        if lat_i is not None and lon_i is not None:
+                            self.nav_tab.update_local_position(lat_i / 1e7, lon_i / 1e7)
+                except Exception:
+                    pass
         # Sincronizar favoritos do firmware (iface pronta neste ponto)
         QTimer.singleShot(500, self._sync_firmware_favorites)
 
@@ -813,6 +845,7 @@ class MainWindow(QMainWindow):
     def _on_search_text_changed(self, text: str):
         self.proxy_model.set_filter_text(text)
         self.messages_tab.set_filter_text(text)
+        self.nav_tab.set_filter_text(text)
         # FIX-8: contador NÃO muda com pesquisa — reflecte sempre o total real
         if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._refresh_map()
@@ -1145,6 +1178,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.setTabText(self.TAB_NODES,    tr("📋  Lista de Nós"))
         self.tab_widget.setTabText(self.TAB_MESSAGES, tr("💬  Mensagens"))
         self.tab_widget.setTabText(self.TAB_MAP,      tr("🗺  Mapa"))
+        self.tab_widget.setTabText(self.TAB_NAV,      tr("🧭  Navegação"))
         self.tab_widget.setTabText(self.TAB_METRICS,  tr("📈 Métricas"))
         self.tab_widget.setTabText(self.TAB_CONFIG,   tr("⚙ Configurações"))
 
@@ -1207,6 +1241,9 @@ class MainWindow(QMainWindow):
         # Retranslate messages tab headers
         if hasattr(self, "messages_tab"):
             self.messages_tab.retranslate()
+        # Retranslate navigation tab
+        if hasattr(self, "nav_tab"):
+            self.nav_tab.retranslate()
         # Retranslate config tab
         if hasattr(self, "config_tab"):
             self.config_tab.retranslate()

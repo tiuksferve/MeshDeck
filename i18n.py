@@ -53,10 +53,10 @@ _STRINGS: dict = {
                                     {"pt": "Pesquisar por ID, nome longo ou curto…",
                                      "en": "Search by ID, long name or short name…"},
     "hint_bar":                     {"pt": "💡 ⭐ → Favorito  ·  📧 → DM  ·  🗺 → Mapa  ·  📡 → Traceroute  ·  ",
-                                     "en": "💡 ⭐ → Favorite  ·  📧 → DM  ·  🗺 → Map  ·  📡 → Traceroute  ·  "},
+                                     "en": "💡 ⭐ → Favourite  ·  📧 → DM  ·  🗺 → Map  ·  📡 → Traceroute  ·  "},
     "hint_fav":                     {"pt": "⭐ Favorito (fixo no topo)  &nbsp;",
-                                     "en": "⭐ Favorite (pinned at top)  &nbsp;"},
-    "hint_nofav":                   {"pt": "☆ Não favorito",                 "en": "☆ Not a favorite"},
+                                     "en": "⭐ Favourite (pinned at top)  &nbsp;"},
+    "hint_nofav":                   {"pt": "☆ Não favorito",                 "en": "☆ Not a favourite"},
     "Duplo clique → Detalhes":      {"pt": "Duplo clique → Detalhes",         "en": "Double-click → Details"},
     "GPS activo com posição conhecida":
                                     {"pt": "GPS activo com posição conhecida",
@@ -75,6 +75,27 @@ _STRINGS: dict = {
     "🗺  Mapa":                     {"pt": "🗺  Mapa",                        "en": "🗺  Map"},
     "📈 Métricas":                  {"pt": "📈 Métricas",                     "en": "📈 Metrics"},
     "⚙ Configurações":              {"pt": "⚙ Configurações",                 "en": "⚙ Settings"},
+
+    # ── Navegação ─────────────────────────────────────────────────────────────
+    "🧭  Navegação":                {"pt": "🧭  Navegação",                   "en": "🧭  Navigation"},
+    "📍  Nós com localização GPS":  {"pt": "📍  Nós com localização GPS",     "en": "📍  Nodes with GPS location"},
+    "🏠  NÓ LOCAL":                 {"pt": "🏠  NÓ LOCAL",                    "en": "🏠  LOCAL NODE"},
+    "🎯  ALVO":                     {"pt": "🎯  ALVO",                        "en": "🎯  TARGET"},
+    "nav_gps_off":                  {"pt": "GPS não activo",                  "en": "GPS not active"},
+    "nav_no_gps_short":             {"pt": "⚠ Active o GPS em Configurações → Posição/GPS",
+                                     "en": "⚠ Enable GPS in Settings → Position/GPS"},
+    "nav_waiting_local_short":      {"pt": "⏳ A aguardar fix GPS do nó local…",
+                                     "en": "⏳ Waiting for local node GPS fix…"},
+    "nav_no_gps":                   {"pt": "⚠ GPS do nó local não está activo.\nActive o GPS em Configurações → Posição/GPS para usar a navegação.",
+                                     "en": "⚠ Local node GPS is not active.\nEnable GPS in Settings → Position/GPS to use navigation."},
+    "nav_waiting_local":            {"pt": "⏳ A aguardar posição GPS do nó local…\nO GPS está activo — aguardando primeiro fix.",
+                                     "en": "⏳ Waiting for local node GPS position…\nGPS is active — waiting for first fix."},
+    "nav_select_node":              {"pt": "👆 Seleccione um nó da lista para ver a direcção e distância.",
+                                     "en": "👆 Select a node from the list to see bearing and distance."},
+    "nav_no_target_gps":            {"pt": "❓ O nó seleccionado não tem posição GPS conhecida.",
+                                     "en": "❓ The selected node has no known GPS position."},
+    "nav_target":                   {"pt": "➤  {name}  ·  {bearing}° do Norte",
+                                     "en": "➤  {name}  ·  {bearing}° from North"},
 
     # ── Menus ─────────────────────────────────────────────────────────────────
     "🔌  Conexão":                  {"pt": "🔌  Conexão",                     "en": "🔌  Connection"},
@@ -107,10 +128,10 @@ _STRINGS: dict = {
                                      "en": "🏠 This is your local node · {id}"},
     "Clique para remover dos favoritos":
                                     {"pt": "Clique para remover dos favoritos",
-                                     "en": "Click to remove from favorites"},
+                                     "en": "Click to remove from favourites"},
     "Clique para adicionar aos favoritos":
                                     {"pt": "Clique para adicionar aos favoritos",
-                                     "en": "Click to add to favorites"},
+                                     "en": "Click to add to favourites"},
     "Ver no mapa":                  {"pt": "Ver no mapa",                      "en": "View on map"},
     "Sem dados de posição":         {"pt": "Sem dados de posição",             "en": "No position data"},
     "DM indisponível — nó nunca contactado":
@@ -614,7 +635,7 @@ _STRINGS: dict = {
     "about_desc":                   {"pt": "Interface gráfica avançada para monitorização e comunicação\nem redes mesh Meshtastic via TCP ao daemon meshtasticd.\n\n",
                                      "en": "Advanced graphical interface for monitoring and communication\nover Meshtastic mesh networks via TCP to the meshtasticd daemon.\n\n"},
     "about_feat1":                  {"pt": "✅  Lista de nós em tempo real com pesquisa e favoritos\n",
-                                     "en": "✅  Real-time node list with search and favorites\n"},
+                                     "en": "✅  Real-time node list with search and favourites\n"},
     "about_feat2":                  {"pt": "🗺  Mapa Leaflet com traceroutes e métricas de rede\n",
                                      "en": "🗺  Leaflet map with traceroutes and network metrics\n"},
     "about_feat3":                  {"pt": "💬  Mensagens por canal e DM com suporte PKI/PSK\n",
