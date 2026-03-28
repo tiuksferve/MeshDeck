@@ -671,13 +671,27 @@ class MainWindow(QMainWindow):
             was_new = self.source_model.update_node_silent(nid, data)
             if was_new:
                 new_nodes.append((nid, data))
-            # Always feed nav_tab — covers both new and existing nodes with GPS.
-            # nav_tab.update_node() ignores nodes without lat/lon, so this is safe.
-            self.nav_tab.update_node(nid, data)
+
+            # Detect local node in batch and update nav_tab local position.
+            # POSITION_APP from local node is filtered as loopback by the worker,
+            # so the batch poll (every 30s) is the only reliable source of local GPS.
+            local_id = getattr(self, '_local_node_id_str', None)
+            is_local = (local_id and nid.lower() == local_id.lower())
+            if is_local:
+                if lat_i is not None and lon_i is not None:
+                    self.nav_tab.update_local_position(
+                        lat_i / 1e7, lon_i / 1e7, pos.get('altitude')
+                    )
+            else:
+                # Feed remote nodes with GPS to nav_tab
+                self.nav_tab.update_node(nid, data)
 
         self.source_model.refresh_all()
         self.proxy_model.invalidateFilter()
         self._update_node_count()
+        # Re-apply highlight after batch reset (refresh_all clears all flags)
+        if getattr(self, '_selected_node_id', None):
+            self.source_model.set_selected_highlight(self._selected_node_id)
 
         for nid, data in new_nodes:
             self.messages_tab.update_node_name(

@@ -343,6 +343,13 @@ class NodeTableModel(QAbstractTableModel):
             return True
 
     def refresh_all(self):
+        # After a batch reset, the Qt view loses its visual selection state.
+        # Clear all _selected_highlight flags so the background role never
+        # shows stale blue rows after a beginResetModel/endResetModel cycle.
+        # The caller (main.py) is responsible for re-applying the highlight
+        # via set_selected_highlight() if a selection is still active.
+        for node in self._nodes:
+            node["_selected_highlight"] = False
         self.beginResetModel()
         self.endResetModel()
         self.node_inserted.emit()
@@ -355,7 +362,9 @@ class NodeTableModel(QAbstractTableModel):
                 self._nodes[row]["last_packet"] = packet
             tl = self.createIndex(row, 0)
             br = self.createIndex(row, len(self.HEADERS) - 1)
-            self.dataChanged.emit(tl, br, [Qt.DisplayRole, Qt.ForegroundRole, Qt.BackgroundRole])
+            # Omit BackgroundRole here: it is handled exclusively by
+            # set_selected_highlight() to avoid multi-row highlight and scroll lag.
+            self.dataChanged.emit(tl, br, [Qt.DisplayRole, Qt.ForegroundRole])
         else:
             row = len(self._nodes)
             self.beginInsertRows(QModelIndex(), row, row)
@@ -370,12 +379,19 @@ class NodeTableModel(QAbstractTableModel):
             self.node_inserted.emit()
 
     def set_selected_highlight(self, node_id_string: Optional[str]):
-        for node in self._nodes:
-            node["_selected_highlight"] = (node.get("id_string") == node_id_string
-                                            and node_id_string is not None)
-        if self._nodes:
-            tl = self.createIndex(0, 0)
-            br = self.createIndex(len(self._nodes) - 1, len(self.HEADERS) - 1)
+        # Clear all highlights first, tracking which rows actually changed
+        changed_rows = []
+        for i, node in enumerate(self._nodes):
+            was = node.get("_selected_highlight", False)
+            should = (node.get("id_string") == node_id_string
+                      and node_id_string is not None)
+            node["_selected_highlight"] = should
+            if was != should:
+                changed_rows.append(i)
+        # Emit dataChanged only for the rows that actually changed background
+        for row in changed_rows:
+            tl = self.createIndex(row, 0)
+            br = self.createIndex(row, len(self.HEADERS) - 1)
             self.dataChanged.emit(tl, br, [Qt.BackgroundRole])
 
     def get_node_count(self):

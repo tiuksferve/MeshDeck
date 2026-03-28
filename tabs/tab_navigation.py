@@ -292,14 +292,18 @@ class NavigationTab(QWidget):
 
         self._refresh_headers()
         self._refresh_local_panel()
+        # Load empty compass immediately so widget has content from the start
+        self._compass_widget.load(QByteArray(_compass_svg(None)))
         self._refresh_compass()
 
     # ── Widget helpers ────────────────────────────────────────────────────────
     def _make_frame(self):
         f = QFrame()
+        f.setObjectName("infoFrame")
+        # Use ID selector so style does NOT cascade to child QFrame separators
         f.setStyleSheet(
-            f"QFrame{{background:{PANEL_BG};border:1px solid {BORDER_COLOR};"
-            f"border-radius:8px;}}"
+            f"QFrame#infoFrame{{background:{PANEL_BG};"
+            f"border:1px solid {BORDER_COLOR};border-radius:8px;}}"
         )
         return f
 
@@ -312,9 +316,12 @@ class NavigationTab(QWidget):
         return lbl
 
     def _make_sep(self):
+        # Use a fixed-height QWidget instead of QFrame to avoid inheriting
+        # the parent QFrame stylesheet (border-radius etc.)
         s = QFrame()
         s.setFrameShape(QFrame.HLine)
-        s.setStyleSheet(f"color:{BORDER_COLOR};margin:0;")
+        s.setFixedHeight(1)
+        s.setStyleSheet("QFrame{background:" + BORDER_COLOR + ";border:none;margin:2px 0;}")
         return s
 
     def _make_val(self, color, size, bold=False, wrap=False):
@@ -438,15 +445,36 @@ class NavigationTab(QWidget):
             self._local_pos_lbl.setText(
                 f"📍 {self._local_lat:.5f}\n    {self._local_lon:.5f}{alt_str}"
             )
-        else:
-            self._local_pos_lbl.setText(tr("nav_waiting_local_short"))
-
-        if self._local_gps_enabled:
-            self._local_gps_lbl.setText("GPS  ✅")
-            self._local_gps_lbl.setStyleSheet(
-                f"color:{ACCENT_GREEN};font-size:11px;"
+            self._local_pos_lbl.setStyleSheet(
+                f"color:{TEXT_PRIMARY};font-size:11px;"
                 f"background:transparent;border:none;"
             )
+        elif self._local_gps_enabled:
+            self._local_pos_lbl.setText(f"⏳ {tr('nav_waiting_local_short')}")
+            self._local_pos_lbl.setStyleSheet(
+                f"color:{ACCENT_ORANGE};font-size:11px;"
+                f"background:transparent;border:none;"
+            )
+        else:
+            self._local_pos_lbl.setText(f"⚠ {tr('nav_no_gps_short')}")
+            self._local_pos_lbl.setStyleSheet(
+                f"color:{ACCENT_RED};font-size:11px;"
+                f"background:transparent;border:none;"
+            )
+
+        if self._local_gps_enabled:
+            if self._local_lat is not None and self._local_lon is not None:
+                self._local_gps_lbl.setText(f"📡 {tr('nav_gps_active')}")
+                self._local_gps_lbl.setStyleSheet(
+                    f"color:{ACCENT_GREEN};font-size:11px;"
+                    f"background:transparent;border:none;"
+                )
+            else:
+                self._local_gps_lbl.setText(f"📡 {tr('nav_gps_active')}  ·  ⏳ {tr('nav_waiting_local_short')}")
+                self._local_gps_lbl.setStyleSheet(
+                    f"color:{ACCENT_ORANGE};font-size:11px;"
+                    f"background:transparent;border:none;"
+                )
         else:
             self._local_gps_lbl.setText(f"GPS  ⚠  {tr('nav_gps_off')}")
             self._local_gps_lbl.setStyleSheet(
@@ -493,6 +521,10 @@ class NavigationTab(QWidget):
                    if self._matches_filter(nd)]
         visible.sort(key=lambda x: (self._dist_km(x[1]) or float('inf')))
 
+        # Block signals during rebuild to prevent itemSelectionChanged from
+        # firing on every setItem/setRowCount — avoids double-highlight and
+        # spurious _refresh_compass() calls.
+        self._table.blockSignals(True)
         self._table.setUpdatesEnabled(False)
         self._table.setRowCount(len(visible))
         for row, (node_id, nd) in enumerate(visible):
@@ -550,6 +582,15 @@ class NavigationTab(QWidget):
                 self._table.setItem(row, col, item)
 
         self._table.setUpdatesEnabled(True)
+        self._table.blockSignals(False)
+
+        # Restore Qt selection to match _selected_id (signals were blocked above)
+        if self._selected_id is not None:
+            for row in range(self._table.rowCount()):
+                item = self._table.item(row, 0)
+                if item and item.data(Qt.UserRole) == self._selected_id:
+                    self._table.selectRow(row)
+                    break
 
     def _on_selection_changed(self):
         items = self._table.selectedItems()
@@ -568,6 +609,7 @@ class NavigationTab(QWidget):
                      self._local_lon is not None)
 
         def _clear(msg=""):
+            # Always reload the empty compass (no needle) to ensure widget stays visible
             if self._last_bearing is not None:
                 self._compass_widget.load(QByteArray(_compass_svg(None)))
                 self._last_bearing = None
@@ -577,7 +619,7 @@ class NavigationTab(QWidget):
             self._status_label.setText(msg)
 
         if not self._local_gps_enabled:
-            _clear(tr("nav_no_gps_short")); return
+            _clear(tr("nav_no_pos_warn")); return
         if not has_local:
             _clear(tr("nav_waiting_local_short")); return
         if self._selected_id is None:
