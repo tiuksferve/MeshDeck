@@ -53,10 +53,10 @@ _STRINGS: dict = {
                                     {"pt": "Pesquisar por ID, nome longo ou curto…",
                                      "en": "Search by ID, long name or short name…"},
     "hint_bar":                     {"pt": "💡 ⭐ → Favorito  ·  📧 → DM  ·  🗺 → Mapa  ·  📡 → Traceroute  ·  ",
-                                     "en": "💡 ⭐ → Favorite  ·  📧 → DM  ·  🗺 → Map  ·  📡 → Traceroute  ·  "},
+                                     "en": "💡 ⭐ → Favourite  ·  📧 → DM  ·  🗺 → Map  ·  📡 → Traceroute  ·  "},
     "hint_fav":                     {"pt": "⭐ Favorito (fixo no topo)  &nbsp;",
-                                     "en": "⭐ Favorite (pinned at top)  &nbsp;"},
-    "hint_nofav":                   {"pt": "☆ Não favorito",                 "en": "☆ Not a favorite"},
+                                     "en": "⭐ Favourite (pinned at top)  &nbsp;"},
+    "hint_nofav":                   {"pt": "☆ Não favorito",                 "en": "☆ Not a favourite"},
     "Duplo clique → Detalhes":      {"pt": "Duplo clique → Detalhes",         "en": "Double-click → Details"},
     "GPS activo com posição conhecida":
                                     {"pt": "GPS activo com posição conhecida",
@@ -131,10 +131,10 @@ _STRINGS: dict = {
                                      "en": "🏠 This is your local node · {id}"},
     "Clique para remover dos favoritos":
                                     {"pt": "Clique para remover dos favoritos",
-                                     "en": "Click to remove from favorites"},
+                                     "en": "Click to remove from favourites"},
     "Clique para adicionar aos favoritos":
                                     {"pt": "Clique para adicionar aos favoritos",
-                                     "en": "Click to add to favorites"},
+                                     "en": "Click to add to favourites"},
     "Ver no mapa":                  {"pt": "Ver no mapa",                      "en": "View on map"},
     "Sem dados de posição":         {"pt": "Sem dados de posição",             "en": "No position data"},
     "DM indisponível — nó nunca contactado":
@@ -638,7 +638,7 @@ _STRINGS: dict = {
     "about_desc":                   {"pt": "Interface gráfica avançada para monitorização e comunicação\nem redes mesh Meshtastic via TCP ao daemon meshtasticd.\n\n",
                                      "en": "Advanced graphical interface for monitoring and communication\nover Meshtastic mesh networks via TCP to the meshtasticd daemon.\n\n"},
     "about_feat1":                  {"pt": "✅  Lista de nós em tempo real com pesquisa e favoritos\n",
-                                     "en": "✅  Real-time node list with search and favorites\n"},
+                                     "en": "✅  Real-time node list with search and favourites\n"},
     "about_feat2":                  {"pt": "🗺  Mapa Leaflet com traceroutes e métricas de rede\n",
                                      "en": "🗺  Leaflet map with traceroutes and network metrics\n"},
     "about_feat3":                  {"pt": "💬  Mensagens por canal e DM com suporte PKI/PSK\n",
@@ -648,6 +648,14 @@ _STRINGS: dict = {
     "about_feat5":                  {"pt": "📈  Métricas: Canal, RF, Tráfego, Duty Cycle, Fiabilidade",
                                      "en": "📈  Metrics: Channel, RF, Traffic, Duty Cycle, Reliability"},
     "Criado por":                   {"pt": "Criado por",                        "en": "Developed by"},
+
+    # ── Status bar — ligação e carregamento ──────────────────────────────────
+    "status_connecting":            {"pt": "🔌 A ligar a {host}:{port}…",
+                                     "en": "🔌 Connecting to {host}:{port}…"},
+    "status_loading_nodes":         {"pt": "⏳ A carregar nós da rede… ({n} recebidos)",
+                                     "en": "⏳ Loading network nodes… ({n} received)"},
+    "status_ready":                 {"pt": "✅ Rede pronta — {n} nós carregados",
+                                     "en": "✅ Network ready — {n} nodes loaded"},
 
     # ── Status bar ────────────────────────────────────────────────────────────
     "📡 Info do Nó enviada para a rede.":

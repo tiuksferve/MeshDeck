@@ -54,6 +54,7 @@ class MessagesTab(QWidget):
         self._my_node_id:  Optional[str] = None
         self._node_choices_fn: Callable  = lambda: []
         self._filter_text: str           = ""
+        self._batch_mode:  bool          = False  # suppresses _refresh_dm_list during batch loads
 
         self._build_ui()
 
@@ -197,6 +198,11 @@ class MessagesTab(QWidget):
         self._filter_text = text.lower()
         self._refresh_dm_list()
 
+    def set_batch_mode(self, enabled: bool):
+        """Suppress _refresh_dm_list calls during bulk node loads.
+        Call set_batch_mode(False) followed by _refresh_dm_list() to commit."""
+        self._batch_mode = enabled
+
     def update_node_name(self, node_id: str, long_name: str, short_name: str, public_key: str = ''):
         if long_name:
             self.node_names[node_id] = long_name
@@ -206,9 +212,12 @@ class MessagesTab(QWidget):
             self.node_short[node_id] = short_name
         if public_key:
             self.node_public_keys[node_id] = public_key
-        self._refresh_dm_list()
+        if not self._batch_mode:
+            self._refresh_dm_list()
 
     def _refresh_dm_list(self):
+        if self._batch_mode:
+            return
         choices    = self._node_choices_fn()
         current_id = self._ctx_dm_id
         ft         = self._filter_text

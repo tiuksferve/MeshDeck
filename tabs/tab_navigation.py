@@ -145,7 +145,7 @@ _COL_WIDTHS = {
 class NavigationTab(QWidget):
     """Navigation tab — compass + GPS node table. CM4-optimised."""
 
-    _DEBOUNCE_MS = 500   # wait 500ms after last update before rebuilding table
+    _DEBOUNCE_MS = 800   # 800ms on CM4 — coalesces bursts of 50+ node updates into one rebuild
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -160,6 +160,7 @@ class NavigationTab(QWidget):
         self._local_gps_enabled: bool = False
         self._filter_text:       str  = ""
         self._last_bearing:      Optional[float]  = None  # avoid redundant SVG regen
+        self._rebuild_pending:   bool = False  # set when rebuild skipped while hidden
 
         # Debounce timer — fires _rebuild_table() once after a burst of updates
         self._rebuild_timer = QTimer(self)
@@ -354,11 +355,12 @@ class NavigationTab(QWidget):
         if alt is not None:
             self._local_alt = alt
         self._local_gps_enabled = True
-        self._refresh_local_panel()
-        # Distances changed — schedule one rebuild
+        # Only refresh UI if the navigation tab is currently visible
+        if self.isVisible():
+            self._refresh_local_panel()
+            self._refresh_compass()
+        # Distances changed — schedule one rebuild (debounced, cheap)
         self._schedule_rebuild()
-        # Compass depends on local pos — update immediately (only one SVG render)
-        self._refresh_compass()
 
     def update_node(self, node_id: str, node_data: dict):
         """
@@ -396,6 +398,18 @@ class NavigationTab(QWidget):
         self._filter_text = text.lower().strip()
         self._schedule_rebuild()
 
+    def showEvent(self, event):
+        """Flush any deferred work when the navigation tab becomes visible."""
+        super().showEvent(event)
+        # Rebuild table if it was skipped while the tab was hidden
+        if self._rebuild_pending:
+            self._rebuild_pending = False
+            self._rebuild_table()
+        # Always refresh the local panel and compass on show — they may
+        # have been skipped during batch updates while the tab was hidden.
+        self._refresh_local_panel()
+        self._refresh_compass()
+
     def retranslate(self):
         self._refresh_headers()
         self._refresh_local_panel()
@@ -415,6 +429,7 @@ class NavigationTab(QWidget):
         self._local_node_id      = ""
         self._filter_text        = ""
         self._last_bearing       = None
+        self._rebuild_pending    = False
         self._table.setRowCount(0)
         self._refresh_local_panel()
         self._refresh_compass()
@@ -516,7 +531,14 @@ class NavigationTab(QWidget):
                 ft in (nd.get('id')         or '').lower())
 
     def _rebuild_table(self):
-        """Rebuilds the table once. Called only by the debounce timer."""
+        """Rebuilds the table once. Called only by the debounce timer.
+        Skips work entirely when the widget is hidden — showEvent will
+        re-trigger the debounce timer the next time the tab becomes visible."""
+        if not self.isVisible():
+            # Mark that a rebuild is pending; showEvent will reschedule.
+            self._rebuild_pending = True
+            return
+        self._rebuild_pending = False
         visible = [(nid, nd) for nid, nd in self._nodes.items()
                    if self._matches_filter(nd)]
         visible.sort(key=lambda x: (self._dist_km(x[1]) or float('inf')))

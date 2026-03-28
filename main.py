@@ -392,6 +392,9 @@ class MainWindow(QMainWindow):
         self.table_view.setSortingEnabled(True)
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         self.table_view.setWordWrap(False)
+        # CM4 performance: pixel-level scrolling reduces repaint area vs item-based
+        self.table_view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.table_view.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         # Performance crítica: ResizeToContents é O(n) por célula visível a cada repaint.
         # Usar Interactive (largura fixa) para todas as colunas de dados.
         hh = self.table_view.horizontalHeader()
@@ -473,6 +476,10 @@ class MainWindow(QMainWindow):
         self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
         self.nav_tab.clear()
+        # Feedback imediato — no CM4 o TCPInterface pode demorar alguns segundos
+        self.statusBar().showMessage(
+            tr("status_connecting", host=self._hostname, port=self._port)
+        )
         self._init_worker()
 
     def _on_reboot_required(self):
@@ -563,7 +570,9 @@ class MainWindow(QMainWindow):
             lambda nid, nbs: self.metrics_tab.ingest_neighbor_info(nid, nbs)
         )
         self.worker.reconnect_status.connect(self._on_reconnect_status)
-        self.source_model.node_inserted.connect(self.messages_tab._refresh_dm_list)
+        self.source_model.node_inserted.connect(
+            lambda: self.messages_tab._refresh_dm_list()
+        )
         self.worker.start()
 
         QTimer.singleShot(2000, self._check_connection_state)
@@ -602,6 +611,8 @@ class MainWindow(QMainWindow):
             self.act_reset_nodedb.setEnabled(True)
             self.act_send_position.setEnabled(True)
             self._poll_timer.start()
+            # Show loading message while node list populates
+            self.statusBar().showMessage(tr("status_loading_nodes", n=0))
         else:
             self._poll_timer.stop()
             self.conn_indicator.setText(tr("🔴  Desconectado"))
@@ -639,7 +650,14 @@ class MainWindow(QMainWindow):
     def _on_nodes_batch(self, batch: list):
         if not batch:
             return
+
+        # ── Suspend sorting during batch to avoid O(n log n) per node ──
+        # setSortingEnabled(False) detaches the sort proxy temporarily so
+        # update_node_silent() never triggers a resort mid-batch.
+        self.table_view.setSortingEnabled(False)
+
         new_nodes = []
+        local_pos_updated = False
         for num, node in batch:
             user       = node.get('user', {})
             nid        = user.get('id') or f"!{num:08x}"
@@ -672,31 +690,48 @@ class MainWindow(QMainWindow):
             if was_new:
                 new_nodes.append((nid, data))
 
-            # Detect local node in batch and update nav_tab local position.
-            # POSITION_APP from local node is filtered as loopback by the worker,
-            # so the batch poll (every 30s) is the only reliable source of local GPS.
+            # Local GPS: only update once per batch (most recent entry wins)
             local_id = getattr(self, '_local_node_id_str', None)
             is_local = (local_id and nid.lower() == local_id.lower())
             if is_local:
                 if lat_i is not None and lon_i is not None:
-                    self.nav_tab.update_local_position(
-                        lat_i / 1e7, lon_i / 1e7, pos.get('altitude')
-                    )
+                    # Store coords; apply after loop to avoid repeated SVG renders
+                    local_pos_updated = (lat_i / 1e7, lon_i / 1e7, pos.get('altitude'))
             else:
-                # Feed remote nodes with GPS to nav_tab
+                # Feed remote nodes with GPS to nav_tab (debounced inside)
                 self.nav_tab.update_node(nid, data)
 
+        # Apply local GPS once (avoids N compass redraws)
+        if local_pos_updated:
+            self.nav_tab.update_local_position(*local_pos_updated)
+
+        # Re-enable sorting and commit the batch in one reset
         self.source_model.refresh_all()
+        self.table_view.setSortingEnabled(True)
+        self.table_view.sortByColumn(8, Qt.DescendingOrder)
         self.proxy_model.invalidateFilter()
         self._update_node_count()
+
         # Re-apply highlight after batch reset (refresh_all clears all flags)
         if getattr(self, '_selected_node_id', None):
             self.source_model.set_selected_highlight(self._selected_node_id)
 
-        for nid, data in new_nodes:
-            self.messages_tab.update_node_name(
-                nid, data["long_name"], data["short_name"], data["public_key"]
-            )
+        # Batch DM name update: suppress per-node _refresh_dm_list calls,
+        # then do exactly one rebuild at the end.
+        if new_nodes:
+            self.messages_tab.set_batch_mode(True)
+            for nid, data in new_nodes:
+                self.messages_tab.update_node_name(
+                    nid, data["long_name"], data["short_name"], data["public_key"]
+                )
+            self.messages_tab.set_batch_mode(False)
+            self.messages_tab._refresh_dm_list()
+
+        # Progressive loading status bar message
+        total = self.source_model.get_visible_count()
+        self.statusBar().showMessage(
+            tr("status_loading_nodes", n=total), 4000
+        )
 
         if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._map_debounce.start()
@@ -766,6 +801,9 @@ class MainWindow(QMainWindow):
         self._update_local_node_label(has_position)
         self.nav_tab.set_local_node(node_id, long_name, short_name)
         self.nav_tab.set_local_gps_enabled(gps_enabled)
+        # Show ready message — by this point the initial node batch has been received
+        total = self.source_model.get_visible_count()
+        self.statusBar().showMessage(tr("status_ready", n=total), 6000)
         if has_position:
             # Try to pass initial local position if already known
             if self.worker and self.worker.iface:
@@ -1290,6 +1328,9 @@ class MainWindow(QMainWindow):
 
     def _update_node_count(self):
         """Actualiza o label com total de nós e quantos estão online (<2h)."""
+        # Refresh the cached 'now' used by NodeTableModel.data() for the
+        # online colour check — avoids calling datetime.now() per visible cell.
+        self.source_model._cached_now = datetime.now()
         total  = self.source_model.get_visible_count()
         online = self.source_model.get_online_count()
         self.node_count_label.setTextFormat(2)   # Qt.RichText
