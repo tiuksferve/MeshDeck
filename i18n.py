@@ -632,7 +632,7 @@ _STRINGS: dict = {
     "🔌  Aguarde {n}s…":           {"pt": "🔌  Aguarde {n}s…",                "en": "🔌  Please wait {n}s…"},
     "🔌  Reconectar agora":        {"pt": "🔌  Reconectar agora",              "en": "🔌  Reconnect now"},
     "Sobre o MeshDeck":   {"pt": "Sobre o MeshDeck",        "en": "About MeshDeck"},
-    "Versão {v}  ·  2025":         {"pt": "Versão {v}  ·  2025",              "en": "Version {v}  ·  2025"},
+    "Versão {v}  ·  2026":         {"pt": "Versão {v}  ·  2026",              "en": "Version {v}  ·  2026"},
     "uconsole_line":                 {"pt": "Desenvolvido e optimizado para o ClockworkPi uConsole CM4.",
                                      "en": "Developed and optimised for the ClockworkPi uConsole CM4."},
     "about_desc":                   {"pt": "Interface gráfica avançada para monitorização e comunicação\nem redes mesh Meshtastic via TCP ao daemon meshtasticd.\n\n",
