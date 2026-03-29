@@ -21,6 +21,21 @@ from constants import (
 
 logger = logging.getLogger("MeshtasticGUI")
 
+# ── Pre-allocated QColor constants ───────────────────────────────────────────
+# Creating QColor objects inside data() for every visible cell on every repaint
+# is expensive on low-power hardware (CM4).  Allocate once at module level.
+_QC_GREEN   = QColor(ACCENT_GREEN)
+_QC_BLUE    = QColor(ACCENT_BLUE)
+_QC_ORANGE  = QColor(ACCENT_ORANGE)
+_QC_RED     = QColor(ACCENT_RED)
+_QC_PURPLE  = QColor(ACCENT_PURPLE)
+_QC_MUTED   = QColor(TEXT_MUTED)
+_QC_BORDER  = QColor(BORDER_COLOR)
+_QC_FAV     = QColor("#f5c518")
+_QC_BG_LOC  = QColor("#1a1000")
+_QC_BG_FAV  = QColor("#2d2200")
+_QC_BG_SEL  = QColor("#1a3a1a")
+
 
 
 class FirmwareFavorites:
@@ -201,52 +216,57 @@ class NodeTableModel(QAbstractTableModel):
         if role == Qt.DisplayRole:
             return self._display_value(node, col)
 
-        # ── Nó local — linha destacada ────────────────────────────────────
+        # ── Compute per-row properties once (used by multiple roles) ─────────
+        # All lookups below are O(1); computing them once avoids repeating
+        # the same work across ForegroundRole / BackgroundRole / ToolTipRole.
         node_id  = node.get("id_string", "")
         is_local = self._is_local_node(node_id, node.get("id_num"))
+        is_fav   = _FAVORITES.is_favorite(node_id)
 
         if role == Qt.ForegroundRole:
             if is_local:
-                return QColor(ACCENT_ORANGE)   # laranja para todos os campos do nó local
+                return _QC_ORANGE
             if col == self.COL_FAV:
-                return QColor("#f5c518") if _FAVORITES.is_favorite(node_id) else QColor(BORDER_COLOR)
+                return _QC_FAV if is_fav else _QC_BORDER
             if col == self.COL_DM:
-                # Só mostramos DM se o nó tem last_heard (é alcançável)
-                if isinstance(node.get("last_heard"), datetime):
-                    return QColor(ACCENT_PURPLE)
-                return QColor(BORDER_COLOR)
+                return _QC_PURPLE if isinstance(node.get("last_heard"), datetime) else _QC_BORDER
             if col == self.COL_TRACEROUTE:
-                return QColor(ACCENT_BLUE)
+                return _QC_BLUE
             if col == self.COL_MAP:
-                has_gps = (node.get('latitude') is not None and node.get('longitude') is not None)
-                return QColor(ACCENT_GREEN) if has_gps else QColor(BORDER_COLOR)
-            if col == 7:  # Nome Curto — verde se online (<2h), cinza se inactivo
+                return _QC_GREEN if (node.get('latitude') is not None
+                                     and node.get('longitude') is not None) else _QC_BORDER
+            if col == 7:  # Nome Curto — verde se online (<2h)
                 lh = node.get("last_heard")
-                if isinstance(lh, datetime) and (datetime.now() - lh) <= timedelta(hours=2):
-                    return QColor(ACCENT_GREEN)
-                return QColor(TEXT_MUTED)
+                if isinstance(lh, datetime):
+                    # Use cached _now set by _update_node_count / refresh cycle;
+                    # fall back to datetime.now() when cache is absent.
+                    now = getattr(self, '_cached_now', None) or datetime.now()
+                    return _QC_GREEN if (now - lh) <= timedelta(hours=2) else _QC_MUTED
+                return _QC_MUTED
             if col == 9:  # SNR
                 snr = node.get("snr")
                 if snr is not None:
-                    if snr >= 5:  return QColor(ACCENT_GREEN)
-                    if snr >= 0:  return QColor(ACCENT_ORANGE)
-                    return QColor(ACCENT_RED)
+                    if snr >= 5:  return _QC_GREEN
+                    if snr >= 0:  return _QC_ORANGE
+                    return _QC_RED
             if col == 11:  # Via
-                return QColor(ACCENT_ORANGE) if node.get("via_mqtt") is True else QColor(ACCENT_GREEN)
+                return _QC_ORANGE if node.get("via_mqtt") is True else _QC_GREEN
             if col == 15:  # Bateria
                 batt = node.get("battery_level")
                 if batt is not None:
-                    if batt > 60: return QColor(ACCENT_GREEN)
-                    if batt > 20: return QColor(ACCENT_ORANGE)
-                    return QColor(ACCENT_RED)
+                    if batt > 60: return _QC_GREEN
+                    if batt > 20: return _QC_ORANGE
+                    return _QC_RED
+            return None
 
         if role == Qt.BackgroundRole:
             if is_local:
-                return QColor("#1a1000")   # fundo âmbar muito subtil para o nó local
-            if _FAVORITES.is_favorite(node_id):
-                return QColor("#2d2200")  # fundo âmbar para favoritos — mais visível
+                return _QC_BG_LOC
+            if is_fav:
+                return _QC_BG_FAV
             if node.get("_selected_highlight"):
-                return QColor("#1a3a1a")
+                return _QC_BG_SEL
+            return None
 
         if role == Qt.TextAlignmentRole and col in (
             self.COL_FAV, self.COL_DM, self.COL_MAP, self.COL_TRACEROUTE
@@ -257,7 +277,7 @@ class NodeTableModel(QAbstractTableModel):
             if is_local:
                 return tr("🏠 Este é o seu nó local · {id}", id=node_id)
             if col == self.COL_FAV:
-                return tr("Clique para remover dos favoritos") if _FAVORITES.is_favorite(node_id) \
+                return tr("Clique para remover dos favoritos") if is_fav \
                        else tr("Clique para adicionar aos favoritos")
             if col == self.COL_MAP:
                 has_gps = (node.get('latitude') is not None and node.get('longitude') is not None)
@@ -273,41 +293,55 @@ class NodeTableModel(QAbstractTableModel):
 
     def _display_value(self, node, col):
         if col == self.COL_FAV:
-            node_id = node.get("id_string", "")
-            return "⭐" if _FAVORITES.is_favorite(node_id) else "☆"
+            return "⭐" if _FAVORITES.is_favorite(node.get("id_string", "")) else "☆"
         if col == self.COL_DM:
-            # Só exibe ícone activo se o nó já foi contactado
-            if not isinstance(node.get("last_heard"), datetime):
-                return "·"
-            has_key = bool(node.get('public_key', ''))
-            return "📧"
+            return "📧" if isinstance(node.get("last_heard"), datetime) else "·"
         if col == self.COL_MAP:
-            has_gps = (node.get('latitude') is not None and node.get('longitude') is not None)
-            return "🗺" if has_gps else "·"
+            return "🗺" if (node.get('latitude') is not None
+                            and node.get('longitude') is not None) else "·"
         if col == self.COL_TRACEROUTE:
             return "📡"
-        is_local = self._is_local_node(node.get("id_string", ""), node.get("id_num"))
-        m = {
-            4:  lambda n: n.get("id_string", ""),
-            5:  lambda n: str(n.get("id_num", "")),
-            6:  lambda n: ("🏠 " + (n.get("long_name", "") or "—")) if is_local
-                           else (n.get("long_name", "") or tr("⏳ Aguardando Info")),
-            7:  lambda n: (n.get("short_name", "") or "--"),
-            8:  lambda n: (n["last_heard"].strftime("%Y-%m-%d %H:%M:%S")
-                           if isinstance(n.get("last_heard"), datetime)
-                           else str(n.get("last_heard", "Nunca"))),
-            9:  lambda n: f"{n['snr']:.1f}" if n.get("snr") is not None else "",
-            10: lambda n: str(n["hops_away"]) if n.get("hops_away") is not None else "",
-            11: lambda n: "☁ MQTT" if n.get("via_mqtt") is True else "RF",
-            12: lambda n: f"{n['latitude']:.6f}" if n.get("latitude") is not None else "",
-            13: lambda n: f"{n['longitude']:.6f}" if n.get("longitude") is not None else "",
-            14: lambda n: str(n["altitude"]) if n.get("altitude") is not None else "",
-            15: lambda n: str(n["battery_level"]) if n.get("battery_level") is not None else "",
-            16: lambda n: n.get("hw_model", ""),
-            17: lambda n: n.get("last_packet_type", ""),
-        }
-        fn = m.get(col)
-        return fn(node) if fn else None
+        # Data columns — direct if/elif avoids per-call dict+lambda allocation
+        if col == 4:
+            return node.get("id_string", "")
+        if col == 5:
+            v = node.get("id_num")
+            return str(v) if v is not None else ""
+        if col == 6:
+            ln = node.get("long_name", "")
+            if self._is_local_node(node.get("id_string", ""), node.get("id_num")):
+                return "🏠 " + (ln or "—")
+            return ln or tr("⏳ Aguardando Info")
+        if col == 7:
+            return node.get("short_name", "") or "--"
+        if col == 8:
+            lh = node.get("last_heard")
+            return lh.strftime("%Y-%m-%d %H:%M:%S") if isinstance(lh, datetime) else str(lh or "Nunca")
+        if col == 9:
+            snr = node.get("snr")
+            return f"{snr:.1f}" if snr is not None else ""
+        if col == 10:
+            h = node.get("hops_away")
+            return str(int(h)) if h is not None else ""
+        if col == 11:
+            return "☁ MQTT" if node.get("via_mqtt") is True else "RF"
+        if col == 12:
+            lat = node.get("latitude")
+            return f"{lat:.6f}" if lat is not None else ""
+        if col == 13:
+            lon = node.get("longitude")
+            return f"{lon:.6f}" if lon is not None else ""
+        if col == 14:
+            alt = node.get("altitude")
+            return str(alt) if alt is not None else ""
+        if col == 15:
+            b = node.get("battery_level")
+            return str(b) if b is not None else ""
+        if col == 16:
+            return node.get("hw_model", "")
+        if col == 17:
+            return node.get("last_packet_type", "")
+        return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
@@ -343,6 +377,13 @@ class NodeTableModel(QAbstractTableModel):
             return True
 
     def refresh_all(self):
+        # After a batch reset, the Qt view loses its visual selection state.
+        # Clear all _selected_highlight flags so the background role never
+        # shows stale blue rows after a beginResetModel/endResetModel cycle.
+        # The caller (main.py) is responsible for re-applying the highlight
+        # via set_selected_highlight() if a selection is still active.
+        for node in self._nodes:
+            node["_selected_highlight"] = False
         self.beginResetModel()
         self.endResetModel()
         self.node_inserted.emit()
@@ -355,7 +396,9 @@ class NodeTableModel(QAbstractTableModel):
                 self._nodes[row]["last_packet"] = packet
             tl = self.createIndex(row, 0)
             br = self.createIndex(row, len(self.HEADERS) - 1)
-            self.dataChanged.emit(tl, br, [Qt.DisplayRole, Qt.ForegroundRole, Qt.BackgroundRole])
+            # Omit BackgroundRole here: it is handled exclusively by
+            # set_selected_highlight() to avoid multi-row highlight and scroll lag.
+            self.dataChanged.emit(tl, br, [Qt.DisplayRole, Qt.ForegroundRole])
         else:
             row = len(self._nodes)
             self.beginInsertRows(QModelIndex(), row, row)
@@ -370,12 +413,19 @@ class NodeTableModel(QAbstractTableModel):
             self.node_inserted.emit()
 
     def set_selected_highlight(self, node_id_string: Optional[str]):
-        for node in self._nodes:
-            node["_selected_highlight"] = (node.get("id_string") == node_id_string
-                                            and node_id_string is not None)
-        if self._nodes:
-            tl = self.createIndex(0, 0)
-            br = self.createIndex(len(self._nodes) - 1, len(self.HEADERS) - 1)
+        # Clear all highlights first, tracking which rows actually changed
+        changed_rows = []
+        for i, node in enumerate(self._nodes):
+            was = node.get("_selected_highlight", False)
+            should = (node.get("id_string") == node_id_string
+                      and node_id_string is not None)
+            node["_selected_highlight"] = should
+            if was != should:
+                changed_rows.append(i)
+        # Emit dataChanged only for the rows that actually changed background
+        for row in changed_rows:
+            tl = self.createIndex(row, 0)
+            br = self.createIndex(row, len(self.HEADERS) - 1)
             self.dataChanged.emit(tl, br, [Qt.BackgroundRole])
 
     def get_node_count(self):

@@ -76,6 +76,30 @@ _STRINGS: dict = {
     "📈 Métricas":                  {"pt": "📈 Métricas",                     "en": "📈 Metrics"},
     "⚙ Configurações":              {"pt": "⚙ Configurações",                 "en": "⚙ Settings"},
 
+    # ── Navegação ─────────────────────────────────────────────────────────────
+    "🧭  Navegação":                {"pt": "🧭  Navegação",                   "en": "🧭  Navigation"},
+    "📍  Nós com localização GPS":  {"pt": "📍  Nós com localização GPS",     "en": "📍  Nodes with GPS location"},
+    "🏠  NÓ LOCAL":                 {"pt": "🏠  NÓ LOCAL",                    "en": "🏠  LOCAL NODE"},
+    "🎯  ALVO":                     {"pt": "🎯  ALVO",                        "en": "🎯  TARGET"},
+    "nav_gps_active":               {"pt": "GPS activo",                       "en": "GPS active"},
+    "nav_gps_off":                  {"pt": "GPS não activo",                  "en": "GPS not active"},
+    "nav_no_pos_warn":              {"pt": "⚠ Sem posição GPS conhecida para o nó local.\nActive o GPS ou defina uma posição fixa em Configurações → Posição/GPS.",
+                                     "en": "⚠ No known GPS position for the local node.\nEnable GPS or set a fixed position in Settings → Position/GPS."},
+    "nav_no_gps_short":             {"pt": "⚠ Active o GPS em Configurações → Posição/GPS",
+                                     "en": "⚠ Enable GPS in Settings → Position/GPS"},
+    "nav_waiting_local_short":      {"pt": "⏳ A aguardar fix GPS do nó local…",
+                                     "en": "⏳ Waiting for local node GPS fix…"},
+    "nav_no_gps":                   {"pt": "⚠ GPS do nó local não está activo.\nActive o GPS em Configurações → Posição/GPS para usar a navegação.",
+                                     "en": "⚠ Local node GPS is not active.\nEnable GPS in Settings → Position/GPS to use navigation."},
+    "nav_waiting_local":            {"pt": "⏳ A aguardar posição GPS do nó local…\nO GPS está activo — aguardando primeiro fix.",
+                                     "en": "⏳ Waiting for local node GPS position…\nGPS is active — waiting for first fix."},
+    "nav_select_node":              {"pt": "👆 Seleccione um nó da lista para ver a direcção e distância.",
+                                     "en": "👆 Select a node from the list to see bearing and distance."},
+    "nav_no_target_gps":            {"pt": "❓ O nó seleccionado não tem posição GPS conhecida.",
+                                     "en": "❓ The selected node has no known GPS position."},
+    "nav_target":                   {"pt": "➤  {name}  ·  {bearing}° do Norte",
+                                     "en": "➤  {name}  ·  {bearing}° from North"},
+
     # ── Menus ─────────────────────────────────────────────────────────────────
     "🔌  Conexão":                  {"pt": "🔌  Conexão",                     "en": "🔌  Connection"},
     "🔌  Conectar…":                {"pt": "🔌  Conectar…",                   "en": "🔌  Connect…"},
@@ -608,7 +632,7 @@ _STRINGS: dict = {
     "🔌  Aguarde {n}s…":           {"pt": "🔌  Aguarde {n}s…",                "en": "🔌  Please wait {n}s…"},
     "🔌  Reconectar agora":        {"pt": "🔌  Reconectar agora",              "en": "🔌  Reconnect now"},
     "Sobre o MeshDeck":   {"pt": "Sobre o MeshDeck",        "en": "About MeshDeck"},
-    "Versão {v}  ·  2025":         {"pt": "Versão {v}  ·  2025",              "en": "Version {v}  ·  2025"},
+    "Versão {v}  ·  2026":         {"pt": "Versão {v}  ·  2026",              "en": "Version {v}  ·  2026"},
     "uconsole_line":                 {"pt": "Desenvolvido e optimizado para o ClockworkPi uConsole CM4.",
                                      "en": "Developed and optimised for the ClockworkPi uConsole CM4."},
     "about_desc":                   {"pt": "Interface gráfica avançada para monitorização e comunicação\nem redes mesh Meshtastic via TCP ao daemon meshtasticd.\n\n",
@@ -624,6 +648,15 @@ _STRINGS: dict = {
     "about_feat5":                  {"pt": "📈  Métricas: Canal, RF, Tráfego, Duty Cycle, Fiabilidade",
                                      "en": "📈  Metrics: Channel, RF, Traffic, Duty Cycle, Reliability"},
     "Criado por":                   {"pt": "Criado por",                        "en": "Developed by"},
+
+    # ── Status bar — ligação e carregamento ──────────────────────────────────
+    "status_connecting":            {"pt": "🔌 A ligar a {host}:{port}…",
+                                     "en": "🔌 Connecting to {host}:{port}…"},
+    "🔌  A ligar…":                 {"pt": "🔌  A ligar…",                     "en": "🔌  Connecting…"},
+    "status_loading_nodes":         {"pt": "⏳ A carregar nós da rede… ({n} recebidos)",
+                                     "en": "⏳ Loading network nodes… ({n} received)"},
+    "status_ready":                 {"pt": "✅ Rede pronta — {n} nós carregados",
+                                     "en": "✅ Network ready — {n} nodes loaded"},
 
     # ── Status bar ────────────────────────────────────────────────────────────
     "📡 Info do Nó enviada para a rede.":

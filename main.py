@@ -39,6 +39,7 @@ from tabs.tab_nodes import MapWidget
 from tabs.tab_messages import MessagesTab
 from tabs.tab_config import ConfigTab
 from tabs.tab_metrics import MetricsTab
+from tabs.tab_navigation import NavigationTab
 
 def _play_notification_sound():
     """Toca som de notificação cross-platform.
@@ -109,8 +110,9 @@ class MainWindow(QMainWindow):
     TAB_NODES    = 0
     TAB_MESSAGES = 1
     TAB_MAP      = 2
-    TAB_METRICS  = 3
-    TAB_CONFIG   = 4
+    TAB_NAV      = 3
+    TAB_METRICS  = 4
+    TAB_CONFIG   = 5
 
     def __init__(self):
         super().__init__()
@@ -342,6 +344,9 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.map_tab, tr("🗺  Mapa"))
         self._setup_map_tab()
 
+        self.nav_tab = NavigationTab()
+        self.tab_widget.addTab(self.nav_tab, tr("🧭  Navegação"))
+
         self.metrics_tab = MetricsTab()
         self.tab_widget.addTab(self.metrics_tab, tr("📈 Métricas"))
 
@@ -387,6 +392,9 @@ class MainWindow(QMainWindow):
         self.table_view.setSortingEnabled(True)
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         self.table_view.setWordWrap(False)
+        # CM4 performance: pixel-level scrolling reduces repaint area vs item-based
+        self.table_view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.table_view.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         # Performance crítica: ResizeToContents é O(n) por célula visível a cada repaint.
         # Usar Interactive (largura fixa) para todas as colunas de dados.
         hh = self.table_view.horizontalHeader()
@@ -467,6 +475,20 @@ class MainWindow(QMainWindow):
         # FIX-8: reseta contador sem interferência do filtro
         self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
+        self.nav_tab.clear()
+        # Feedback imediato — no CM4 o TCPInterface pode bloquear vários segundos
+        # durante o handshake TCP. processEvents() garante que a status bar e o
+        # conn_indicator são pintados ANTES de o socket ser criado.
+        self.statusBar().showMessage(
+            tr("status_connecting", host=self._hostname, port=self._port)
+        )
+        self.conn_indicator.setText(tr("🔌  A ligar…") if self._hostname else tr("🔌  A ligar…"))
+        self.conn_indicator.setStyleSheet(
+            f"color:{ACCENT_ORANGE};font-weight:bold;font-size:12px;"
+            f"background:{PANEL_BG};padding:4px 12px;"
+            f"border:1px solid {ACCENT_ORANGE};border-radius:12px;"
+        )
+        QApplication.processEvents()
         self._init_worker()
 
     def _on_reboot_required(self):
@@ -488,6 +510,7 @@ class MainWindow(QMainWindow):
 
         # Limpa UI
         self.config_tab.clear_interface()
+        self.nav_tab.clear()
         self.source_model.clear_all_nodes()
         self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
@@ -509,6 +532,7 @@ class MainWindow(QMainWindow):
         if self.worker:
             self.worker.stop()
         self.config_tab.clear_interface()
+        self.nav_tab.clear()
         self.source_model.clear_all_nodes()
         self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
@@ -555,7 +579,9 @@ class MainWindow(QMainWindow):
             lambda nid, nbs: self.metrics_tab.ingest_neighbor_info(nid, nbs)
         )
         self.worker.reconnect_status.connect(self._on_reconnect_status)
-        self.source_model.node_inserted.connect(self.messages_tab._refresh_dm_list)
+        self.source_model.node_inserted.connect(
+            lambda: self.messages_tab._refresh_dm_list()
+        )
         self.worker.start()
 
         QTimer.singleShot(2000, self._check_connection_state)
@@ -594,6 +620,8 @@ class MainWindow(QMainWindow):
             self.act_reset_nodedb.setEnabled(True)
             self.act_send_position.setEnabled(True)
             self._poll_timer.start()
+            # Show loading message while node list populates
+            self.statusBar().showMessage(tr("status_loading_nodes", n=0))
         else:
             self._poll_timer.stop()
             self.conn_indicator.setText(tr("🔴  Desconectado"))
@@ -631,14 +659,20 @@ class MainWindow(QMainWindow):
     def _on_nodes_batch(self, batch: list):
         if not batch:
             return
+
+        # ── Suspend sorting during batch to avoid O(n log n) per node ──
+        # setSortingEnabled(False) detaches the sort proxy temporarily so
+        # update_node_silent() never triggers a resort mid-batch.
+        self.table_view.setSortingEnabled(False)
+
         new_nodes = []
+        local_pos_updated = False
         for num, node in batch:
             user       = node.get('user', {})
             nid        = user.get('id') or f"!{num:08x}"
             pos        = node.get('position', {})
             lat_i      = pos.get('latitudeI')
             lon_i      = pos.get('longitudeI')
-            # lastHeard=0 significa "desconhecido" no NodeDB — não sobrescrever com datetime inválido
             last_heard_raw = node.get('lastHeard')
             last_heard = None
             if last_heard_raw:
@@ -665,15 +699,48 @@ class MainWindow(QMainWindow):
             if was_new:
                 new_nodes.append((nid, data))
 
+            # Local GPS: only update once per batch (most recent entry wins)
+            local_id = getattr(self, '_local_node_id_str', None)
+            is_local = (local_id and nid.lower() == local_id.lower())
+            if is_local:
+                if lat_i is not None and lon_i is not None:
+                    # Store coords; apply after loop to avoid repeated SVG renders
+                    local_pos_updated = (lat_i / 1e7, lon_i / 1e7, pos.get('altitude'))
+            else:
+                # Feed remote nodes with GPS to nav_tab (debounced inside)
+                self.nav_tab.update_node(nid, data)
 
+        # Apply local GPS once (avoids N compass redraws)
+        if local_pos_updated:
+            self.nav_tab.update_local_position(*local_pos_updated)
+
+        # Re-enable sorting and commit the batch in one reset
         self.source_model.refresh_all()
+        self.table_view.setSortingEnabled(True)
+        self.table_view.sortByColumn(8, Qt.DescendingOrder)
         self.proxy_model.invalidateFilter()
         self._update_node_count()
 
-        for nid, data in new_nodes:
-            self.messages_tab.update_node_name(
-                nid, data["long_name"], data["short_name"], data["public_key"]
-            )
+        # Re-apply highlight after batch reset (refresh_all clears all flags)
+        if getattr(self, '_selected_node_id', None):
+            self.source_model.set_selected_highlight(self._selected_node_id)
+
+        # Batch DM name update: suppress per-node _refresh_dm_list calls,
+        # then do exactly one rebuild at the end.
+        if new_nodes:
+            self.messages_tab.set_batch_mode(True)
+            for nid, data in new_nodes:
+                self.messages_tab.update_node_name(
+                    nid, data["long_name"], data["short_name"], data["public_key"]
+                )
+            self.messages_tab.set_batch_mode(False)
+            self.messages_tab._refresh_dm_list()
+
+        # Progressive loading status bar message
+        total = self.source_model.get_visible_count()
+        self.statusBar().showMessage(
+            tr("status_loading_nodes", n=total), 4000
+        )
 
         if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._map_debounce.start()
@@ -702,6 +769,14 @@ class MainWindow(QMainWindow):
             if has_pos:
                 self._local_has_pos = True
                 self._update_local_node_label(True)
+                lat = node_data.get('latitude')
+                lon = node_data.get('longitude')
+                if lat is not None and lon is not None:
+                    alt = node_data.get('altitude')
+                    self.nav_tab.update_local_position(lat, lon, alt)
+        else:
+            # Feed remote node position updates to navigation tab
+            self.nav_tab.update_node(node_id_string, node_data)
         if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._map_debounce.start()  # debounce: reagrupa updates rápidos
 
@@ -733,6 +808,24 @@ class MainWindow(QMainWindow):
         self._local_gps_enabled = gps_enabled
         self._local_has_pos     = has_position
         self._update_local_node_label(has_position)
+        self.nav_tab.set_local_node(node_id, long_name, short_name)
+        self.nav_tab.set_local_gps_enabled(gps_enabled)
+        # Show ready message — by this point the initial node batch has been received
+        total = self.source_model.get_visible_count()
+        self.statusBar().showMessage(tr("status_ready", n=total), 6000)
+        if has_position:
+            # Try to pass initial local position if already known
+            if self.worker and self.worker.iface:
+                try:
+                    local_num = self.worker.iface.localNode.nodeNum
+                    if local_num and hasattr(self.worker.iface, 'nodesByNum'):
+                        pos = self.worker.iface.nodesByNum.get(local_num, {}).get('position', {})
+                        lat_i = pos.get('latitudeI')
+                        lon_i = pos.get('longitudeI')
+                        if lat_i is not None and lon_i is not None:
+                            self.nav_tab.update_local_position(lat_i / 1e7, lon_i / 1e7)
+                except Exception:
+                    pass
         # Sincronizar favoritos do firmware (iface pronta neste ponto)
         QTimer.singleShot(500, self._sync_firmware_favorites)
 
@@ -813,6 +906,7 @@ class MainWindow(QMainWindow):
     def _on_search_text_changed(self, text: str):
         self.proxy_model.set_filter_text(text)
         self.messages_tab.set_filter_text(text)
+        self.nav_tab.set_filter_text(text)
         # FIX-8: contador NÃO muda com pesquisa — reflecte sempre o total real
         if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._refresh_map()
@@ -1145,6 +1239,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.setTabText(self.TAB_NODES,    tr("📋  Lista de Nós"))
         self.tab_widget.setTabText(self.TAB_MESSAGES, tr("💬  Mensagens"))
         self.tab_widget.setTabText(self.TAB_MAP,      tr("🗺  Mapa"))
+        self.tab_widget.setTabText(self.TAB_NAV,      tr("🧭  Navegação"))
         self.tab_widget.setTabText(self.TAB_METRICS,  tr("📈 Métricas"))
         self.tab_widget.setTabText(self.TAB_CONFIG,   tr("⚙ Configurações"))
 
@@ -1207,6 +1302,9 @@ class MainWindow(QMainWindow):
         # Retranslate messages tab headers
         if hasattr(self, "messages_tab"):
             self.messages_tab.retranslate()
+        # Retranslate navigation tab
+        if hasattr(self, "nav_tab"):
+            self.nav_tab.retranslate()
         # Retranslate config tab
         if hasattr(self, "config_tab"):
             self.config_tab.retranslate()
@@ -1239,6 +1337,9 @@ class MainWindow(QMainWindow):
 
     def _update_node_count(self):
         """Actualiza o label com total de nós e quantos estão online (<2h)."""
+        # Refresh the cached 'now' used by NodeTableModel.data() for the
+        # online colour check — avoids calling datetime.now() per visible cell.
+        self.source_model._cached_now = datetime.now()
         total  = self.source_model.get_visible_count()
         online = self.source_model.get_online_count()
         self.node_count_label.setTextFormat(2)   # Qt.RichText

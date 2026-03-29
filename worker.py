@@ -73,16 +73,23 @@ class MeshtasticWorker(QObject):
     def start(self):
         if self.iface is not None:
             return
+        logger.info(f"Connecting to {self.hostname}:{self.port}…")
+        self._known_nodes.clear()
+        self._reconnect_attempts = 0
+        pub.subscribe(self._on_connection_established, "meshtastic.connection.established")
+        pub.subscribe(self._on_connection_lost,        "meshtastic.connection.lost")
+        pub.subscribe(self._on_node_updated,           "meshtastic.node.updated")
+        pub.subscribe(self._on_text_message,           "meshtastic.receive.text")
+        pub.subscribe(self._on_receive_user,           "meshtastic.receive.user")
+        pub.subscribe(self._on_packet_received,        "meshtastic.receive")
+        # Defer the actual TCP socket creation by one event-loop cycle so the
+        # UI can paint the "Connecting…" status bar message before blocking.
+        QTimer.singleShot(50, self._do_connect)
+
+    def _do_connect(self):
+        """Creates the TCPInterface — called via QTimer.singleShot so the UI
+        has already painted the 'Connecting…' status bar message."""
         try:
-            logger.info(f"Connecting to {self.hostname}:{self.port}…")
-            self._known_nodes.clear()
-            self._reconnect_attempts = 0
-            pub.subscribe(self._on_connection_established, "meshtastic.connection.established")
-            pub.subscribe(self._on_connection_lost,        "meshtastic.connection.lost")
-            pub.subscribe(self._on_node_updated,           "meshtastic.node.updated")
-            pub.subscribe(self._on_text_message,           "meshtastic.receive.text")
-            pub.subscribe(self._on_receive_user,           "meshtastic.receive.user")
-            pub.subscribe(self._on_packet_received,        "meshtastic.receive")
             self.iface = TCPInterface(self.hostname, self.port)
         except Exception as e:
             self.error_occurred.emit(
@@ -600,6 +607,15 @@ class MeshtasticWorker(QObject):
             logger.info(f"Local node: num={local_num} id={final_id}")
             self.my_node_id_ready.emit(final_id)
 
+        # Defer the heavy NodeDB load so the Qt event loop can paint the
+        # "connecting…" status bar message before the CPU is busy.
+        # QTimer.singleShot(0) yields to the event loop for one cycle.
+        import functools
+        QTimer.singleShot(0, functools.partial(self._deferred_initial_load, local_num, my_id, final_id))
+
+    def _deferred_initial_load(self, local_num, my_id, final_id):
+        """Heavy initialisation deferred from _handle_connection_established.
+        Runs after Qt has had one event-loop cycle to repaint the status bar."""
         # Carga inicial completa
         try:
             loaded = self._sync_nodedb()
