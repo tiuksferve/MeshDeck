@@ -6,13 +6,75 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.1-beta.1] — 2026-03-29
+
+### Added
+
+- **Navigation tab (🧭)** — real-time compass with bearing and distance to any
+  selected node; Local Node and Target cards centred vertically in their boxes
+  with name, GPS coordinates, altitude, SNR (colour-coded green/orange/red), and
+  GPS status; GPS node table with equal-width columns filling the full panel
+  width, sorted by distance from the local node
+- **Immediate connection feedback** — status bar shows
+  `"🔌 Connecting to host:port…"` and the connection indicator turns orange
+  immediately when Connect is clicked, before the TCP socket is created;
+  `TCPInterface` creation is deferred via `QTimer.singleShot(50)` so the UI
+  paints the message first
+- **Deferred NodeDB load** — `_sync_nodedb()` is called via
+  `QTimer.singleShot(0)` so the Qt event loop paints the status bar before the
+  heavy batch starts; status bar shows `"⏳ Loading network nodes… (N received)"`
+  progressively and `"✅ Network ready — N nodes loaded"` when complete
+- **GPS warning messages** on the navigation tab when the local node has no
+  position (GPS disabled or awaiting first fix), in both PT and EN
+- `nav_gps_active`, `nav_no_pos_warn` keys added to i18n
+- Status bar keys `status_connecting`, `status_loading_nodes`, `status_ready`
+  added to i18n in PT and EN
+
+### Changed
+
+- **Node list performance (CM4):**
+  - Sorting suspended during batch load (`setSortingEnabled(False/True)`)
+  - `QAbstractItemView.ScrollPerPixel` for smooth pixel-level scrolling
+  - 12 pre-allocated `QColor` module constants replace per-cell allocations in
+    `NodeTableModel.data()`
+  - `_display_value` rewritten as direct `if/elif` — eliminates per-call
+    dict+lambda allocation
+  - `datetime.now()` cached once per `_update_node_count` cycle (`_cached_now`)
+    instead of being called per visible cell during scroll
+- **DM list batch mode** — `set_batch_mode(True/False)` suppresses N
+  `_refresh_dm_list` calls during the initial node batch; a single rebuild runs
+  at the end
+- **Navigation tab debounce** increased 500 ms → 800 ms for CM4; `_rebuild_table`
+  and compass/panel refreshes skipped when the tab is hidden, deferred to
+  `showEvent`
+- **Multi-row highlight fix** — `refresh_all()` clears all `_selected_highlight`
+  flags before `beginResetModel`; `set_selected_highlight` emits `dataChanged`
+  only on rows that actually changed; `update_node` no longer emits
+  `BackgroundRole` on every packet, eliminating scroll lag
+- Local GPS position applied **once per batch** (not once per node), avoiding N
+  compass redraws during the initial load
+- Navigation Local Node and Target cards: content centred vertically with equal
+  stretch above and below (`addStretch(1)` on both sides)
+- Spelling: `"favourite/favourites"` → `"favorite/favorites"` throughout EN strings
+
+### Fixed
+
+- `setUniformRowHeights` crash — method does not exist on `QTableView`
+  (belongs to `QTreeView`); removed
+- `ScrollPerPixel` corrected to `QAbstractItemView.ScrollPerPixel`
+- Navigation tab `_target_snr_lbl` / `_target_alt_lbl` labels not cleared when
+  no target is selected
+- `nav_gps_active` was displaying as literal text instead of the translated value
+
+---
+
 ## [1.0.0-beta.1] — 2026-03-27
 
 First public release.
 
 ### Added
 
-- **Real-time node list** with 14 columns, local node pinned at top, favourites
+- **Real-time node list** with 14 columns, local node pinned at top, favorites
   managed directly in firmware (`setFavorite` / `removeFavorite`)
 - **Interactive Leaflet map** with 4 themes (Dark, Light, OpenStreetMap,
   Satellite), colour-coded markers, traceroute overlays, NeighborInfo
@@ -22,42 +84,26 @@ First public release.
   date separators
 - **Traceroutes** — send from node list or map popup, result dialog with
   per-segment SNR, GPS indicators, and "Show on Map" button; 30 s cooldown
-- **Full node configuration** — all 21 firmware sections (Device, Position/GPS,
-  Power, Network/WiFi, Display, LoRa, Bluetooth, MQTT, Serial, Ext.
-  Notification, Store & Forward, Range Test, Telemetry, Canned Messages,
-  Audio/Codec2, Remote Hardware, Neighbor Info, Ambient Lighting, Detection
-  Sensor, Paxcounter, Security) plus Channels and User tabs; atomic save with
-  single reboot
+- **Full node configuration** — all 21 firmware sections plus Channels and User
+  tabs; atomic save with single reboot
 - **10 real-time metric sections** auto-refreshing every 5 s via JavaScript
-  without reloading the HTML page:
-  - Overview, Channel & Airtime, RF Quality, Traffic, Nodes & Battery,
-    Reliability, Latency (RTT), Neighbourhood, Range & Links, Intervals
-- **Internationalisation (i18n)** — full PT/EN coverage across all UI strings,
-  error messages, map popups, and log messages; language selectable in the
-  connection dialog, saved via `QSettings`
+- **Internationalisation (i18n)** — full PT/EN coverage; language selectable in
+  the connection dialog, saved via `QSettings`
 - **Automatic reconnection** with exponential backoff (15 s → 30 s → 60 s →
   120 s) and 12 s watchdog per attempt
 - **Sound notifications** on new messages with cross-platform fallback chain
-  (aplay → paplay → afplay → winsound → QApplication.beep)
 - **Log console** — floating window with real-time TCP communication log,
   keyword filter, and line-count indicator
-- Wayland-compatible (`activateWindow` skipped on Wayland platforms)
-- Optimised for **ClockworkPi uConsole CM4** (debounced map redraws, 30 s
-  NodeDB polling safety-net, CM4-friendly marker rebuild strategy)
+- Wayland-compatible
+- Optimised for **ClockworkPi uConsole CM4**
 
 ### Technical
 
 - Modular architecture: `main.py`, `worker.py`, `models.py`, `constants.py`,
-  `dialogs.py`, `i18n.py`, `tabs/` (tab_nodes, tab_messages, tab_config,
-  tab_metrics, metrics_data, metrics_render)
-- `FirmwareFavorites` — favourites persisted in firmware NodeDB; no local JSON
-  file required
-- Tab indices centralised as class constants (`TAB_NODES`, `TAB_MESSAGES`,
-  `TAB_MAP`, `TAB_METRICS`, `TAB_CONFIG`) in `MainWindow`
-- `my_node_id_ready` signal emitted exactly once per connection with the most
-  reliable ID source
-- `_section_has_data()` method replaces non-idiomatic class-level lambda dict
-  for metrics waiting-screen transitions
+  `dialogs.py`, `i18n.py`, `tabs/`
+- `FirmwareFavorites` — favorites persisted in firmware NodeDB; no local JSON
+- Tab indices centralised as class constants in `MainWindow`
+- `my_node_id_ready` signal emitted exactly once per connection
 - All log messages in English
 
 ---
@@ -68,4 +114,5 @@ First public release.
 > (ClockworkPi uConsole CM4) with a live Meshtastic network. Expect occasional
 > rough edges; bug reports and pull requests are welcome.
 
+[1.0.1-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.1-beta.1
 [1.0.0-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.0-beta.1

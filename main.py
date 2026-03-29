@@ -476,10 +476,19 @@ class MainWindow(QMainWindow):
         self.node_count_label.setText(tr("Nós: {total}", total=0)); self.node_count_label.setTextFormat(2)
         self.map_widget.clear_active_node(); self.map_widget.update_map([], "")
         self.nav_tab.clear()
-        # Feedback imediato — no CM4 o TCPInterface pode demorar alguns segundos
+        # Feedback imediato — no CM4 o TCPInterface pode bloquear vários segundos
+        # durante o handshake TCP. processEvents() garante que a status bar e o
+        # conn_indicator são pintados ANTES de o socket ser criado.
         self.statusBar().showMessage(
             tr("status_connecting", host=self._hostname, port=self._port)
         )
+        self.conn_indicator.setText(tr("🔌  A ligar…") if self._hostname else tr("🔌  A ligar…"))
+        self.conn_indicator.setStyleSheet(
+            f"color:{ACCENT_ORANGE};font-weight:bold;font-size:12px;"
+            f"background:{PANEL_BG};padding:4px 12px;"
+            f"border:1px solid {ACCENT_ORANGE};border-radius:12px;"
+        )
+        QApplication.processEvents()
         self._init_worker()
 
     def _on_reboot_required(self):

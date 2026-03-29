@@ -5,7 +5,7 @@ Interface gráfica avançada para monitorização, comunicação e análise de r
 Desenvolvida e optimizada para o **ClockworkPi uConsole CM4**, mas funciona em
 qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
 
-**Versão:** 1.0.0-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
+**Versão:** 1.0.1-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
 
 ---
 
@@ -30,12 +30,15 @@ ligação. A preferência é guardada entre sessões via `QSettings`.
 - Pesquisa em tempo real por ID, nome longo ou nome curto
 - Duplo clique sobre qualquer nó para ver os detalhes completos do último pacote
 - **Acções rápidas directamente da lista:**
-  - 📧 Enviar DM (mensagem directa) — PKI (E2E) quando a chave pública é
-    conhecida, PSK como fallback
+  - 📧 Enviar DM (mensagem directa) — PKI (E2E) quando a chave pública é conhecida, PSK como fallback
   - 🗺 Centrar no mapa
   - 📡 Enviar traceroute
-- Barra de dica inferior com legenda dos ícones de acção
-- Contador de nós totais e nós activos nas últimas 2 horas
+- Barra de dica inferior com legenda dos ícones
+- Contador de nós: total e activos (últimas 2 horas)
+- **Feedback de estado imediato** enquanto conecta e carrega os nós:
+  - `"🔌 A ligar a host:port…"` aparece imediatamente ao clicar Conectar
+  - `"⏳ A carregar nós da rede… (N recebidos)"` actualiza à medida que os nós chegam
+  - `"✅ Rede pronta — N nós carregados"` quando o batch inicial termina
 
 ### 🗺 Mapa Interactivo (Leaflet)
 
@@ -46,10 +49,8 @@ ligação. A preferência é guardada entre sessões via `QSettings`.
   - 🔵 Azul — activo via RF
   - 🟠 Laranja — via MQTT
   - ⚫ Cinzento — inactivo (>2h)
-- **Traceroutes** com linhas verdes sólidas (ida/volta) e tooltips de SNR por
-  segmento
-- **Vizinhança NeighborInfo** — linhas roxas pontilhadas entre pares de nós
-  vizinhos com tooltip de SNR
+- **Traceroutes** com linhas verdes sólidas (ida/volta) e tooltips de SNR por segmento
+- **Vizinhança NeighborInfo** — linhas roxas pontilhadas entre pares de nós vizinhos com tooltip de SNR
 - **Legenda integrada** no canto inferior direito do mapa
 - Popup por nó com informações completas e botão de Traceroute inline
 - Painel esquerdo com lista de traceroutes (checkboxes para mostrar/ocultar)
@@ -57,11 +58,9 @@ ligação. A preferência é guardada entre sessões via `QSettings`.
 
 ### 💬 Mensagens
 
-- **Canais** múltiplos (Primary + Secondary, índices 0-7) com contador de não
-  lidos
+- **Canais** múltiplos (Primary + Secondary, índices 0-7) com contador de não lidos
 - **Mensagens Directas (DM):**
-  - 🔒 **PKI** (E2E encriptado) quando a chave pública do destinatário é
-    conhecida
+  - 🔒 **PKI** (E2E encriptado) quando a chave pública do destinatário é conhecida
   - 🔓 **PSK** (chave de canal) como fallback automático
   - Lista de DMs ordenada pela mensagem mais recente
 - Indicador ACK/NAK por mensagem enviada
@@ -69,53 +68,29 @@ ligação. A preferência é guardada entre sessões via `QSettings`.
 - Badge 🔴 na aba de Mensagens para mensagens não lidas
 - Separadores de data nas conversas ("Hoje", "Ontem", data exacta)
 
+### 🧭 Navegação
+
+- **Bússola** — rumo e distância em tempo real do nó local para qualquer nó remoto seleccionado
+- **Caixa Nó Local** — nome, ID, coordenadas GPS, altitude e estado do GPS, **centrado verticalmente** na caixa
+- **Caixa Alvo** — nome do nó, distância, SNR (verde/laranja/vermelho), altitude, direcção cardinal — **centrado verticalmente** na caixa
+- **Tabela de nós GPS** — todos os nós com GPS conhecido, colunas de largura igual a preencher toda a largura, ordenados por distância ao nó local
+- Avisos de estado GPS: activo com fix, activo sem fix, desactivado
+
 ### 🗺 Traceroutes
 
 - Envio de traceroute para qualquer nó da lista ou popup do mapa
-- Diálogo de resultado com:
-  - **Quando enviamos:** Origem = nó local, Destino = nó remoto
-  - **Quando recebemos:** Origem = nó remoto (quem enviou), Destino = nó local
-  - Hops de ida e volta com SNR por segmento
-  - Indicadores de GPS por nó (📍 com coordenadas, ❓ sem)
-  - Botão "Mostrar no Mapa" (quando o destino tem GPS)
-- Cooldown de 30s entre traceroutes para proteger o canal
+- Diálogo de resultado com hops de ida e volta, SNR por segmento, indicadores GPS
+- Botão "Mostrar no Mapa" (quando o destino tem GPS)
+- Cooldown de 30s entre traceroutes
 - Notificação quando um traceroute dirigido ao nó local é recebido
 
 ### ⚙️ Configuração Completa do Nó
 
-- **Canais:** nome, PSK (Base64/hex/aleatório), papel, uplink/downlink MQTT,
-  silenciar, precisão de posição
+- **Canais:** nome, PSK (Base64/hex/aleatório), papel, uplink/downlink MQTT, silenciar, precisão posição
 - **Utilizador:** nome longo, nome curto, licenciado Ham (via setOwner)
-- **Todas as secções de configuração do firmware:**
-
-| Secção | Campos principais |
-|--------|------------------|
-| 💻 Dispositivo | Papel do nó, rebroadcast, GPIO, intervalo NodeInfo, TZ, serial |
-| 📍 Posição / GPS | Modo GPS, intervalos, smart broadcast, posição fixa, HDOP |
-| 🔋 Energia | Power saving, timers de desligamento, ADC, wait Bluetooth, SDS/LS |
-| 🌐 Rede / WiFi | SSID/PSK WiFi, NTP, Ethernet, IP estático, gateway, DNS |
-| 🖥 Display | Timeout, formato GPS, tipo OLED, flip, acordar por toque, brilho TFT |
-| 📡 LoRa | Preset, região, BW/SF/CR, TX power, hop limit, override de frequência |
-| 🔵 Bluetooth | Activar, modo de emparelhamento, PIN fixo |
-| ☁ MQTT | Servidor, TLS, JSON, map reporting, proxy para cliente |
-| 🔌 Serial | Baud rate, modo, GPIO, echo |
-| 🔔 Notif. Externa | GPIO, alertas para mensagem/bell, PWM buzzer |
-| 📦 Store & Forward | Activar, registos, janela histórico, servidor |
-| 📏 Range Test | Activar, intervalo, CSV |
-| 📊 Telemetria | Intervalos: dispositivo/ambiente/energia/saúde |
-| 💬 Msgs Pré-definidas | Área de texto (uma por linha, máx 200 chars) + encoder rotativo |
-| 🎙 Audio / Codec2 | Activar, PTT GPIO, bitrate, GPIOs I2S |
-| 🔧 Hardware Remoto | Activar, acesso a pinos indefinidos |
-| 🔗 Neighbor Info | Activar, intervalo, transmitir via LoRa |
-| 💡 Ilum. Ambiente | Estado LED, corrente, RGB |
-| 🔍 Sensor Detecção | GPIO, intervalos, pull-up, trigger high |
-| 🧮 Paxcounter | Activar, intervalo |
-| 🔐 Segurança | Canal admin, managed mode, serial debug |
-
-- Transacção atómica — firmware reinicia apenas uma vez após guardar todas as
-  alterações
-- Guardar robusto com conversão de enums via descritor protobuf
-- Reconstrução automática da UI ao mudar idioma (todos os labels actualizados)
+- **Todas as 21 secções de configuração do firmware** (Dispositivo, Posição/GPS, Energia, Rede/WiFi, Display, LoRa, Bluetooth, MQTT, Serial, Notif. Externa, Store & Forward, Range Test, Telemetria, Msgs Pré-definidas, Audio/Codec2, Hardware Remoto, Neighbor Info, Ilum. Ambiente, Sensor Detecção, Paxcounter, Segurança)
+- Transacção atómica — firmware reinicia apenas uma vez após guardar todas as alterações
+- Reconstrução automática da UI ao mudar idioma
 
 ### 📊 Métricas em Tempo Real (10 Secções)
 
@@ -123,57 +98,40 @@ Actualização automática a cada 5 segundos via JavaScript sem recarregar o HTM
 
 | Secção | Tipo | O que mede |
 |--------|------|-----------|
-| 📊 Visão Geral | Misto | Resumo: pacotes, nós activos, SNR, taxa entrega, airtime |
-| 📡 Canal & Airtime | 🌐 Rede | Ch. utilization por nó, airtime TX, duty cycle EU (ETSI EN300.220) |
-| 📶 Qualidade RF | 🌐 Rede | Histograma SNR, distribuição de hops, avaliação automática da qualidade |
-| 📦 Tráfego | 🌐 Rede | Pacotes por tipo, pacotes/min (30 min), RF vs MQTT, padrão de routing |
-| 🔋 Nós & Bateria | 🌐 Rede | Bateria (⚡ Powered), tensão, uptime, modelo hardware, GPS |
-| ✅ Fiabilidade | 🏠 Local | ACK/NAK/pendente, taxa entrega, duplicados de rede, prob. colisão |
-| ⏱ Latência (RTT) | 🏠 Local | RTT médio/mín/máx/P90 entre envio e ACK do destinatário |
+| 📊 Visão Geral | Misto | Pacotes, nós activos, SNR, taxa entrega, airtime |
+| 📡 Canal & Airtime | 🌐 Rede | Ch. utilization, airtime TX, duty cycle EU (ETSI EN300.220) |
+| 📶 Qualidade RF | 🌐 Rede | Histograma SNR, distribuição hops, avaliação automática |
+| 📦 Tráfego | 🌐 Rede | Pacotes por tipo, pacotes/min, RF vs MQTT, padrão routing |
+| 🔋 Nós & Bateria | 🌐 Rede | Bateria, tensão, uptime, modelo hardware, GPS |
+| ✅ Fiabilidade | 🏠 Local | ACK/NAK/pendente, taxa entrega, duplicados, prob. colisão |
+| ⏱ Latência (RTT) | 🏠 Local | RTT médio/mín/máx/P90 entre envio e ACK |
 | 🔗 Vizinhança | 🌐 Rede | Pares de vizinhos directos com SNR (NeighborInfo) |
-| 📏 Alcance & Links | 🌐 Rede | Distância km entre vizinhos com GPS (fórmula Haversine) |
-| ⏰ Intervalos | 🌐 Rede | Intervalo médio entre pacotes por nó (detecta nós agressivos) |
-
-> **🏠 Métrica do Nó Local** — dados exclusivos ao nó local ligado  
-> **🌐 Métrica da Rede** — observação passiva de todos os pacotes recebidos
-
-**Ecrãs de espera inteligentes:** Cada métrica detecta automaticamente quando
-dados suficientes chegam e faz a transição do ecrã de espera para a vista de
-dados sem necessidade de intervenção manual.
+| 📏 Alcance & Links | 🌐 Rede | Distância km entre vizinhos com GPS (Haversine) |
+| ⏰ Intervalos | 🌐 Rede | Intervalo médio entre pacotes por nó |
 
 ### 🔌 Conectividade e Robustez
 
 - Ligação TCP ao daemon **meshtasticd** (por defeito `localhost:4403`)
 - **Reconexão automática** com backoff exponencial: 15s → 30s → 60s → 120s
-- Watchdog de 12s por tentativa de conexão (detecta handshakes pendurados)
+- Watchdog de 12s por tentativa de conexão
 - Polling de segurança a cada 30s para manter o NodeDB sincronizado
-- Fallback de `rxTime` para `datetime.now()` (compatível com daemon TCP)
-- Nó local sempre visível e fixado no topo da lista
-- Compatível com Wayland e X11
+- **Ligação não bloqueante** — a criação do `TCPInterface` é adiada via
+  `QTimer.singleShot(50)` para que a mensagem de estado seja sempre visível
+  antes do handshake TCP começar (crítico no CM4 onde o handshake pode demorar
+  vários segundos)
+- **Carga diferida do NodeDB** — o batch inicial corre depois de a UI pintar,
+  mantendo a mensagem "A carregar…" visível durante todo o processo
 
 ### ⭐ Favoritos
 
 Os favoritos são geridos **directamente no firmware** do nó local via
 `setFavorite()` / `removeFavorite()`. Não é usado nenhum ficheiro local — a
-fonte de verdade é sempre o NodeDB do firmware, garantindo que os favoritos
-persistem entre sessões e dispositivos sem qualquer ficheiro auxiliar.
+fonte de verdade é sempre o NodeDB do firmware.
 
 ### 🔔 Notificações Sonoras
 
 - Som de notificação ao receber mensagens (activável/desactivável)
-- Cadeia de fallback multiplataforma:
-  - **Linux:** `aplay` (ALSA, tom 880 Hz gerado) → `paplay` (PulseAudio)
-  - **macOS:** `afplay` (som do sistema)
-  - **Windows:** `winsound.MessageBeep`
-  - **Fallback:** `QApplication.beep()`
-
-### 📤 Acções do Nó Local
-
-- **Enviar Info do Nó** — broadcast do NODEINFO_APP (Ctrl+I)
-- **Enviar Posição Manual** — via `localNode.setPosition()` ou fallback manual
-  (Ctrl+P)
-- **Resetar NodeDB** — limpa a base de dados de nós do firmware
-- **Console de Log** — log em tempo real da comunicação TCP (em inglês)
+- Cadeia multiplataforma: `aplay` (Linux) → `afplay` (macOS) → `winsound` (Windows) → `QApplication.beep()`
 
 ---
 
@@ -190,6 +148,7 @@ meshdeck/
 ├── tabs/
 │   ├── tab_nodes.py     ← MapWidget (Leaflet, traceroutes, vizinhança)
 │   ├── tab_messages.py  ← MessagesTab (canais, DMs PKI/PSK)
+│   ├── tab_navigation.py← NavigationTab (bússola, tabela GPS)
 │   ├── tab_config.py    ← ConfigTab, ChannelsTab, MESHTASTIC_CONFIG_DEFS
 │   ├── tab_metrics.py   ← MetricsTab (orquestração das 10 secções)
 │   ├── metrics_data.py  ← MetricsDataMixin (ingestão e cálculo de dados)
@@ -214,10 +173,7 @@ sudo apt install python3-pyqt5 python3-pyqt5.qtwebengine python3-pip
 pip3 install meshtastic pypubsub --break-system-packages
 ```
 
-**Requisitos:**
-- Python 3.9 ou superior
-- `meshtasticd` em execução e acessível na porta 4403
-- Display (X11 ou Wayland) para a interface gráfica Qt
+**Requisitos:** Python 3.9+, `meshtasticd` na porta 4403, display X11 ou Wayland.
 
 ---
 
@@ -228,10 +184,6 @@ cd meshdeck/
 python3 main.py
 ```
 
-No primeiro arranque (ou sem preferência guardada), o diálogo de ligação abre
-em inglês. Seleccione o idioma no selector antes de ligar. A preferência é
-guardada automaticamente via `QSettings`.
-
 ---
 
 ## 📡 Requisitos do Firmware Meshtastic
@@ -241,12 +193,7 @@ guardada automaticamente via `QSettings`.
 | DM PKI (E2E) | ≥ 2.3.0 |
 | NeighborInfo via LoRa | ≥ 2.5.13 |
 | Traceroute com SNR | ≥ 2.3.2 |
-| Canal NeighborInfo privado | ≥ 2.5.13 |
 | Favoritos no firmware | ≥ 2.3.0 |
-
-> **Nota:** NeighborInfo via LoRa requer canal primário **privado** — o canal
-> público (LongFast/ShortFast com chave padrão) bloqueia este tráfego desde o
-> firmware 2.5.13.
 
 ---
 
@@ -260,19 +207,10 @@ Optimizado para ClockworkPi uConsole CM4 · 2026
 
 ## 🤖 Nota sobre Inteligência Artificial
 
-Este projecto foi desenvolvido com o apoio do **Claude** (Anthropic), um
-assistente de inteligência artificial. A IA colaborou activamente em múltiplas
-sessões de desenvolvimento, contribuindo para:
-
-- Arquitectura e refactoring do código (separação em módulos e mixins)
-- Sistema de internacionalização (i18n) completo PT/EN com cobertura total da UI
-- Implementação das 10 secções de métricas em tempo real
-- Sistema de traceroutes com lógica de origem/destino correcta
-- Detecção e correcção de bugs (duplicados no NodeDB, condições de corrida no
-  mapa, fugas de sinais Qt, emissão dupla de sinais de ligação)
-- Migração dos favoritos de ficheiro JSON local para firmware nativo
-- Análise de performance e optimizações para o hardware CM4
-- Tradução completa de toda a UI e mensagens de log para inglês
+Este projecto foi desenvolvido com o apoio do **Claude** (Anthropic). A IA
+colaborou em múltiplas sessões contribuindo para a arquitectura, i18n, as 10
+secções de métricas, a aba de navegação, lógica de traceroutes, detecção de
+bugs, optimizações de performance para o CM4 e tradução completa PT/EN.
 
 O código foi revisto, testado e validado pelo autor em hardware real
 (ClockworkPi uConsole CM4) com uma rede Meshtastic activa.
