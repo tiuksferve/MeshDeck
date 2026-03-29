@@ -186,19 +186,19 @@ class NavigationTab(QWidget):
         # LEFT — Local Node
         local_frame = self._make_frame()
         ll = QVBoxLayout(local_frame)
-        ll.setContentsMargins(12, 10, 12, 10)
-        ll.setSpacing(4)
-        ll.setAlignment(Qt.AlignTop)
+        ll.setContentsMargins(12, 8, 12, 8)
+        ll.setSpacing(6)
         self._local_hdr      = self._make_hdr(center=True)
         self._local_name_lbl = self._make_val(ACCENT_GREEN, 15, bold=True, wrap=True, center=True)
         self._local_id_lbl   = self._make_val(TEXT_MUTED, 11, center=True)
         self._local_pos_lbl  = self._make_val(TEXT_PRIMARY, 12, wrap=True, center=True)
         self._local_gps_lbl  = self._make_val(TEXT_MUTED, 11, center=True)
+        ll.addStretch(1)
         for w in (self._local_hdr, self._make_sep(),
                   self._local_name_lbl, self._local_id_lbl,
                   self._local_pos_lbl, self._local_gps_lbl):
             ll.addWidget(w)
-        ll.addStretch()
+        ll.addStretch(1)
         top_h.addWidget(local_frame, stretch=2)
 
         # CENTRE — Compass
@@ -220,21 +220,21 @@ class NavigationTab(QWidget):
         # RIGHT — Target
         target_frame = self._make_frame()
         tl = QVBoxLayout(target_frame)
-        tl.setContentsMargins(12, 10, 12, 10)
-        tl.setSpacing(4)
-        tl.setAlignment(Qt.AlignTop)
+        tl.setContentsMargins(12, 8, 12, 8)
+        tl.setSpacing(6)
         self._target_hdr      = self._make_hdr(center=True)
         self._target_name_lbl = self._make_val(ACCENT_BLUE, 15, bold=True, wrap=True, center=True)
         self._dist_label      = self._make_val(ACCENT_GREEN, 26, bold=True, center=True)
         self._target_snr_lbl  = self._make_val(TEXT_MUTED, 12, center=True)
         self._target_alt_lbl  = self._make_val(TEXT_MUTED, 12, center=True)
         self._status_label    = self._make_val(TEXT_MUTED, 11, wrap=True, center=True)
+        tl.addStretch(1)
         for w in (self._target_hdr, self._make_sep(),
                   self._target_name_lbl, self._dist_label,
                   self._target_snr_lbl, self._target_alt_lbl,
                   self._status_label):
             tl.addWidget(w)
-        tl.addStretch()
+        tl.addStretch(1)
         top_h.addWidget(target_frame, stretch=2)
 
         splitter.addWidget(top)
