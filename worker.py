@@ -600,6 +600,15 @@ class MeshtasticWorker(QObject):
             logger.info(f"Local node: num={local_num} id={final_id}")
             self.my_node_id_ready.emit(final_id)
 
+        # Defer the heavy NodeDB load so the Qt event loop can paint the
+        # "connecting…" status bar message before the CPU is busy.
+        # QTimer.singleShot(0) yields to the event loop for one cycle.
+        import functools
+        QTimer.singleShot(0, functools.partial(self._deferred_initial_load, local_num, my_id, final_id))
+
+    def _deferred_initial_load(self, local_num, my_id, final_id):
+        """Heavy initialisation deferred from _handle_connection_established.
+        Runs after Qt has had one event-loop cycle to repaint the status bar."""
         # Carga inicial completa
         try:
             loaded = self._sync_nodedb()

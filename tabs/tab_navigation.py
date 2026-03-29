@@ -135,12 +135,6 @@ COL_LONG=0; COL_SHORT=1; COL_HOPS=2; COL_VIA=3; COL_SNR=4
 COL_DIST=5; COL_BEARING=6; COL_LAT=7; COL_LON=8; COL_ALT=9
 COL_BATT=10; N_COLS=11
 
-_COL_WIDTHS = {
-    COL_LONG:130, COL_SHORT:62, COL_HOPS:52, COL_VIA:66,
-    COL_SNR:72, COL_DIST:78, COL_BEARING:70,
-    COL_LAT:82, COL_LON:82, COL_ALT:54, COL_BATT:60,
-}
-
 
 class NavigationTab(QWidget):
     """Navigation tab — compass + GPS node table. CM4-optimised."""
@@ -192,13 +186,14 @@ class NavigationTab(QWidget):
         # LEFT — Local Node
         local_frame = self._make_frame()
         ll = QVBoxLayout(local_frame)
-        ll.setContentsMargins(14, 10, 14, 10)
-        ll.setSpacing(5)
-        self._local_hdr      = self._make_hdr()
-        self._local_name_lbl = self._make_val(ACCENT_GREEN, 14, bold=True, wrap=True)
-        self._local_id_lbl   = self._make_val(TEXT_MUTED, 10)
-        self._local_pos_lbl  = self._make_val(TEXT_PRIMARY, 11, wrap=True)
-        self._local_gps_lbl  = self._make_val(TEXT_MUTED, 11)
+        ll.setContentsMargins(12, 10, 12, 10)
+        ll.setSpacing(4)
+        ll.setAlignment(Qt.AlignTop)
+        self._local_hdr      = self._make_hdr(center=True)
+        self._local_name_lbl = self._make_val(ACCENT_GREEN, 15, bold=True, wrap=True, center=True)
+        self._local_id_lbl   = self._make_val(TEXT_MUTED, 11, center=True)
+        self._local_pos_lbl  = self._make_val(TEXT_PRIMARY, 12, wrap=True, center=True)
+        self._local_gps_lbl  = self._make_val(TEXT_MUTED, 11, center=True)
         for w in (self._local_hdr, self._make_sep(),
                   self._local_name_lbl, self._local_id_lbl,
                   self._local_pos_lbl, self._local_gps_lbl):
@@ -225,14 +220,18 @@ class NavigationTab(QWidget):
         # RIGHT — Target
         target_frame = self._make_frame()
         tl = QVBoxLayout(target_frame)
-        tl.setContentsMargins(14, 10, 14, 10)
-        tl.setSpacing(5)
-        self._target_hdr      = self._make_hdr()
-        self._target_name_lbl = self._make_val(ACCENT_BLUE, 14, bold=True, wrap=True)
-        self._dist_label      = self._make_val(ACCENT_GREEN, 26, bold=True)
-        self._status_label    = self._make_val(TEXT_MUTED, 11, wrap=True)
+        tl.setContentsMargins(12, 10, 12, 10)
+        tl.setSpacing(4)
+        tl.setAlignment(Qt.AlignTop)
+        self._target_hdr      = self._make_hdr(center=True)
+        self._target_name_lbl = self._make_val(ACCENT_BLUE, 15, bold=True, wrap=True, center=True)
+        self._dist_label      = self._make_val(ACCENT_GREEN, 26, bold=True, center=True)
+        self._target_snr_lbl  = self._make_val(TEXT_MUTED, 12, center=True)
+        self._target_alt_lbl  = self._make_val(TEXT_MUTED, 12, center=True)
+        self._status_label    = self._make_val(TEXT_MUTED, 11, wrap=True, center=True)
         for w in (self._target_hdr, self._make_sep(),
                   self._target_name_lbl, self._dist_label,
+                  self._target_snr_lbl, self._target_alt_lbl,
                   self._status_label):
             tl.addWidget(w)
         tl.addStretch()
@@ -277,12 +276,9 @@ class NavigationTab(QWidget):
             f"text-transform:uppercase;letter-spacing:0.5px;}}"
         )
         hh = self._table.horizontalHeader()
-        hh.setMinimumSectionSize(46)
-        hh.setDefaultSectionSize(70)
-        hh.setStretchLastSection(False)
-        hh.setSectionResizeMode(QHeaderView.Interactive)
-        for col, w in _COL_WIDTHS.items():
-            self._table.setColumnWidth(col, w)
+        hh.setMinimumSectionSize(40)
+        # Equal-width columns that fill the full table width
+        hh.setSectionResizeMode(QHeaderView.Stretch)
 
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
         bl.addWidget(self._table)
@@ -308,12 +304,14 @@ class NavigationTab(QWidget):
         )
         return f
 
-    def _make_hdr(self):
+    def _make_hdr(self, center: bool = False):
         lbl = QLabel()
         lbl.setStyleSheet(
             f"color:{TEXT_MUTED};font-size:10px;font-weight:bold;"
             f"letter-spacing:1.5px;background:transparent;border:none;"
         )
+        if center:
+            lbl.setAlignment(Qt.AlignCenter)
         return lbl
 
     def _make_sep(self):
@@ -325,7 +323,7 @@ class NavigationTab(QWidget):
         s.setStyleSheet("QFrame{background:" + BORDER_COLOR + ";border:none;margin:2px 0;}")
         return s
 
-    def _make_val(self, color, size, bold=False, wrap=False):
+    def _make_val(self, color, size, bold=False, wrap=False, center=False):
         lbl = QLabel("—")
         fw  = "bold" if bold else "normal"
         lbl.setStyleSheet(
@@ -334,6 +332,8 @@ class NavigationTab(QWidget):
         )
         if wrap:
             lbl.setWordWrap(True)
+        if center:
+            lbl.setAlignment(Qt.AlignCenter)
         return lbl
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -454,6 +454,8 @@ class NavigationTab(QWidget):
         self._local_name_lbl.setText(f"{name}{short}")
         self._local_id_lbl.setText(self._local_node_id or "")
 
+        _base = "background:transparent;border:none;text-align:center;"
+
         if self._local_lat is not None and self._local_lon is not None:
             alt_str = (f"\n⬆ {int(self._local_alt)} m"
                        if self._local_alt is not None else "")
@@ -461,40 +463,34 @@ class NavigationTab(QWidget):
                 f"📍 {self._local_lat:.5f}\n    {self._local_lon:.5f}{alt_str}"
             )
             self._local_pos_lbl.setStyleSheet(
-                f"color:{TEXT_PRIMARY};font-size:11px;"
-                f"background:transparent;border:none;"
+                f"color:{TEXT_PRIMARY};font-size:12px;{_base}"
             )
         elif self._local_gps_enabled:
             self._local_pos_lbl.setText(f"⏳ {tr('nav_waiting_local_short')}")
             self._local_pos_lbl.setStyleSheet(
-                f"color:{ACCENT_ORANGE};font-size:11px;"
-                f"background:transparent;border:none;"
+                f"color:{ACCENT_ORANGE};font-size:12px;{_base}"
             )
         else:
             self._local_pos_lbl.setText(f"⚠ {tr('nav_no_gps_short')}")
             self._local_pos_lbl.setStyleSheet(
-                f"color:{ACCENT_RED};font-size:11px;"
-                f"background:transparent;border:none;"
+                f"color:{ACCENT_RED};font-size:12px;{_base}"
             )
 
         if self._local_gps_enabled:
             if self._local_lat is not None and self._local_lon is not None:
                 self._local_gps_lbl.setText(f"📡 {tr('nav_gps_active')}")
                 self._local_gps_lbl.setStyleSheet(
-                    f"color:{ACCENT_GREEN};font-size:11px;"
-                    f"background:transparent;border:none;"
+                    f"color:{ACCENT_GREEN};font-size:11px;{_base}"
                 )
             else:
                 self._local_gps_lbl.setText(f"📡 {tr('nav_gps_active')}  ·  ⏳ {tr('nav_waiting_local_short')}")
                 self._local_gps_lbl.setStyleSheet(
-                    f"color:{ACCENT_ORANGE};font-size:11px;"
-                    f"background:transparent;border:none;"
+                    f"color:{ACCENT_ORANGE};font-size:11px;{_base}"
                 )
         else:
             self._local_gps_lbl.setText(f"GPS  ⚠  {tr('nav_gps_off')}")
             self._local_gps_lbl.setStyleSheet(
-                f"color:{ACCENT_ORANGE};font-size:11px;"
-                f"background:transparent;border:none;"
+                f"color:{ACCENT_ORANGE};font-size:11px;{_base}"
             )
 
     def _dist_km(self, nd) -> Optional[float]:
@@ -638,6 +634,8 @@ class NavigationTab(QWidget):
             self._dist_label.setText("—")
             self._bearing_label.setText("—")
             self._target_name_lbl.setText("—")
+            self._target_snr_lbl.setText("")
+            self._target_alt_lbl.setText("")
             self._status_label.setText(msg)
 
         if not self._local_gps_enabled:
@@ -668,3 +666,29 @@ class NavigationTab(QWidget):
         self._bearing_label.setText(f"{bear:.1f}°  {_cardinal(bear)}")
         self._target_name_lbl.setText(name)
         self._status_label.setText(_cardinal(bear))
+
+        # SNR
+        snr = nd.get('snr')
+        if snr is not None:
+            if snr >= 5:
+                snr_color = ACCENT_GREEN
+            elif snr >= 0:
+                snr_color = ACCENT_ORANGE
+            else:
+                snr_color = ACCENT_RED
+            self._target_snr_lbl.setText(f"📶 SNR: {snr:+.1f} dB")
+            self._target_snr_lbl.setStyleSheet(
+                f"color:{snr_color};font-size:12px;background:transparent;border:none;text-align:center;"
+            )
+        else:
+            self._target_snr_lbl.setText("")
+
+        # Altitude
+        alt = nd.get('altitude')
+        if alt is not None:
+            self._target_alt_lbl.setText(f"⬆ {int(alt)} m")
+            self._target_alt_lbl.setStyleSheet(
+                f"color:{TEXT_MUTED};font-size:12px;background:transparent;border:none;text-align:center;"
+            )
+        else:
+            self._target_alt_lbl.setText("")
