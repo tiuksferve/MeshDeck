@@ -6,6 +6,64 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.2-beta.1] — 2026-04-02
+
+### Added
+
+- **USB Serial connection mode** — the Connection dialog now has two tabs:
+  - **🌐 TCP/IP Network** — existing behaviour, connect to any `meshtasticd`
+    host/port (AIO board, remote daemon, etc.)
+  - **🔌 USB Serial** — connect directly to a Meshtastic device plugged via USB,
+    without requiring the AIO board or a running `meshtasticd` daemon
+- **`meshtastic_bridge.py`** — USB-to-TCP bridge that reads the Meshtastic serial
+  stream protocol from the device, strips debug/log noise, and re-emits clean
+  frames to TCP clients on `127.0.0.1:4403`. Supports simultaneous TCP clients
+  (broadcast mode). Compatible with all known Meshtastic hardware:
+  - Espressif ESP32/S2/S3/C3 (VID `303a`)
+  - Silicon Labs CP210x — HELTEC, LILYGO, RAK (VID `10c4`)
+  - FTDI FT232 — DIY / dev boards (VID `0403`)
+  - CH340 / CH341 — common Chinese boards (VID `1a86`)
+  - Prolific PL2303 — older clones (VID `067b`)
+  - Adafruit nRF52840 (VID `239a`)
+  - RAK Wireless nRF52840 (VID `2fe3`)
+  - Arduino (VID `2341`)
+  - Device-name heuristics: `heltec`, `rak`, `lilygo`, `t-beam`, `meshtastic`
+  - CLI flags: `--port`, `--baud`, `--host`, `--tcp-port`, `--verbose`, `--list`
+- **Serial port auto-detection** in the connection dialog using
+  `serial.tools.list_ports`; Meshtastic-likely ports appear first; refresh
+  button (🔄) to rescan without reopening the dialog
+- **Bridge lifecycle management:**
+  - Bridge is launched as a subprocess from within MeshDeck
+  - `_poll_bridge` verifies the TCP socket is accepting connections before
+    enabling the Connect button
+  - `closeEvent` in `MainWindow` terminates the bridge cleanly on normal exit
+  - `_kill_stale_bridge` kills any orphaned bridge process from a previous abrupt
+    session (e.g. IDE stop button) before launching a new one — cross-platform:
+    `psutil` (preferred) → `lsof -sTCP:LISTEN` (macOS) → `ss` / `fuser` /
+    `/proc/net/tcp` (Linux) → `netstat` + `taskkill` (Windows)
+- **Serial mode indicator** in the connection status badge — when connected via
+  Serial the indicator shows `🟢 127.0.0.1:4403 · 🔌 Serial` instead of just
+  the host/port
+- **1.5 s stabilisation delay** before `TCPInterface` is created in Serial mode,
+  allowing the bridge to fully open the serial port and flush the input buffer
+- **Bridge log file** written to the OS temp directory (`meshdeck_bridge.log`)
+  for easier diagnosis of serial issues
+- `pyserial >= 3.5` added to `requirements.txt`
+- New i18n strings: `conn_tab_tcp`, `conn_tab_serial`, `conn_via_serial`,
+  `serial_port_label`, `serial_start_bridge`, `serial_refresh_tip`,
+  `serial_bridge_idle`, `serial_bridge_starting`, `serial_bridge_ready`,
+  `serial_bridge_timeout`, `serial_bridge_missing`, `serial_no_ports`,
+  `serial_no_pyserial`, `serial_select_port`, `serial_note` — full PT/EN
+
+### Credits
+
+- Serial bridge concept and original code by
+  **[@KMX415](https://github.com/KMX415)** on GitHub. Adapted and extended for
+  MeshDeck with multi-client broadcast, cross-platform device detection, CLI
+  interface, and integration into the connection dialog.
+
+---
+
 ## [1.0.1-beta.1] — 2026-03-29
 
 ### Added
@@ -114,5 +172,6 @@ First public release.
 > (ClockworkPi uConsole CM4) with a live Meshtastic network. Expect occasional
 > rough edges; bug reports and pull requests are welcome.
 
+[1.0.2-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.2-beta.1
 [1.0.1-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.1-beta.1
 [1.0.0-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.0-beta.1

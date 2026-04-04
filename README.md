@@ -6,7 +6,7 @@ daemon.
 Built and optimised for the **ClockworkPi uConsole CM4**, but runs on any
 Linux/macOS/Windows system with Python 3 and PyQt5.
 
-**Version:** 1.0.1-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Year:** 2026
+**Version:** 1.0.2-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Year:** 2026
 
 ---
 
@@ -98,7 +98,7 @@ connection dialog. The preference is saved between sessions via `QSettings`.
 Auto-refreshes every 5 seconds via JavaScript without reloading the HTML page.
 
 | Section | Type | What it measures |
-|---------|------|-----------------|
+|---------|------|-----------------| 
 | 📊 Overview | Mixed | Packets, active nodes, SNR, delivery rate, airtime |
 | 📡 Channel & Airtime | 🌐 Network | Ch. utilization, airtime TX, EU duty cycle (ETSI EN300.220) |
 | 📶 RF Quality | 🌐 Network | SNR histogram, hop distribution, quality assessment |
@@ -113,6 +113,7 @@ Auto-refreshes every 5 seconds via JavaScript without reloading the HTML page.
 ### 🔌 Connectivity and Robustness
 
 - TCP connection to the **meshtasticd daemon** (default `localhost:4403`)
+- **USB Serial connection** via the built-in bridge — no AIO board required
 - **Automatic reconnection** with exponential backoff: 15s → 30s → 60s → 120s
 - 12-second watchdog per connection attempt
 - 30-second safety-net polling to keep NodeDB in sync
@@ -136,24 +137,88 @@ NodeDB is always the source of truth.
 
 ---
 
+## 🔌 USB Serial Connection
+
+MeshDeck can connect directly to a Meshtastic device over USB without requiring
+the AIO board or a running `meshtasticd` daemon. This is especially useful when
+running on a laptop, desktop, or a uConsole without the AIO expansion.
+
+### How it works
+
+A built-in bridge (`meshtastic_bridge.py`) reads the Meshtastic serial stream
+from the USB device, strips any debug/boot-log noise, and re-exposes the clean
+framed stream as a local TCP server on `127.0.0.1:4403`. MeshDeck then connects
+to that local port exactly as it would to a network daemon.
+
+### Supported hardware
+
+| Chipset | Boards |
+|---------|--------|
+| Espressif ESP32/S2/S3/C3 | Most Meshtastic boards |
+| Silicon Labs CP210x | HELTEC, LILYGO T-Beam, RAK |
+| FTDI FT232 | DIY and dev boards |
+| CH340 / CH341 | Low-cost Chinese boards |
+| Prolific PL2303 | Older clones |
+| Adafruit nRF52840 | Feather, ItsyBitsy |
+| RAK Wireless nRF52840 | RAK4631 |
+
+Device detection also uses description keywords (`heltec`, `rak`, `lilygo`,
+`t-beam`, `meshtastic`) as a fallback for boards that enumerate with unusual VIDs.
+
+### Usage
+
+1. Plug the Meshtastic device via USB
+2. Open **🔌 Connection…** → tab **🔌 USB Serial**
+3. Select the port from the dropdown (Meshtastic-likely ports appear first)
+4. Click **▶ Start Serial Bridge** and wait for the **✅ Bridge active** status
+5. Click **🔌 Connect**
+
+The connection indicator will show `🟢 127.0.0.1:4403 · 🔌 Serial` when connected.
+
+### Additional requirements
+
+```bash
+pip install pyserial>=3.5
+```
+
+Already included in `requirements.txt`.
+
+### Bridge CLI (standalone use)
+
+The bridge can also be run independently:
+
+```bash
+python3 meshtastic_bridge.py --list                  # list detected devices
+python3 meshtastic_bridge.py --port /dev/ttyACM0     # specify port explicitly
+python3 meshtastic_bridge.py --port /dev/ttyACM0 --verbose
+```
+
+> **Credits:** Serial bridge concept and original code by
+> **[@KMX415](https://github.com/KMX415)**. Adapted and extended for MeshDeck
+> with multi-client broadcast, cross-platform device detection, CLI interface,
+> robust stale-process cleanup, and full integration into the connection dialog.
+
+---
+
 ## 📁 Project Structure
 
 ```
 meshdeck/
-├── main.py              ← Entry point · MainWindow · signal wiring
-├── constants.py         ← Colours, Qt styles, APP_STYLESHEET
-├── models.py            ← FirmwareFavorites, NodeTableModel, NodeFilterProxyModel
-├── worker.py            ← MeshtasticWorker — TCP/pubsub/packet processing
-├── dialogs.py           ← ConnectionDialog, ConsoleWindow, RebootWaitDialog
-├── i18n.py              ← Internationalisation system (PT/EN), tr() function
+├── main.py                  ← Entry point · MainWindow · signal wiring
+├── constants.py             ← Colours, Qt styles, APP_STYLESHEET
+├── models.py                ← FirmwareFavorites, NodeTableModel, NodeFilterProxyModel
+├── worker.py                ← MeshtasticWorker — TCP/pubsub/packet processing
+├── dialogs.py               ← ConnectionDialog, ConsoleWindow, RebootWaitDialog
+├── i18n.py                  ← Internationalisation system (PT/EN), tr() function
+├── meshtastic_bridge.py     ← USB-to-TCP serial bridge
 ├── tabs/
-│   ├── tab_nodes.py     ← MapWidget (Leaflet, traceroutes, neighbourhood)
-│   ├── tab_messages.py  ← MessagesTab (channels, PKI/PSK DMs)
-│   ├── tab_navigation.py← NavigationTab (compass, GPS node table)
-│   ├── tab_config.py    ← ConfigTab, ChannelsTab, MESHTASTIC_CONFIG_DEFS
-│   ├── tab_metrics.py   ← MetricsTab (orchestrates the 10 metric sections)
-│   ├── metrics_data.py  ← MetricsDataMixin (data ingestion and calculation)
-│   └── metrics_render.py← MetricsRenderMixin (HTML/JS/Chart.js generation)
+│   ├── tab_nodes.py         ← MapWidget (Leaflet, traceroutes, neighbourhood)
+│   ├── tab_messages.py      ← MessagesTab (channels, PKI/PSK DMs)
+│   ├── tab_navigation.py    ← NavigationTab (compass, GPS node table)
+│   ├── tab_config.py        ← ConfigTab, ChannelsTab, MESHTASTIC_CONFIG_DEFS
+│   ├── tab_metrics.py       ← MetricsTab (orchestrates the 10 metric sections)
+│   ├── metrics_data.py      ← MetricsDataMixin (data ingestion and calculation)
+│   └── metrics_render.py    ← MetricsRenderMixin (HTML/JS/Chart.js generation)
 └── requirements.txt
 ```
 
@@ -164,17 +229,19 @@ meshdeck/
 ```bash
 pip install -r requirements.txt
 # or directly:
-pip install meshtastic PyQt5 PyQtWebEngine pypubsub
+pip install meshtastic PyQt5 PyQtWebEngine pypubsub pyserial
 ```
 
 ### On uConsole CM4 (Debian/Ubuntu/Raspbian)
 
 ```bash
 sudo apt install python3-pyqt5 python3-pyqt5.qtwebengine python3-pip
-pip3 install meshtastic pypubsub --break-system-packages
+pip3 install meshtastic pypubsub pyserial --break-system-packages
 ```
 
-**Requirements:** Python 3.9+, `meshtasticd` on port 4403, X11 or Wayland display.
+**Requirements:** Python 3.9+, X11 or Wayland display.  
+**For TCP mode:** `meshtasticd` running on port 4403.  
+**For Serial mode:** USB Meshtastic device + `pyserial`.
 
 ---
 
@@ -206,12 +273,20 @@ Optimised for ClockworkPi uConsole CM4 · 2026
 
 ---
 
+## 🤝 Credits
+
+| Contributor | Contribution |
+|-------------|-------------|
+| [@KMX415](https://github.com/KMX415) | Original serial bridge concept and code |
+
+---
+
 ## 🤖 A Note on Artificial Intelligence
 
 This project was developed with the support of **Claude** (Anthropic). The AI
 collaborated across multiple sessions contributing to architecture, i18n, all 10
 metric sections, navigation tab, traceroute logic, bug fixing, performance
-optimisations for CM4, and full PT/EN translation.
+optimisations for CM4, USB Serial bridge integration, and full PT/EN translation.
 
 The code was reviewed, tested and validated by the author on real hardware
 (ClockworkPi uConsole CM4) with a live Meshtastic network.

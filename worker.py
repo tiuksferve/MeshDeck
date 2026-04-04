@@ -13,6 +13,7 @@ from datetime import datetime
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QObject, QTimer, QMetaObject, Qt
 from pubsub import pub
 from meshtastic.tcp_interface import TCPInterface
+from meshtastic.serial_interface import SerialInterface
 from meshtastic import BROADCAST_ADDR, BROADCAST_NUM
 from meshtastic.protobuf import mesh_pb2, portnums_pb2, admin_pb2
 
@@ -48,10 +49,11 @@ class MeshtasticWorker(QObject):
 
     NODE_POLL_INTERVAL_MS = 30_000   # 30s — safety-net para CM4; pubsub cobre updates em tempo real
 
-    def __init__(self, hostname="localhost", port=4403, parent=None):
+    def __init__(self, hostname="localhost", port=4403, serial_port=None, parent=None):
         super().__init__(parent)
-        self.hostname   = hostname
-        self.port       = port
+        self.hostname    = hostname
+        self.port        = port
+        self.serial_port = serial_port   # if set, use SerialInterface instead of TCP
         self.iface: Optional[TCPInterface] = None
         self._connected = False
         self._known_nodes: Set[str] = set()
@@ -87,10 +89,23 @@ class MeshtasticWorker(QObject):
         QTimer.singleShot(50, self._do_connect)
 
     def _do_connect(self):
-        """Creates the TCPInterface — called via QTimer.singleShot so the UI
-        has already painted the 'Connecting…' status bar message."""
+        """Creates the TCPInterface in a background thread so the UI never
+        freezes waiting for the node to respond (especially after a reboot
+        where the node may take several seconds to re-enumerate on serial)."""
+        import threading
+        t = threading.Thread(target=self._connect_thread, daemon=True,
+                             name="meshdeck-tcp-connect")
+        t.start()
+
+    def _connect_thread(self):
+        """Background thread: creates TCPInterface or SerialInterface."""
         try:
-            self.iface = TCPInterface(self.hostname, self.port)
+            if self.serial_port:
+                logger.info(f"Connecting via SerialInterface on {self.serial_port}")
+                iface = SerialInterface(self.serial_port)
+            else:
+                iface = TCPInterface(self.hostname, self.port)
+            self.iface = iface
         except Exception as e:
             self.error_occurred.emit(
                 tr("err_tcp_create", host=self.hostname, port=self.port, err=e)
@@ -114,14 +129,22 @@ class MeshtasticWorker(QObject):
                 pass
         self._known_nodes.clear()
         if self.iface:
-            try:
-                self.iface.close()
-            except Exception as e:
-                logger.error(f"Error closing interface: {e}")
-            finally:
-                self.iface      = None
-                self._connected = False
-                self.connection_changed.emit(False)
+            iface_to_close = self.iface
+            self.iface      = None
+            self._connected = False
+            self.connection_changed.emit(False)
+            # iface.close() can block indefinitely when the TCP reader thread
+            # is stuck waiting for data (known Meshtastic Python bug, especially
+            # after a node reboot over serial where the bridge goes silent).
+            # Run it in a daemon thread so the UI is never frozen.
+            import threading as _threading
+            def _close_bg():
+                try:
+                    iface_to_close.close()
+                except Exception as e:
+                    logger.debug(f"iface.close() in background: {e}")
+            t = _threading.Thread(target=_close_bg, daemon=True, name="iface-close")
+            t.start()
 
     def _on_connection_lost(self, interface=None):
         """Chamado pela thread interna do TCPInterface — delega para thread Qt."""
@@ -157,11 +180,10 @@ class MeshtasticWorker(QObject):
             return
         try:
             if self.iface:
-                try:
-                    self.iface.close()
-                except Exception:
-                    pass
+                _old_iface = self.iface
                 self.iface = None
+                import threading as _t
+                _t.Thread(target=lambda: _old_iface.close(), daemon=True, name="iface-close-reconnect").start()
             self._known_nodes.clear()
             # Re-subscreve handlers pubsub
             for topic, handler in [
@@ -178,11 +200,27 @@ class MeshtasticWorker(QObject):
                     pass
                 pub.subscribe(handler, topic)
             logger.info(f"Reconnecting to {self.hostname}:{self.port}…")
-            self.iface = TCPInterface(self.hostname, self.port)
+            # Use a background thread so the UI never freezes waiting for
+            # the node to respond (critical after serial reboot)
+            import threading
+            threading.Thread(target=self._reconnect_thread, daemon=True,
+                             name="meshdeck-tcp-reconnect").start()
             # Watchdog: 12s para o evento pubsub chegar; caso contrário tenta de novo
             self._connect_watchdog.start(12_000)
         except Exception as e:
             logger.warning(f"Reconnection failed: {e}")
+            self._connect_watchdog.stop()
+            self._schedule_reconnect()
+
+    def _reconnect_thread(self):
+        """Background thread: creates TCPInterface or SerialInterface for reconnection."""
+        try:
+            if self.serial_port:
+                self.iface = SerialInterface(self.serial_port)
+            else:
+                self.iface = TCPInterface(self.hostname, self.port)
+        except Exception as e:
+            logger.warning(f"Reconnection thread failed: {e}")
             self._connect_watchdog.stop()
             self._schedule_reconnect()
 
@@ -195,11 +233,10 @@ class MeshtasticWorker(QObject):
             return
         logger.warning("Watchdog: no connection after 12s — rescheduling attempt…")
         if self.iface:
-            try:
-                self.iface.close()
-            except Exception:
-                pass
+            _old_iface = self.iface
             self.iface = None
+            import threading as _t
+            _t.Thread(target=lambda: _old_iface.close(), daemon=True, name="iface-close-watchdog").start()
         self._schedule_reconnect()
 
     def send_message(self, channel_index: int, text: str):
