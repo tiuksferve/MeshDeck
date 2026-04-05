@@ -1089,4 +1089,8 @@ _STRINGS: dict = {
                                      "en": "💡 Use the global search field to filter by node ID or name."},
     "metrics_no_results":           {"pt": "Sem resultados para",
                                      "en": "No results for"},
+    # ── Messages tab — reply ─────────────────────────────────────────────────
+    "reply_to":                     {"pt": "A responder a",      "en": "Replying to"},
+    "cancel_reply":                 {"pt": "Cancelar resposta",  "en": "Cancel reply"},
+    "msg_reply_btn":                {"pt": "Responder",          "en": "Reply"},
 }
