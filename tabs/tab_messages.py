@@ -201,7 +201,7 @@ class MessagesTab(QWidget):
         rb_layout.addWidget(self._reply_banner_lbl, stretch=1)
         btn_cancel_reply = QPushButton("✕")
         btn_cancel_reply.setFixedSize(22, 22)
-        btn_cancel_reply.setToolTip(tr("Cancelar resposta"))
+        btn_cancel_reply.setToolTip(tr("cancel_reply"))
         btn_cancel_reply.setStyleSheet(
             f"QPushButton{{background:transparent;color:{TEXT_MUTED};"
             f"border:none;font-size:13px;padding:0;}}"
@@ -261,6 +261,18 @@ class MessagesTab(QWidget):
             self._chan_hdr.setText(tr("📻  Canais"))
         if hasattr(self, '_dm_hdr'):
             self._dm_hdr.setText(tr("📧  Mensagens Directas"))
+        # Actualiza tooltip do botão cancelar reply
+        if hasattr(self, '_reply_banner'):
+            for btn in self._reply_banner.findChildren(QPushButton):
+                btn.setToolTip(tr("cancel_reply"))
+        # Actualiza texto do banner se reply estiver activo
+        if hasattr(self, '_reply_from') and self._reply_from:
+            safe_from    = html.escape(self._reply_from)
+            safe_preview = html.escape(self._reply_text or "")
+            self._reply_banner_lbl.setText(
+                f"↩ {tr('reply_to')} <b>{safe_from}</b>: "
+                f"<i style='color:{TEXT_MUTED};'>{safe_preview}</i>"
+            )
         # Refresh the empty-state page if currently shown
         if hasattr(self, '_web') and hasattr(self, '_ctx_channel'):
             self._web.setHtml(self._empty_state_html())
@@ -555,7 +567,7 @@ class MessagesTab(QWidget):
         safe_from    = html.escape(self._reply_from)
         safe_preview = html.escape(self._reply_text)
         self._reply_banner_lbl.setText(
-            f"↩ {tr('A responder a')} <b>{safe_from}</b>: "
+            f"↩ {tr('reply_to')} <b>{safe_from}</b>: "
             f"<i style='color:{TEXT_MUTED};'>{safe_preview}</i>"
         )
         self._reply_banner_lbl.setTextFormat(2)   # RichText
@@ -772,7 +784,7 @@ body{{background:{bg};color:{TEXT_PRIMARY};
                 f'<button class="reply-btn" '
                 f'data-from="{safe_from_js}" data-text="{safe_text_js}" '
                 f'onclick="sendReply(this.dataset.from,this.dataset.text)" '
-                f'title="{tr("Responder")}">↩</button>'
+                f'title="{tr("msg_reply_btn")}">↩</button>'
             )
 
         if msg["outgoing"]:
