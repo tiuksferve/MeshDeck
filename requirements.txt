@@ -2,3 +2,4 @@ meshtastic>=2.3.0
 PyQt5>=5.15.0
 PyQtWebEngine>=5.15.0
 pypubsub>=4.0.3
+pyserial>=3.5

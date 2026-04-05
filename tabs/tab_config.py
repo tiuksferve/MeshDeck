@@ -6,7 +6,7 @@ import re
 import logging
 from typing import Optional, Dict, List
 
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, QThread, QObject
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QListWidget,
     QScrollArea, QStackedWidget, QLabel, QPushButton, QFrame,
@@ -26,6 +26,222 @@ from constants import (
     logger, DARK_BG, PANEL_BG, BORDER_COLOR, ACCENT_GREEN, ACCENT_BLUE,
     ACCENT_ORANGE, ACCENT_RED, TEXT_PRIMARY, TEXT_MUTED, INPUT_BG
 )
+
+import threading as _threading
+
+
+# ---------------------------------------------------------------------------
+# Module-level worker classes — must be at module level for Qt meta-object
+# system to work correctly with moveToThread / pyqtSignal across threads.
+# Defining them inside methods breaks signal delivery in PyQt5.
+# ---------------------------------------------------------------------------
+
+class _ChannelSaveWorker(QObject):
+    """Runs writeChannel calls in a background thread."""
+    finished = pyqtSignal(int, list)   # saved_count, errors
+
+    def __init__(self, iface, channels):
+        super().__init__()
+        self._iface    = iface
+        self._channels = channels
+
+    def run(self):
+        errors = []
+        saved  = 0
+        try:
+            node            = self._iface.localNode
+            present_indices = set()
+            for ch in self._channels:
+                try:
+                    node.writeChannel(ch.index)
+                    present_indices.add(ch.index)
+                    saved += 1
+                    logger.debug(f"writeChannel({ch.index}) OK")
+                except Exception as e:
+                    logger.error(f"writeChannel({getattr(ch,'index','?')}): {e}")
+                    errors.append(f"Canal {getattr(ch, 'index', '?')}: {e}")
+            # Clear any unused channel slots
+            for idx in range(8):
+                if idx not in present_indices and idx != 0:
+                    try:
+                        node.writeChannel(idx)
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"_ChannelSaveWorker error: {e}", exc_info=True)
+            errors.append(str(e))
+        self.finished.emit(saved, errors)
+
+
+class _ConfigSaveWorker(QObject):
+    """Runs writeConfig / commitSettingsTransaction / setOwner in a background thread."""
+    finished = pyqtSignal(object, int, list)   # saved_sections (set), write_config_count (int), errors (list)
+
+    def __init__(self, node, iface, collected, owner_long, owner_short,
+                 owner_licensed, owner_licensed_changed, errors_collect):
+        super().__init__()
+        self._node                   = node
+        self._iface                  = iface
+        self._collected              = collected
+        self._owner_long             = owner_long
+        self._owner_short            = owner_short
+        self._owner_licensed         = owner_licensed
+        self._owner_licensed_changed = owner_licensed_changed
+        self._errors                 = list(errors_collect)
+
+    def run(self):
+        from tabs.tab_config import SECTION_WRITE_NAME as _SWN, _resolve_sub_obj as _rsub
+        saved_sections = set()
+        write_config_count = 0   # número real de writeConfig() bem-sucedidos
+        logger.info(f"_ConfigSaveWorker.run() — {len(self._collected)} section(s) to save")
+        try:
+            # beginSettingsTransaction tells the firmware to accumulate all
+            # writeConfig calls without rebooting between them. The single
+            # reboot happens only when commitSettingsTransaction is sent.
+            # Without this, the firmware reboots on the first writeConfig and
+            # all subsequent ones are lost.
+            try:
+                self._node.beginSettingsTransaction()
+                logger.debug("beginSettingsTransaction OK")
+            except Exception as e:
+                logger.debug(f"beginSettingsTransaction not supported: {e}")
+
+            for sec_key, sec_fields in self._collected.items():
+                parts = sec_key.split(".", 1)
+                if len(parts) != 2:
+                    continue
+                config_attr, sub_attr = parts
+                section_saved = False
+
+                for field_name, payload in sec_fields.items():
+                    if field_name == "__canned_messages__":
+                        msgs_str = payload
+                        if len(msgs_str) > 200:
+                            self._errors.append(
+                                f"Msgs pré-definidas: {len(msgs_str)} chars (máx 200)."
+                            )
+                            continue
+                        try:
+                            self._node.setCannedMessages(msgs_str)
+                            saved_sections.add("canned_messages_text")
+                        except AttributeError:
+                            try:
+                                p = admin_pb2.AdminMessage()
+                                p.set_canned_message_module_messages = msgs_str
+                                self._node._sendAdmin(p)
+                                saved_sections.add("canned_messages_text")
+                            except Exception as cm_err:
+                                self._errors.append(f"Msgs pré-definidas: {cm_err}")
+                        except Exception as cm_err:
+                            self._errors.append(f"Msgs pré-definidas: {cm_err}")
+                        continue
+
+                    field_parts, coerced = payload
+
+                    # Re-resolve o caminho a partir de self._node (o localNode vivo)
+                    # em vez de usar o obj resolvido no UI thread.
+                    # Isto é crítico: writeConfig faz internamente
+                    #   p.set_module_config.mqtt.CopyFrom(self.moduleConfig.mqtt)
+                    # ou seja, lê sempre de self._node.localConfig / self._node.moduleConfig.
+                    # O setattr tem de operar sobre o MESMO objecto que o CopyFrom vai ler,
+                    # caso contrário a alteração nunca chega ao nó.
+                    cfg_root = getattr(self._node, config_attr, None)
+                    if cfg_root is None:
+                        logger.error(f"  [{sec_key}] config_attr {config_attr!r} not found on node")
+                        self._errors.append(f"{sec_key}: config_attr {config_attr!r} inexistente")
+                        continue
+
+                    obj = _rsub(cfg_root, sec_key)
+                    if obj is None:
+                        logger.error(f"  [{sec_key}] sub_obj não resolvido no worker")
+                        self._errors.append(f"{sec_key}: sub_obj não resolvido no worker")
+                        continue
+
+                    # Navega para o sub-objecto aninhado (ex: campos com ponto)
+                    for part in field_parts[:-1]:
+                        obj = getattr(obj, part, None)
+                        if obj is None:
+                            break
+                    if obj is None:
+                        logger.error(f"  [{sec_key}] {field_name}: nested obj is None")
+                        self._errors.append(f"{sec_key}.{field_name}: nested obj is None")
+                        continue
+                    last = field_parts[-1]
+
+                    logger.info(
+                        f"  [{sec_key}] setattr(.{last}, {coerced!r}) "
+                        f"[type={type(coerced).__name__}]"
+                    )
+                    try:
+                        setattr(obj, last, coerced)
+                        # Proto3 não serializa campos com valor igual ao default
+                        # (False para bool, 0 para int, "" para string).
+                        # Se o valor coerced é o default e precisamos de o enviar
+                        # explicitamente (ex: proxy_to_client_enabled = False quando
+                        # estava True), o CopyFrom pode não incluir o campo no wire.
+                        # Verificamos se o campo ficou registado; se não, usamos
+                        # a técnica de double-set: True → False para forçar a presença.
+                        if isinstance(coerced, bool) and coerced is False:
+                            # Verifica se o campo está em ListFields após setattr
+                            try:
+                                listed = [f.name for f, _ in obj.ListFields()]
+                                if last not in listed:
+                                    # Proto ignorou o False — forçar presença
+                                    # definindo True primeiro (fica em ListFields)
+                                    # e depois False (valor correcto)
+                                    setattr(obj, last, True)
+                                    setattr(obj, last, False)
+                                    logger.debug(f"  [{sec_key}] {last}: forced False via double-set")
+                            except Exception:
+                                pass  # ListFields pode não existir em todos os objectos
+                        section_saved = True
+                    except Exception as e:
+                        logger.error(f"  setattr FAILED: {e} "
+                                     f"(last={last!r}, coerced={coerced!r} "
+                                     f"[{type(coerced).__name__}])")
+                        self._errors.append(f"{sec_key}.{field_name}: {e}")
+
+                if section_saved:
+                    write_name = _SWN.get(sec_key, sub_attr)
+                    logger.info(f"  writeConfig({write_name!r})")
+                    try:
+                        self._node.writeConfig(write_name)
+                        saved_sections.add(sec_key)
+                        write_config_count += 1
+                        logger.info(f"  writeConfig({write_name!r}) ✅")
+                    except Exception as e:
+                        logger.error(f"  writeConfig({write_name!r}) FAILED: {e}")
+                        self._errors.append(f"writeConfig({write_name}): {e}")
+                else:
+                    logger.debug(f"  [{sec_key}] no fields changed — skipping writeConfig")
+
+            # commitSettingsTransaction triggers the single reboot after all
+            # writeConfig calls have been received by the firmware.
+            try:
+                self._node.commitSettingsTransaction()
+                logger.info("commitSettingsTransaction OK — node will reboot once")
+            except Exception as e:
+                logger.debug(f"commitSettingsTransaction: {e}")
+
+            if self._owner_long is not None or self._owner_short is not None or self._owner_licensed_changed:
+                try:
+                    self._node.setOwner(
+                        long_name=self._owner_long or "",
+                        short_name=self._owner_short or "",
+                        is_licensed=self._owner_licensed
+                    )
+                    saved_sections.add("owner")
+                    logger.debug("setOwner OK")
+                except Exception as e:
+                    logger.error(f"setOwner: {e}")
+                    self._errors.append(f"setOwner: {e}")
+
+        except Exception as e:
+            logger.error(f"_ConfigSaveWorker error: {e}", exc_info=True)
+            self._errors.append(str(e))
+
+        self.finished.emit(saved_sections, write_config_count, self._errors)
+
 
 class ChannelsTab(QWidget):
     ROLES        = ["PRIMARY", "SECONDARY", "DISABLED"]
@@ -193,58 +409,59 @@ class ChannelsTab(QWidget):
             (tr("Guardar todas as alterações de canais no nó?\n\n")
              + tr("⚠  O nó irá reiniciar para aplicar as alterações.\n")
              + tr("A ligação TCP será temporariamente perdida e restabelecida.")),
-            
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply != QMessageBox.Yes:
             return
 
+        # Apply widget values to channel objects BEFORE spawning the thread
+        # (must happen in the UI thread while widgets are alive)
+        for row in self._channel_widgets:
+            row.apply_to_channel()
+
         self.status_lbl.setText(tr("A guardar…"))
-        errors = []
-        saved  = 0
-        try:
-            node             = self._iface.localNode
-            present_indices  = set()
+        # Disable button to prevent double-save
+        for btn in self.findChildren(QPushButton):
+            if "Guardar" in btn.text():
+                btn.setEnabled(False)
+                break
 
-            for row in self._channel_widgets:
-                row.apply_to_channel()
+        # Run writeChannel calls in a background thread.
+        # Using module-level _ChannelSaveWorker (not a locally-defined class)
+        # so PyQt5's meta-object system correctly delivers signals across threads.
+        channels_snapshot = list(self._channels)
+        iface_ref = self._iface
 
-            for ch in self._channels:
-                try:
-                    node.writeChannel(ch.index)
-                    present_indices.add(ch.index)
-                    saved += 1
-                except Exception as e:
-                    errors.append(f"Canal {getattr(ch,'index','?')}: {e}")
+        self._save_thread = QThread()
+        self._save_worker = _ChannelSaveWorker(iface_ref, channels_snapshot)
+        self._save_worker.moveToThread(self._save_thread)
+        self._save_thread.started.connect(self._save_worker.run)
+        self._save_worker.finished.connect(self._on_save_finished)
+        self._save_worker.finished.connect(self._save_thread.quit)
+        self._save_worker.finished.connect(self._save_worker.deleteLater)
+        self._save_thread.finished.connect(self._save_thread.deleteLater)
+        self._save_thread.start()
 
-            for idx in range(8):
-                if idx not in present_indices and idx != 0:
-                    try:
-                        empty      = Channel()
-                        empty.index = idx
-                        empty.role  = 0
-                        node.writeChannel(idx)
-                    except Exception:
-                        pass
+    def _on_save_finished(self, saved: int, errors: list):
+        # Re-enable save button
+        for btn in self.findChildren(QPushButton):
+            if "Guardar" in btn.text():
+                btn.setEnabled(True)
+                break
 
-            msg = tr("✅  {n} canal(ais) guardados", n=saved)
-            if errors:
-                msg += f" | ⚠ {len(errors)} erro(s)"
-            self.status_lbl.setText(msg)
-            QMessageBox.information(
-                self, tr("Canais Guardados"),
-                tr("{n} canal(ais) guardados no nó.", n=saved) +
-                (f"\n\nErros:\n" + "\n".join(errors[:5]) if errors else "")
-            )
-            if saved > 0:
-                self.reboot_required.emit()
-            else:
-                self._load_channels()
-
-        except Exception as e:
-            logger.error(f"Error saving channels: {e}", exc_info=True)
-            self.status_lbl.setText(tr("err_generic", err=e))
-            QMessageBox.critical(self, tr("Erro"), tr("Erro ao guardar canais:\n{e}", e=e))
+        msg = tr("✅  {n} canal(ais) guardados", n=saved)
+        if errors:
+            msg += f" | ⚠ {len(errors)} erro(s)"
+        self.status_lbl.setText(msg)
+        QMessageBox.information(
+            self, tr("Canais Guardados"),
+            tr("{n} canal(ais) guardados no nó.", n=saved) +
+            (f"\n\nErros:\n" + "\n".join(errors[:5]) if errors else "")
+        )
+        if saved > 0:
+            self.reboot_required.emit()
+        else:
+            self._load_channels()
 
 
 class _ChannelRow(QWidget):
@@ -487,9 +704,7 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Flip ecrã",               "flip_screen",             "bool",   None),
         ("Acord. por toque/mov.",   "wake_on_tap_or_motion",   "bool",   None),
         ("Cabeçalho negrito",       "heading_bold",            "bool",   None),
-        ("Override largura fone",   "compass_north_top",       "bool",   None),
-        ("Brilho do backlight",     "backlight_secs",          "spin_int",(0,3600)),
-        ("Brilho TFT (0-255)",      "tft_brightness",          "spin_int",(0,255)),
+        # compass_north_top, backlight_secs, tft_brightness não existem no proto DisplayConfig
     ],
     "localConfig.lora": [
         ("Usar preset",             "use_preset",              "bool",   None),
@@ -522,6 +737,7 @@ MESHTASTIC_CONFIG_DEFS = {
         ("PIN fixo",                "fixed_pin",               "spin_int",(0,999999)),
     ],
     "moduleConfig.mqtt": [
+        # Campos do proto MQTTConfig (module_config.proto)
         ("Habilitado",              "enabled",                 "bool",   None),
         ("Servidor",                "address",                 "text",   None),
         ("Utilizador",              "username",                "text",   None),
@@ -530,11 +746,14 @@ MESHTASTIC_CONFIG_DEFS = {
         ("JSON habilitado",         "json_enabled",            "bool",   None),
         ("TLS habilitado",          "tls_enabled",             "bool",   None),
         ("Root topic",              "root",                    "text",   None),
-        ("Proxy para cliente",      "proxy_to_client_enabled", "bool",   None),
-        ("Map reporting",           "map_reporting_enabled",   "bool",   None),
-        ("Precisão do mapa",        "map_report_settings.position_precision","spin_int",(0,32)),
-        ("Intervalo map report (s)","map_report_settings.publish_interval_secs","spin_int",(0,86400)),
-        ("Ok para MQTT (canal)",    "ok_to_mqtt",              "bool",   None),
+        # proxy_to_client_enabled: NÃO é um campo de configuração normal.
+        # Quando activo, o firmware envia pacotes mqttClientProxyMessage pelo
+        # canal API (TCP/Serial) esperando que o cliente ligado faça o relay
+        # para o broker MQTT. O MeshDeck não implementa este protocolo de proxy
+        # (previsto para versão futura). Mostrado como read-only com nota.
+        ("Proxy para cliente ⚠",   "proxy_to_client_enabled", "readonly_with_note", None),
+        # map_reporting_enabled, map_report_settings, ok_to_mqtt não existem
+        # nesta versão do proto (module_config.proto MQTTConfig field list).
     ],
     "moduleConfig.serial": [
         ("Habilitado",              "enabled",                 "bool",   None),
@@ -546,7 +765,7 @@ MESHTASTIC_CONFIG_DEFS = {
           "BAUD_576000","BAUD_921600"]),
         ("Timeout (ms)",            "timeout",                 "spin_int",(0,60000)),
         ("Modo",                    "mode",                    "combo",
-         ["DEFAULT","SIMPLE","PROTO","TEXTMSG","NMEA","CALTOPO","WS85"]),
+         ["DEFAULT","SIMPLE","PROTO","TEXTMSG","NMEA","CALTOPO"]),
         ("RX GPIO",                 "rxd",                     "spin_int",(0,39)),
         ("TX GPIO",                 "txd",                     "spin_int",(0,39)),
         ("Somente RX",              "override_console_serial_port","bool",None),
@@ -567,12 +786,13 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Nível activo GPIO",       "active",                  "bool",   None),
     ],
     "moduleConfig.storeForward": [
+        # Campos do proto StoreForwardConfig
         ("Habilitado",              "enabled",                 "bool",   None),
         ("Heartbeat",               "heartbeat",               "bool",   None),
         ("Num records",             "records",                 "spin_int",(0,300)),
         ("Histórico (s)",           "history_return_window",   "spin_int",(0,86400)),
         ("Max msgs histórico",      "history_return_max",      "spin_int",(0,300)),
-        ("É servidor S&F",          "is_server",               "bool",   None),
+        # is_server não existe no proto StoreForwardConfig
     ],
     "moduleConfig.rangeTest": [
         ("Habilitado",              "enabled",                 "bool",   None),
@@ -580,17 +800,17 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Guardar em CSV",          "save",                    "bool",   None),
     ],
     "moduleConfig.telemetry": [
+        # Campos do proto TelemetryConfig
         ("Intervalo dispositivo (s)","device_update_interval", "spin_int",(0,86400)),
         ("Intervalo ambiente (s)",  "environment_update_interval","spin_int",(0,86400)),
         ("Medição ambiente activa", "environment_measurement_enabled","bool",None),
         ("Ambiente no ecrã",        "environment_screen_enabled","bool",  None),
         ("Temperatura em Fahrenheit","environment_display_fahrenheit","bool",None),
-        ("Intervalo air quality (s)","air_quality_interval",   "spin_int",(0,86400)),
         ("Air quality activo",      "air_quality_enabled",     "bool",   None),
-        ("Intervalo potência (s)",  "power_update_interval",   "spin_int",(0,86400)),
+        ("Intervalo air quality (s)","air_quality_interval",   "spin_int",(0,86400)),
         ("Medição potência activa", "power_measurement_enabled","bool",  None),
-        ("Intervalo saúde (s)",     "health_update_interval",  "spin_int",(0,86400)),
-        ("Saúde activo",            "health_telemetry_enabled","bool",   None),
+        ("Intervalo potência (s)",  "power_update_interval",   "spin_int",(0,86400)),
+        # health_update_interval e health_telemetry_enabled não existem no proto
     ],
     "moduleConfig.cannedMessage": [
         # ── Campo especial: lista de mensagens (separadas por |, max 200 chars total) ──
@@ -606,21 +826,14 @@ MESHTASTIC_CONFIG_DEFS = {
         ("GPIO encoder A",          "inputbroker_pin_a",       "spin_int",(0,39)),
         ("GPIO encoder B",          "inputbroker_pin_b",       "spin_int",(0,39)),
         ("GPIO encoder Press",      "inputbroker_pin_press",   "spin_int",(0,39)),
+        # InputEventChar proto: NONE=0,UP=17,DOWN=18,LEFT=19,RIGHT=20,SELECT=10,BACK=27,CANCEL=24
+        # FN_* e NUMPAD_* não existem no proto CannedMessageConfig.InputEventChar
         ("Evento CW (cima)",        "inputbroker_event_cw",    "combo",
-         ["NONE","UP","DOWN","LEFT","RIGHT","SELECT","BACK","CANCEL",
-          "FN_1","FN_2","FN_3","FN_4","FN_5","FN_6","FN_7","FN_8",
-          "FN_9","FN_10","FN_11","FN_12","NUMPAD_0","NUMPAD_1","NUMPAD_2",
-          "NUMPAD_3","NUMPAD_4","NUMPAD_5","NUMPAD_6","NUMPAD_7","NUMPAD_8","NUMPAD_9"]),
+         ["NONE","UP","DOWN","LEFT","RIGHT","SELECT","BACK","CANCEL"]),
         ("Evento CCW (baixo)",      "inputbroker_event_ccw",   "combo",
-         ["NONE","UP","DOWN","LEFT","RIGHT","SELECT","BACK","CANCEL",
-          "FN_1","FN_2","FN_3","FN_4","FN_5","FN_6","FN_7","FN_8",
-          "FN_9","FN_10","FN_11","FN_12","NUMPAD_0","NUMPAD_1","NUMPAD_2",
-          "NUMPAD_3","NUMPAD_4","NUMPAD_5","NUMPAD_6","NUMPAD_7","NUMPAD_8","NUMPAD_9"]),
+         ["NONE","UP","DOWN","LEFT","RIGHT","SELECT","BACK","CANCEL"]),
         ("Evento Press",            "inputbroker_event_press", "combo",
-         ["NONE","UP","DOWN","LEFT","RIGHT","SELECT","BACK","CANCEL",
-          "FN_1","FN_2","FN_3","FN_4","FN_5","FN_6","FN_7","FN_8",
-          "FN_9","FN_10","FN_11","FN_12","NUMPAD_0","NUMPAD_1","NUMPAD_2",
-          "NUMPAD_3","NUMPAD_4","NUMPAD_5","NUMPAD_6","NUMPAD_7","NUMPAD_8","NUMPAD_9"]),
+         ["NONE","UP","DOWN","LEFT","RIGHT","SELECT","BACK","CANCEL"]),
     ],
     "moduleConfig.audio": [
         ("Codec2 habilitado",       "codec2_enabled",          "bool",   None),
@@ -638,9 +851,10 @@ MESHTASTIC_CONFIG_DEFS = {
         ("Permitir input não seg.", "allow_undefined_pin_access","bool", None),
     ],
     "moduleConfig.neighborInfo": [
+        # Campos do proto NeighborInfoConfig
         ("Habilitado",              "enabled",                 "bool",   None),
         ("Intervalo update (s)",    "update_interval",         "spin_int",(0,86400)),
-        ("Transmitir sobre LoRa",   "transmit_over_lora",      "bool",   None),
+        # transmit_over_lora não existe no proto NeighborInfoConfig
     ],
     "moduleConfig.ambientLighting": [
         ("Habilitado LED",          "led_state",               "bool",   None),
@@ -724,6 +938,85 @@ SECTION_WRITE_NAME = {
     "moduleConfig.paxcounter":         "paxcounter",
     "localConfig.security":            "security",
 }
+
+# Mapeamento explícito sec_key → nome do atributo real no objecto cfg_root.
+# A biblioteca meshtastic-python usa nomes que nem sempre correspondem ao
+# camelCase da chave nem ao snake_case do write_name.  Este mapa é a fonte
+# de verdade e evita toda a lógica de tentativa-e-erro.
+SECTION_ATTR_NAME = {
+    "localConfig.device":                "device",
+    "localConfig.position":              "position",
+    "localConfig.power":                 "power",
+    "localConfig.network":               "network",
+    "localConfig.display":               "display",
+    "localConfig.lora":                  "lora",
+    "localConfig.bluetooth":             "bluetooth",
+    "moduleConfig.mqtt":                 "mqtt",
+    "moduleConfig.serial":               "serial",
+    "moduleConfig.externalNotification": "externalNotification",
+    "moduleConfig.storeForward":         "storeForward",
+    "moduleConfig.rangeTest":            "rangeTest",
+    "moduleConfig.telemetry":            "telemetry",
+    "moduleConfig.cannedMessage":        "cannedMessage",
+    "moduleConfig.audio":                "audio",
+    "moduleConfig.remotehardware":       "remoteHardware",
+    "moduleConfig.neighborInfo":         "neighborInfo",
+    "moduleConfig.ambientLighting":      "ambientLighting",
+    "moduleConfig.detectionSensor":      "detectionSensor",
+    "moduleConfig.paxcounter":           "paxcounter",
+    "localConfig.security":              "security",
+}
+
+
+def _resolve_sub_obj(cfg_root, sec_key: str):
+    """
+    Resolve o sub-objecto de configuração para `sec_key` em `cfg_root`.
+
+    Estratégia (em ordem de prioridade):
+      1. SECTION_ATTR_NAME — mapeamento explícito (fonte de verdade).
+      2. sub_attr camelCase directo (ex: "device", "lora").
+      3. snake_case derivado do camelCase (ex: "externalNotification" → "external_notification").
+      4. write_name de SECTION_WRITE_NAME (ex: "external_notification").
+
+    Retorna o objecto ou None se nenhuma tentativa funcionar.
+    Regista em DEBUG qual estratégia foi bem-sucedida para facilitar diagnóstico.
+    """
+    _, sub_attr = sec_key.split('.', 1)
+
+    # 1. Mapeamento explícito
+    explicit = SECTION_ATTR_NAME.get(sec_key)
+    if explicit:
+        obj = getattr(cfg_root, explicit, None)
+        if obj is not None:
+            logger.debug(f"_resolve_sub_obj({sec_key}): explicit attr '{explicit}' ✅")
+            return obj
+        logger.debug(f"_resolve_sub_obj({sec_key}): explicit attr '{explicit}' not found, falling back")
+
+    # 2. camelCase directo
+    obj = getattr(cfg_root, sub_attr, None)
+    if obj is not None:
+        logger.debug(f"_resolve_sub_obj({sec_key}): camelCase '{sub_attr}' ✅")
+        return obj
+
+    # 3. snake_case
+    snake = re.sub(r'(?<!^)(?=[A-Z])', '_', sub_attr).lower()
+    if snake != sub_attr:
+        obj = getattr(cfg_root, snake, None)
+        if obj is not None:
+            logger.debug(f"_resolve_sub_obj({sec_key}): snake_case '{snake}' ✅")
+            return obj
+
+    # 4. write_name
+    write_name = SECTION_WRITE_NAME.get(sec_key)
+    if write_name and write_name not in (sub_attr, snake):
+        obj = getattr(cfg_root, write_name, None)
+        if obj is not None:
+            logger.debug(f"_resolve_sub_obj({sec_key}): write_name '{write_name}' ✅")
+            return obj
+
+    logger.warning(f"_resolve_sub_obj({sec_key}): could not resolve sub-object "
+                   f"(tried: {explicit!r}, {sub_attr!r}, {snake!r}, {write_name!r})")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -863,7 +1156,16 @@ class ConfigTab(QWidget):
 
     def _do_reload(self):
         try:
-            self._local_node = self._iface.getNode("^local")
+            # Usa iface.localNode (propriedade viva) em vez de getNode("^local")
+            # que pode devolver uma cópia desactualizada da cache ou None em
+            # algumas versões da biblioteca meshtastic-python.
+            # iface.localNode é o mesmo objecto usado internamente por writeConfig /
+            # beginSettingsTransaction / commitSettingsTransaction, garantindo
+            # que leitura e escrita operam sempre sobre o mesmo objecto.
+            self._local_node = getattr(self._iface, "localNode", None)
+            if self._local_node is None:
+                # Fallback para versões antigas da biblioteca que não expõem localNode
+                self._local_node = self._iface.getNode("^local")
             if not self._local_node:
                 self._show_placeholder(tr("Não foi possível obter o nó local."))
                 self.status_label.setText(tr("Erro: nó local indisponível"))
@@ -906,29 +1208,48 @@ class ConfigTab(QWidget):
         parts = sec_key.split('.', 1)
         if len(parts) != 2:
             return [(lbl, ft, fn, None, ex) for lbl, fn, ft, ex in field_defs]
-        config_attr, sub_attr = parts
+        config_attr, _sub_attr = parts
         sub_obj = None
         try:
             cfg_root = getattr(self._local_node, config_attr, None)
             if cfg_root is not None:
-                sub_obj = getattr(cfg_root, sub_attr, None)
-                if sub_obj is None:
-                    snake   = re.sub(r'(?<!^)(?=[A-Z])', '_', sub_attr).lower()
-                    sub_obj = getattr(cfg_root, snake, None)
+                sub_obj = _resolve_sub_obj(cfg_root, sec_key)
         except Exception as e:
             logger.warning(f"Error accessing {sec_key}: {e}")
 
-        # Tenta carregar as mensagens pré-definidas (campo especial via AdminMessage)
+        # Tenta carregar as mensagens pré-definidas (campo especial via AdminMessage).
+        # A biblioteca meshtastic-python guarda as canned messages em vários atributos
+        # dependendo da versão; tentamos todos por ordem de preferência.
         canned_msgs_value = None
         if sec_key == "moduleConfig.cannedMessage" and self._iface:
             try:
-                # A biblioteca guarda as mensagens em localNode._cannedMessageModuleMessages
-                # ou recuperáveis via getCannedMessages()
                 ln = self._local_node
-                if hasattr(ln, '_cannedMessageModuleMessages'):
-                    canned_msgs_value = ln._cannedMessageModuleMessages or ""
-                elif hasattr(ln, 'getCannedMessages'):
-                    canned_msgs_value = ln.getCannedMessages() or ""
+                # Ordem de tentativa conforme versões da biblioteca:
+                # 1. cannedPluginMessage — atributo principal em versões recentes
+                # 2. cannedPluginMessageMessages — versões antigas
+                # 3. get_canned_message() — méttodo que faz pedido ao dispositivo
+                # 4. getCannedMessages() — alias nalgumas versões
+                val = None
+                for attr in ('cannedPluginMessage', 'cannedPluginMessageMessages',
+                             '_cannedMessageModuleMessages'):
+                    v = getattr(ln, attr, None)
+                    if v and isinstance(v, str) and v.strip():
+                        val = v.strip()
+                        logger.debug(f"Canned messages from attr {attr!r}: {val!r}")
+                        break
+                if not val:
+                    for method in ('get_canned_message', 'getCannedMessages'):
+                        fn = getattr(ln, method, None)
+                        if callable(fn):
+                            try:
+                                v = fn()
+                                if v and isinstance(v, str) and v.strip():
+                                    val = v.strip()
+                                    logger.debug(f"Canned messages from {method}(): {val!r}")
+                                    break
+                            except Exception as me:
+                                logger.debug(f"{method}() failed: {me}")
+                canned_msgs_value = val or ""
                 logger.debug(f"Canned messages loaded: {canned_msgs_value!r}")
             except Exception as e:
                 logger.debug(f"Could not load canned messages: {e}")
@@ -949,6 +1270,32 @@ class ConfigTab(QWidget):
                     current_val = obj
                 except Exception as e:
                     logger.debug(f"Could not read {sec_key}.{field_name}: {e}")
+
+            # Para campos combo (enum), converte o int devolvido pelo protobuf para
+            # o nome string correspondente.  O QComboBox é preenchido com strings
+            # (ex: "CLIENT", "ROUTER") — se passarmos um int, findText falha e o
+            # widget fica no índice 0 independentemente do valor real do nó.
+            if field_type == "combo" and isinstance(current_val, int) and sub_obj is not None:
+                try:
+                    desc = sub_obj.DESCRIPTOR.fields_by_name.get(field_name)
+                    if desc is not None and desc.enum_type is not None:
+                        ev = desc.enum_type.values_by_number.get(current_val)
+                        if ev is not None:
+                            # Preferir o sufixo curto se existir na lista de opções (extra)
+                            # para corresponder ao que está definido em MESHTASTIC_CONFIG_DEFS.
+                            full_name = ev.name          # ex: "ROLE_CLIENT"
+                            short_name = full_name.split("_")[-1]  # ex: "CLIENT"
+                            if extra and short_name in extra:
+                                current_val = short_name
+                            elif extra and full_name in extra:
+                                current_val = full_name
+                            else:
+                                current_val = short_name  # melhor esforço
+                            logger.debug(f"Enum int->str: {sec_key}.{field_name} "
+                                         f"{obj!r} -> {current_val!r}")
+                except Exception as e:
+                    logger.debug(f"Enum int->str failed for {sec_key}.{field_name}: {e}")
+
             result.append((label, field_type, field_name, current_val, extra))
         return result
 
@@ -1004,8 +1351,10 @@ class ConfigTab(QWidget):
             if isinstance(val, bool):
                 w = QCheckBox()
                 w.setChecked(bool(val))
+                w._original_value = bool(val)
             else:
                 w = QLineEdit(str(val) if val is not None else "")
+                w._original_value = str(val) if val is not None else ""
             form.addRow(self._make_label(label), w)
             self._config_widgets[sec_key][key] = w
         scroll.setWidget(content)
@@ -1149,7 +1498,39 @@ class ConfigTab(QWidget):
                 except ValueError:
                     return str(value).encode(), None
 
-        # Sem descriptor — usa tipo Python directo
+        # Sem descriptor protobuf — tenta inferir o tipo correcto pelo valor
+        # actual do campo no objecto (ex: o nó já tem um int → convertemos para int).
+        # Sem esta inferência, um QSpinBox devolve int (OK), um QComboBox devolve
+        # string (não OK para campos enum), e um QCheckBox devolve bool (OK).
+        # O setattr com o tipo errado pode falhar silenciosamente no protobuf.
+        try:
+            current_field_val = getattr(obj, field_name, None)
+        except Exception:
+            current_field_val = None
+
+        if current_field_val is not None:
+            target_type = type(current_field_val)
+            if target_type == int and not isinstance(value, int):
+                try:
+                    return int(value), None
+                except (ValueError, TypeError):
+                    logger.debug(f"_coerce_value (no desc): cannot cast {value!r} to int "
+                                 f"for {field_name}, passing as-is")
+            elif target_type == float and not isinstance(value, float):
+                try:
+                    return float(value), None
+                except (ValueError, TypeError):
+                    logger.debug(f"_coerce_value (no desc): cannot cast {value!r} to float "
+                                 f"for {field_name}, passing as-is")
+            elif target_type == bool and not isinstance(value, bool):
+                return bool(value), None
+            elif target_type == str and not isinstance(value, str):
+                return str(value), None
+            # bytes/bytearray — sem conversão automática, passa tal qual
+        else:
+            logger.debug(f"_coerce_value (no desc): {field_name} not found on obj "
+                         f"{type(obj).__name__}, passing {value!r} as-is")
+
         return value, None
 
     def _save_config(self):
@@ -1161,170 +1542,201 @@ class ConfigTab(QWidget):
             (tr("Deseja guardar todas as alterações de configuração no nó?\n\n")
              + tr("⚠  O nó irá reiniciar após guardar para aplicar as configurações.\n")
              + tr("A ligação TCP será temporariamente perdida e restabelecida.")),
-            
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
         if reply != QMessageBox.Yes:
             return
 
-        self.status_label.setText(tr("A guardar…"))
-        errors         = []
-        saved_sections = set()
+        # ── Collect all widget values in the UI thread ────────────────────
+        # Widget access must happen here (UI thread). Only the blocking
+        # network calls (writeConfig, commit, setOwner) go to the worker thread.
+        collected = {}   # sec_key → {field_name: coerced_value}
+        errors_collect = []
+        owner_long = owner_short = None
+        owner_licensed = False
+        owner_licensed_changed = False
 
-        try:
-            # Abre transacção — o firmware só reinicia uma vez no commitSettingsTransaction,
-            # depois de todos os valores terem sido recebidos e gravados
-            try:
-                self._local_node.beginSettingsTransaction()
-            except Exception as e:
-                logger.debug(f"beginSettingsTransaction not supported or failed: {e}")
+        dev_w = self._config_widgets.get("__device_info__", {})
+        if dev_w:
+            for key, w in dev_w.items():
+                val = self._get_widget_value(w)
+                original = getattr(w, '_original_value', None)
+                # Só inclui se o valor foi realmente alterado pelo utilizador
+                if key == "long_name":
+                    if original is None or val != original:
+                        owner_long = val
+                elif key == "short_name":
+                    if original is None or val != original:
+                        owner_short = val
+                elif key == "is_licensed":
+                    licensed_val = bool(val)
+                    if original is None or licensed_val != original:
+                        owner_licensed = licensed_val
+                        # marca que is_licensed mudou (usa flag separada)
+                        owner_licensed_changed = True
 
-            # ── Recolhe dados do owner (aplica no fim, após writeConfigs) ──
-            owner_long  = None
-            owner_short = None
-            owner_licensed = False
-            dev_w = self._config_widgets.get("__device_info__", {})
-            if dev_w:
-                for key, w in dev_w.items():
-                    val = self._get_widget_value(w)
-                    if key == "long_name":     owner_long     = val
-                    elif key == "short_name":  owner_short    = val
-                    elif key == "is_licensed": owner_licensed = bool(val)
+        for sec_key, fields_widgets in self._config_widgets.items():
+            if sec_key == "__device_info__" or not fields_widgets:
+                continue
+            parts = sec_key.split('.', 1)
+            if len(parts) != 2:
+                continue
+            config_attr, sub_attr = parts
+            cfg_root = getattr(self._local_node, config_attr, None)
+            if cfg_root is None:
+                continue
+            sub_obj = _resolve_sub_obj(cfg_root, sec_key)
+            if sub_obj is None:
+                errors_collect.append(f"Secção {sec_key} não encontrada no nó")
+                logger.warning(f"_save_config: could not resolve sub_obj for {sec_key}")
+                continue
 
-            # ── Secções de config ─────────────────────────────────────
-            for sec_key, fields_widgets in self._config_widgets.items():
-                if sec_key == "__device_info__" or not fields_widgets:
-                    continue
-                parts = sec_key.split('.', 1)
-                if len(parts) != 2:
-                    continue
-                config_attr, sub_attr = parts
-                cfg_root = getattr(self._local_node, config_attr, None)
-                if cfg_root is None:
-                    continue
-                # Tenta pelo nome original, depois pelo nome snake do SECTION_WRITE_NAME,
-                # depois pela conversão camelCase→snake genérica
-                sub_obj = getattr(cfg_root, sub_attr, None)
-                if sub_obj is None:
-                    write_name = SECTION_WRITE_NAME.get(sec_key)
-                    if write_name:
-                        sub_obj = getattr(cfg_root, write_name, None)
-                if sub_obj is None:
-                    snake   = re.sub(r'(?<!^)(?=[A-Z])', '_', sub_attr).lower()
-                    sub_obj = getattr(cfg_root, snake, None)
-                if sub_obj is None:
-                    errors.append(f"Secção {sec_key} não encontrada")
-                    continue
-
-                section_saved = False
-                for field_name, widget in fields_widgets.items():
-                    # Campo especial: mensagens pré-definidas — guardado via setCannedMessages
-                    if field_name == "__canned_messages__":
-                        raw_msgs = self._get_widget_value(widget)
-                        if raw_msgs is not None:
-                            msgs_str = raw_msgs.strip()
-                            if len(msgs_str) > 200:
-                                errors.append(
-                                    f"Msgs pré-definidas: {len(msgs_str)} chars (máx 200). "
-                                    "Reduza o número ou tamanho das mensagens."
-                                )
-                                continue
-                            try:
-                                self._local_node.setCannedMessages(msgs_str)
-                                saved_sections.add("canned_messages_text")
-                                logger.info(f"setCannedMessages: '{msgs_str[:60]}...'")
-                            except AttributeError:
-                                # Fallback: enviar via AdminMessage directamente
-                                try:
-                                    p = admin_pb2.AdminMessage()
-                                    p.set_canned_message_module_messages = msgs_str
-                                    self._local_node._sendAdmin(p)
-                                    saved_sections.add("canned_messages_text")
-                                    logger.info("setCannedMessages via admin fallback")
-                                except Exception as cm_err:
-                                    errors.append(f"Msgs pré-definidas: {cm_err}")
-                            except Exception as cm_err:
-                                errors.append(f"Msgs pré-definidas: {cm_err}")
+            sec_fields = {}
+            for field_name, widget in fields_widgets.items():
+                if field_name == "__canned_messages__":
+                    raw_msgs = self._get_widget_value(widget)
+                    if raw_msgs is None:
                         continue
-
-                    try:
-                        raw_value = self._get_widget_value(widget)
-                        if raw_value is None:
-                            continue
-
-                        obj          = sub_obj
-                        field_parts  = field_name.split('.')
-                        for part in field_parts[:-1]:
-                            obj = getattr(obj, part, None)
-                            if obj is None:
-                                break
-                        if obj is None:
-                            continue
-
-                        last = field_parts[-1]
-                        if not hasattr(obj, last):
-                            continue
-
-                        # FIX-7: conversão explícita via descriptor
-                        coerced, err = self._coerce_value(obj, last, raw_value)
-                        if err:
-                            errors.append(f"{sec_key}.{field_name}: {err}")
-                            continue
-                        if coerced is None:
-                            continue
-
-                        setattr(obj, last, coerced)
-                        section_saved = True
-
-                    except Exception as e:
-                        errors.append(f"{sec_key}.{field_name}: {e}")
-
-                if section_saved:
-                    write_name = SECTION_WRITE_NAME.get(sec_key, sub_attr)
-                    try:
-                        self._local_node.writeConfig(write_name)
-                        saved_sections.add(sec_key)
-                    except Exception as e:
-                        errors.append(f"writeConfig({write_name}): {e}")
-
-            # ── Commit da transacção — o nó reinicia uma única vez ────
-            try:
-                self._local_node.commitSettingsTransaction()
-            except Exception as e:
-                logger.debug(f"commitSettingsTransaction not supported or failed: {e}")
-
-            # ── setOwner após commit — garante que o nome é gravado ───
-            # O setOwner envia AdminMessage directamente ao firmware;
-            # deve ser enviado depois do commit para não ser afectado pelo reinício
-            if owner_long is not None or owner_short is not None:
+                    raw_msgs = raw_msgs.strip()
+                    # Compara com o valor original que foi carregado do nó.
+                    # O container guarda _original_value (pipe-string) definido
+                    # em _create_field_widget — se for igual, não há alteração.
+                    original = getattr(widget, '_original_value', None)
+                    if original is not None and raw_msgs == original:
+                        logger.debug(f"  [{sec_key}] __canned_messages__: sem alteração, skipping")
+                        continue
+                    sec_fields[field_name] = raw_msgs
+                    continue
+                raw_value = self._get_widget_value(widget)
+                if raw_value is None:
+                    continue
+                obj = sub_obj
+                field_parts = field_name.split(".")
+                for part in field_parts[:-1]:
+                    obj = getattr(obj, part, None)
+                    if obj is None:
+                        break
+                if obj is None:
+                    logger.debug(f"  [{sec_key}] {field_name}: obj is None, skipping")
+                    continue
+                last = field_parts[-1]
+                if not hasattr(obj, last):
+                    logger.debug(f"  [{sec_key}] {field_name}: no attr {last!r}, skipping")
+                    continue
+                coerced, err = self._coerce_value(obj, last, raw_value)
+                if err:
+                    errors_collect.append(f"{sec_key}.{field_name}: {err}")
+                    continue
+                if coerced is None:
+                    logger.debug(f"  [{sec_key}] {field_name}: coerced is None, skipping")
+                    continue
+                # Detecção de alteração: compara o valor actual do nó com o valor
+                # coerced do widget.  Ambos devem ser do mesmo tipo após _coerce_value;
+                # se não houver descritor protobuf disponível, _coerce_value devolve o
+                # valor Python directo (pode ser string para combos) enquanto o nó
+                # guarda um int — nesse caso forçamos conversão int para garantir
+                # comparação correcta e evitar falsos "sem alteração".
                 try:
-                    self._local_node.setOwner(
-                        long_name=owner_long or "",
-                        short_name=owner_short or "",
-                        is_licensed=owner_licensed
-                    )
-                    saved_sections.add("owner")
-                except Exception as e:
-                    errors.append(f"setOwner: {e}")
-
-            if saved_sections:
-                self.status_label.setText(tr("✅ {n} secção(ões) guardadas", n=len(saved_sections)))
-                msg = tr("Configuração guardada!\n{n} secção(ões) enviadas ao nó.", n=len(saved_sections))
-                if errors:
-                    msg += f"\n\n⚠ {len(errors)} aviso(s):\n" + "\n".join(errors[:8])
-                QMessageBox.information(self, tr("Configuração Guardada"), msg)
-                self.reboot_required.emit()
+                    current = getattr(obj, last)
+                    # Normaliza tipos antes de comparar para evitar int != "CLIENT"
+                    cur_cmp = current
+                    coe_cmp = coerced
+                    if type(current) != type(coerced):
+                        try:
+                            cur_cmp = type(coerced)(current)
+                        except (ValueError, TypeError):
+                            try:
+                                coe_cmp = type(current)(coerced)
+                            except (ValueError, TypeError):
+                                pass  # compara como estão, melhor que nada
+                    if cur_cmp == coe_cmp:
+                        logger.debug(f"  [{sec_key}] {field_name}: sem alteração "
+                                     f"({current!r} == {coerced!r}), skipping")
+                        continue   # no change — skip this field
+                except Exception:
+                    pass
+                logger.debug(f"  [{sec_key}] {field_name}: {getattr(obj, last, '?')!r} → {coerced!r}")
+                # Guarda field_parts e coerced — NÃO o obj resolvido no UI thread.
+                # O worker vai re-resolver o caminho a partir do seu self._node,
+                # garantindo que o setattr e o CopyFrom dentro de writeConfig
+                # operam sempre sobre o mesmo objecto em memória.
+                sec_fields[field_name] = (field_parts, coerced)
+            if sec_fields:
+                collected[sec_key] = sec_fields
+                logger.info(f"Collected section {sec_key} with changes: {list(sec_fields.keys())}")
             else:
-                self.status_label.setText(tr("⚠ Nada guardado"))
-                msg = tr("Não foram detectadas alterações para guardar.")
-                if errors:
-                    msg += f"\n\nErros:\n" + "\n".join(errors[:8])
-                QMessageBox.information(self, tr("Sem Alterações"), msg)
+                logger.debug(f"Section {sec_key}: no changes detected")
 
-        except Exception as e:
-            logger.error(f"Error saving configuration: {e}", exc_info=True)
-            self.status_label.setText(tr("❌ Erro ao guardar"))
-            QMessageBox.critical(self, tr("Erro"), tr("Erro ao guardar configuração:\n{e}", e=e))
+        self.status_label.setText(tr("A guardar…"))
+        self.btn_save.setEnabled(False)
+
+        # Resolve sempre iface.localNode no momento do save — garante que usamos
+        # o mesmo objecto vivo que a biblioteca meshtastic-python usa para
+        # writeConfig/commit, mesmo que _local_node tenha sido obtido num
+        # momento anterior (ex: antes de um reboot do nó).
+        iface_ref = self._iface
+        local_node_ref = getattr(iface_ref, "localNode", None) or self._local_node
+
+        # Using module-level _ConfigSaveWorker (not a locally-defined class)
+        # so PyQt5's meta-object system correctly delivers signals across threads.
+        self._cfg_save_thread = QThread()
+        self._cfg_save_worker = _ConfigSaveWorker(
+            local_node_ref, iface_ref, collected,
+            owner_long, owner_short, owner_licensed, owner_licensed_changed, errors_collect
+        )
+        self._cfg_save_worker.moveToThread(self._cfg_save_thread)
+        self._cfg_save_thread.started.connect(self._cfg_save_worker.run)
+        self._cfg_save_worker.finished.connect(self._on_save_config_finished)
+        self._cfg_save_worker.finished.connect(self._cfg_save_thread.quit)
+        self._cfg_save_worker.finished.connect(self._cfg_save_worker.deleteLater)
+        self._cfg_save_thread.finished.connect(self._cfg_save_thread.deleteLater)
+        self._cfg_save_thread.start()
+
+    def _on_save_config_finished(self, saved_sections: set, write_config_count: int, errors: list):
+        self.btn_save.setEnabled(True)
+
+        # Separa secções de configuração reais (que geraram writeConfig())
+        # das entradas especiais que usam outras vias (setOwner, setCannedMessages)
+        special = {"owner", "canned_messages_text"}
+        config_sections = sorted(s for s in saved_sections if s not in special)
+        extras = [s for s in saved_sections if s in special]
+
+        if saved_sections:
+            # Status bar: resumo compacto
+            parts = []
+            if write_config_count:
+                parts.append(f"{write_config_count} writeConfig()")
+            if "owner" in extras:
+                parts.append(tr("nome"))
+            if "canned_messages_text" in extras:
+                parts.append(tr("msgs"))
+            self.status_label.setText("✅ " + (" + ".join(parts) if parts else tr("guardado")))
+
+            # Diálogo: detalhe completo do que foi enviado ao nó
+            msg = tr("Configuração guardada com sucesso!")
+
+            if write_config_count:
+                names = [SECTION_WRITE_NAME.get(s, s.split(".")[-1])
+                         for s in config_sections]
+                msg += f"\n\n{tr('writeConfig() enviados')}: {write_config_count}"
+                msg += "\n  • " + "\n  • ".join(names)
+
+            if "owner" in extras:
+                msg += f"\n  • {tr('setOwner (nome do nó)')}"
+            if "canned_messages_text" in extras:
+                msg += f"\n  • {tr('setCannedMessages')}"
+
+            if errors:
+                msg += f"\n\n⚠ {len(errors)} aviso(s):\n" + "\n".join(errors[:8])
+
+            QMessageBox.information(self, tr("Configuração Guardada"), msg)
+            self.reboot_required.emit()
+        else:
+            self.status_label.setText(tr("⚠ Nada guardado"))
+            msg = tr("Não foram detectadas alterações para guardar.")
+            if errors:
+                msg += f"\n\n{tr('Erros')}:\n" + "\n".join(errors[:8])
+            QMessageBox.information(self, tr("Sem Alterações"), msg)
 
     def _on_section_changed(self, row: int):
         if 0 <= row < self.stack.count():
@@ -1339,6 +1751,37 @@ class ConfigTab(QWidget):
             )
             lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
             return lbl
+        elif field_type == "readonly_with_note":
+            # Widget read-only com nota explicativa — para campos que existem no
+            # proto mas não são configuráveis nesta versão do MeshDeck.
+            # Layout: valor actual (lbl) + nota multiline com wordwrap.
+            container = QWidget()
+            container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            vl = QVBoxLayout(container)
+            vl.setContentsMargins(0, 0, 0, 4)
+            vl.setSpacing(4)
+
+            # Valor actual (read-only) — usa chaves i18n para PT/EN
+            val_str = tr("proxy_active") if current_val else tr("proxy_inactive")
+            val_lbl = QLabel(val_str)
+            val_lbl.setStyleSheet(
+                f"color:{ACCENT_BLUE};background:{DARK_BG};"
+                f"border:1px solid {BORDER_COLOR};border-radius:4px;"
+                f"padding:4px 8px;font-size:12px;"
+            )
+            val_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            vl.addWidget(val_lbl)
+
+            # Nota explicativa multiline — wordwrap garante que não corta
+            note = QLabel(tr("proxy_note"))
+            note.setStyleSheet(
+                f"color:{ACCENT_ORANGE};font-size:10px;font-style:italic;"
+            )
+            note.setWordWrap(True)
+            note.setMinimumWidth(200)
+            note.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            vl.addWidget(note)
+            return container
         elif field_type == "text":
             w = QLineEdit()
             w.setText(str(current_val) if current_val is not None else "")
@@ -1379,17 +1822,22 @@ class ConfigTab(QWidget):
             if extra and isinstance(extra, list):
                 w.addItems(extra)
             if current_val is not None:
+                # current_val chega sempre como string após a conversão enum int→str
+                # feita em _read_section_values.  Procura pelo texto exacto primeiro;
+                # se não encontrar (enum desconhecido) tenta por índice numérico como
+                # último recurso para não deixar o combo em branco.
                 val_str = str(current_val)
-                idx     = w.findText(val_str)
+                idx = w.findText(val_str)
                 if idx >= 0:
                     w.setCurrentIndex(idx)
                 else:
-                    try:
-                        int_val = int(current_val)
-                        if 0 <= int_val < w.count():
-                            w.setCurrentIndex(int_val)
-                    except (TypeError, ValueError):
-                        pass
+                    # Tentativa por sufixo: "ROLE_CLIENT" → encontra "CLIENT"
+                    for i in range(w.count()):
+                        if w.itemText(i) and val_str.endswith(w.itemText(i)):
+                            w.setCurrentIndex(i)
+                            break
+                    else:
+                        logger.debug(f"combo: no match for {val_str!r} in {extra}")
             return w
         elif field_type == "canned_messages":
             # Widget especial para mensagens pré-definidas separadas por '|'
@@ -1441,7 +1889,14 @@ class ConfigTab(QWidget):
 
             vl.addWidget(te)
             vl.addWidget(char_label)
-            container._te = te   # referência para _get_widget_value
+            container._te = te            # referência para _get_widget_value
+            # Guarda o valor original (pipe-string) para detecção de alteração
+            # em _save_config — sem isto qualquer save envia sempre as msgs mesmo
+            # sem alteração, porque "" != None passa sempre na condição.
+            original_pipe = '|'.join(
+                [m.strip() for m in current_val.split('|') if m.strip()]
+            ) if current_val and isinstance(current_val, str) else ''
+            container._original_value = original_pipe
             return container
         return None
 

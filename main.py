@@ -117,8 +117,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.worker: Optional[MeshtasticWorker] = None
-        self._hostname  = "localhost"
-        self._port      = 4403
+        self._hostname     = "localhost"
+        self._port         = 4403
+        self._conn_mode    = 0   # 0=TCP, 1=Serial
+        self._serial_port  = ""  # last used serial device
         self._selected_node_id: Optional[str]   = None
         self._pending_traceroute_dest: Optional[tuple] = None
 
@@ -346,6 +348,7 @@ class MainWindow(QMainWindow):
 
         self.nav_tab = NavigationTab()
         self.tab_widget.addTab(self.nav_tab, tr("🧭  Navegação"))
+        self.nav_tab.refresh_position_requested.connect(self._on_refresh_local_position)
 
         self.metrics_tab = MetricsTab()
         self.tab_widget.addTab(self.metrics_tab, tr("📈 Métricas"))
@@ -456,11 +459,18 @@ class MainWindow(QMainWindow):
     # Conexão / desconexão
     # ------------------------------------------------------------------
     def _open_connection_dialog(self):
-        dlg = ConnectionDialog(self._hostname, self._port, self)
+        dlg = ConnectionDialog(
+            self._hostname, self._port,
+            current_mode=self._conn_mode,
+            current_serial_port=self._serial_port,
+            parent=self,
+        )
         dlg.language_changed.connect(self._on_language_changed)
         if dlg.exec_() == QDialog.Accepted:
-            self._hostname = dlg.hostname
-            self._port     = dlg.port
+            self._conn_mode   = dlg.connection_mode
+            self._serial_port = dlg.selected_serial_port
+            self._hostname    = dlg.hostname
+            self._port        = dlg.port
             self._connect()
 
     def _connect(self):
@@ -489,7 +499,14 @@ class MainWindow(QMainWindow):
             f"border:1px solid {ACCENT_ORANGE};border-radius:12px;"
         )
         QApplication.processEvents()
-        self._init_worker()
+        if self._conn_mode == 1:
+            # Serial mode: connect directly via SerialInterface — no bridge needed.
+            # SerialInterface handles the framing natively and avoids PKI session
+            # key issues that occur when writeChannel/writeConfig go through TCP.
+            self._init_worker()
+        else:
+            self._init_worker()
+
 
     def _on_reboot_required(self):
         """Chamado após guardar configurações — desliga e abre o diálogo de espera."""
@@ -542,7 +559,9 @@ class MainWindow(QMainWindow):
         self._on_connection_changed(False)
 
     def _init_worker(self):
-        self.worker = MeshtasticWorker(hostname=self._hostname, port=self._port)
+        serial_port = self._serial_port if self._conn_mode == 1 else None
+        self.worker = MeshtasticWorker(hostname=self._hostname, port=self._port,
+                                       serial_port=serial_port)
         self.worker.connection_changed.connect(self._on_connection_changed)
         self.worker.node_updated.connect(self._on_node_updated)
         self.worker.node_updated.connect(self._on_node_updated_metrics)
@@ -570,6 +589,7 @@ class MainWindow(QMainWindow):
         # FIX-4: my_node_id_ready é o primeiro sinal — bloqueia inserção do nó local
         self.worker.my_node_id_ready.connect(self._on_my_node_id_ready)
         self.worker.local_node_ready.connect(self._on_local_node_ready)
+        self.worker.local_position_updated.connect(self._on_local_position_updated)
         self.worker.interface_ready.connect(self.config_tab.set_interface)
         self.worker.traceroute_result.connect(self._on_traceroute_result)
         self.worker.neighbor_info_received.connect(
@@ -610,7 +630,11 @@ class MainWindow(QMainWindow):
     def _on_connection_changed(self, connected: bool):
         if connected:
             host = f"{self._hostname}:{self._port}"
-            self.conn_indicator.setText(tr("🟢  {host}", host=host))
+            if self._conn_mode == 1 and self._serial_port:
+                indicator_text = f"🟢  {self._serial_port}  ·  🔌 {tr('conn_via_serial')}"
+            else:
+                indicator_text = tr("🟢  {host}", host=host)
+            self.conn_indicator.setText(indicator_text)
             self.conn_indicator.setStyleSheet(
                 f"color:{ACCENT_GREEN};font-weight:bold;font-size:12px;"
                 f"background:{PANEL_BG};padding:4px 12px;"
@@ -1504,6 +1528,21 @@ class MainWindow(QMainWindow):
             self.worker.send_node_info()
             self.statusBar().showMessage(tr("📡 Info do Nó enviada para a rede."), 5000)
             QTimer.singleShot(3000, lambda: self.act_send_nodeinfo.setEnabled(True))
+
+    def _on_refresh_local_position(self):
+        """Botão 🔄 no card Local Node — pede ao worker para reler a posição GPS."""
+        if not self.worker or not self.worker._connected:
+            self.nav_tab.set_refresh_pos_result(False)
+            return
+        self.worker.refresh_local_position()
+
+    def _on_local_position_updated(self, lat: float, lon: float,
+                                   alt: object, found: bool):
+        """Resultado do refresh de posição — actualiza nav_tab."""
+        if found:
+            alt_f = float(alt) if alt is not None else None
+            self.nav_tab.update_local_position(lat, lon, alt_f)
+        self.nav_tab.set_refresh_pos_result(found)
 
     def _on_send_position(self):
         if not self.worker:
