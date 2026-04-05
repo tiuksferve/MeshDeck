@@ -1084,4 +1084,9 @@ _STRINGS: dict = {
     "nav_pos_refreshing":           {"pt": "⏳ A ler posição…",                "en": "⏳ Reading position…"},
     "nav_pos_not_found":            {"pt": "⚠ Sem posição GPS disponível",     "en": "⚠ No GPS position available"},
     "nav_pos_refreshed":            {"pt": "📍 Posição actualizada",            "en": "📍 Position updated"},
+    # ── Metrics filter hint ───────────────────────────────────────────────────
+    "metrics_filter_hint":          {"pt": "💡 Use o campo de busca global para filtrar por ID ou nome de nó.",
+                                     "en": "💡 Use the global search field to filter by node ID or name."},
+    "metrics_no_results":           {"pt": "Sem resultados para",
+                                     "en": "No results for"},
 }

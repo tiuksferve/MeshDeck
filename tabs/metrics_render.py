@@ -145,7 +145,8 @@ class MetricsRenderMixin:
 </div>
 <div class="card" style="margin-top:16px">
   <h3>{tr("Top Nós por Pacotes")}</h3>
-  <table><tr><th>{tr("Nome")}</th><th>{tr("Pacotes")}</th><th>Ch. Util.</th><th>{tr("Bateria")}</th></tr><tbody id="ov-node-tbody">{rows}</tbody></table>
+  <div style="margin-bottom:6px;font-size:11px;color:#8b949e">{tr("metrics_filter_hint")}</div>
+  <table><tr><th>{tr("Nome")}</th><th>{tr("Pacotes")}</th><th>Ch. Util.</th><th>{tr("Bateria")}</th></tr><tbody id="ov-node-tbody" data-filterable="1">{rows}</tbody></table>
 </div>
 <div class="updated" id="ov-updated">{tr('Sessão iniciada')} · {datetime.fromtimestamp(self._start_time).strftime('%H:%M:%S %d/%m/%Y')} · {tr('Actualizado:')} {self._now_str()}</div>
 <script>
@@ -184,8 +185,30 @@ window._metricsUpdateData = function(d) {{
       h+='<tr><td>'+nid+'</td><td>'+nm+'</td><td>'+cnt+'</td><td>'+ch+'%</td><td>'+b+'</td></tr>';
     }});
     tb.innerHTML=h;
+    _applyFilter();
   }}
 }};
+var _currentFilter='';
+function _applyFilter(){{
+  var ft=_currentFilter;
+  document.querySelectorAll('table tbody[data-filterable]').forEach(function(tbody){{
+    var found=0;
+    tbody.querySelectorAll('tr:not(.filter-no-match)').forEach(function(row){{
+      var hay=Array.from(row.querySelectorAll('td')).map(function(c){{return c.textContent.toLowerCase();}}).join(' ');
+      var ok=!ft||hay.indexOf(ft)!==-1;
+      row.style.display=ok?'':'none';
+      if(ok) found++;
+    }});
+    var noRow=tbody.querySelector('.filter-no-match');
+    if(!noRow){{
+      noRow=document.createElement('tr');noRow.className='filter-no-match';
+      noRow.innerHTML='<td colspan="99" style="color:#f0883e;padding:8px;text-align:center;font-size:12px">🔍 '+(ft?'{tr("metrics_no_results")}'+' &quot;'+ft+'&quot;':'')+'</td>';
+      tbody.appendChild(noRow);
+    }}
+    noRow.style.display=(ft&&found===0)?'':'none';
+  }});
+}}
+window._metricsFilterTable=function(text){{_currentFilter=(text||'').toLowerCase().trim();_applyFilter();}};
 </script>"""
         return self._base_html(tr("📊 Visão Geral"), body)
 
@@ -303,7 +326,8 @@ window._metricsUpdateData = function(d) {{
 </div>
 <div class="card" style="margin-top:16px">
   <h3>{tr("Por Nó — Ch. Util · Airtime TX · Duty Cycle/h")}</h3>
-  <table><tr><th>ID</th><th>{tr("Nome")}</th><th>Ch. Util.</th><th>Air TX (10m)</th><th>Duty Cycle/h</th><th>{tr("Estado")}</th></tr><tbody id="ch-node-tbody">{rows}</tbody></table>
+  <div style="margin-bottom:6px;font-size:11px;color:#8b949e">{tr("metrics_filter_hint")}</div>
+  <table><tr><th>ID</th><th>{tr("Nome")}</th><th>Ch. Util.</th><th>Air TX (10m)</th><th>Duty Cycle/h</th><th>{tr("Estado")}</th></tr><tbody id="ch-node-tbody" data-filterable="1">{rows}</tbody></table>
   <div style="color:#8b949e;font-size:10px;margin-top:8px;padding-top:8px;border-top:1px solid #21262d">
     {tr("duty_cycle_note")}
   </div>
@@ -372,8 +396,30 @@ window._metricsUpdateData = function(d) {{
             + '</span></td></tr>';
     }});
     tbody.innerHTML = html;
+    _applyFilter();
   }}
 }};
+var _currentFilter='';
+function _applyFilter(){{
+  var ft=_currentFilter;
+  document.querySelectorAll('table tbody[data-filterable]').forEach(function(tbody){{
+    var found=0;
+    tbody.querySelectorAll('tr:not(.filter-no-match)').forEach(function(row){{
+      var hay=Array.from(row.querySelectorAll('td')).map(function(c){{return c.textContent.toLowerCase();}}).join(' ');
+      var ok=!ft||hay.indexOf(ft)!==-1;
+      row.style.display=ok?'':'none';
+      if(ok) found++;
+    }});
+    var noRow=tbody.querySelector('.filter-no-match');
+    if(!noRow){{
+      noRow=document.createElement('tr');noRow.className='filter-no-match';
+      noRow.innerHTML='<td colspan="99" style="color:#f0883e;padding:8px;text-align:center;font-size:12px">🔍 '+(ft?'{tr("metrics_no_results")}'+' &quot;'+ft+'&quot;':'')+'</td>';
+      tbody.appendChild(noRow);
+    }}
+    noRow.style.display=(ft&&found===0)?'':'none';
+  }});
+}}
+window._metricsFilterTable=function(text){{_currentFilter=(text||'').toLowerCase().trim();_applyFilter();}};
 </script>"""
         return self._base_html(tr("📡 Canal & Airtime"), body)
 
@@ -877,6 +923,25 @@ window._metricsUpdateData = function(d) {{
     window._battDistChart.update('none');
   }}
 }};
+window._metricsFilterTable = function(text) {{
+  var ft = (text || '').toLowerCase().trim();
+  document.querySelectorAll('table tbody[data-filterable]').forEach(function(tbody) {{
+    var found = 0;
+    tbody.querySelectorAll('tr:not(.filter-no-match)').forEach(function(row) {{
+      var hay = Array.from(row.querySelectorAll('td')).map(function(c){{ return c.textContent.toLowerCase(); }}).join(' ');
+      var ok = !ft || hay.indexOf(ft) !== -1;
+      row.style.display = ok ? '' : 'none';
+      if (ok) found++;
+    }});
+    var noRow = tbody.querySelector('.filter-no-match');
+    if (!noRow) {{
+      noRow = document.createElement('tr'); noRow.className = 'filter-no-match';
+      noRow.innerHTML = '<td colspan="99" style="color:#f0883e;padding:8px;text-align:center;font-size:12px">🔍 ' + (ft ? '{tr("metrics_no_results")}' + ' &quot;' + ft + '&quot;' : '') + '</td>';
+      tbody.appendChild(noRow);
+    }}
+    noRow.style.display = (ft && found === 0) ? '' : 'none';
+  }});
+}};
 </script>"""
         return self._base_html(tr("🔋 Nós & Bateria"), body)
 
@@ -1222,14 +1287,34 @@ window._metricsUpdateData = function(d) {{
 </div>
 <div class="card">
   <h3>{tr('Pares de Vizinhos Directos')}</h3>
+  <div style="margin-bottom:6px;font-size:11px;color:#8b949e">{tr("metrics_filter_hint")}</div>
   <table>
     <tr><th>ID A</th><th>{tr('Nome A')}</th><th></th><th>ID B</th><th>{tr('Nome B')}</th><th>SNR</th></tr>
-    {rows_html}
+    <tbody data-filterable="1">{rows_html}</tbody>
   </table>
 </div>
 <script>
 window._metricsUpdateData = function(d) {{
   // Tabela de vizinhos não tem update incremental — actualiza no próximo render
+}};
+window._metricsFilterTable = function(text) {{
+  var ft = (text || '').toLowerCase().trim();
+  document.querySelectorAll('table tbody[data-filterable]').forEach(function(tbody) {{
+    var found = 0;
+    tbody.querySelectorAll('tr:not(.filter-no-match)').forEach(function(row) {{
+      var hay = Array.from(row.querySelectorAll('td')).map(function(c){{ return c.textContent.toLowerCase(); }}).join(' ');
+      var ok = !ft || hay.indexOf(ft) !== -1;
+      row.style.display = ok ? '' : 'none';
+      if (ok) found++;
+    }});
+    var noRow = tbody.querySelector('.filter-no-match');
+    if (!noRow) {{
+      noRow = document.createElement('tr'); noRow.className = 'filter-no-match';
+      noRow.innerHTML = '<td colspan="99" style="color:#f0883e;padding:8px;text-align:center;font-size:12px">🔍 ' + (ft ? '{tr("metrics_no_results")}' + ' &quot;' + ft + '&quot;' : '') + '</td>';
+      tbody.appendChild(noRow);
+    }}
+    noRow.style.display = (ft && found === 0) ? '' : 'none';
+  }});
 }};
 </script>"""
         return self._base_html(tr("🔗 Vizinhança"), body)
@@ -1295,12 +1380,34 @@ window._metricsUpdateData = function(d) {{
 </div>
 <div class="card">
   <h3>{tr('Links por Alcance')}</h3>
+  <div style="margin-bottom:6px;font-size:11px;color:#8b949e">{tr("metrics_filter_hint")}</div>
   <table>
     <tr><th>ID A</th><th>{tr('Nome A')}</th><th>ID B</th><th>{tr('Nome B')}</th><th>{tr('Distância')}</th><th>SNR</th></tr>
-    {rows_html}
+    <tbody data-filterable="1">{rows_html}</tbody>
   </table>
 </div>
-<script>window._metricsUpdateData=function(d){{}};</script>"""
+<script>
+window._metricsUpdateData=function(d){{}};
+window._metricsFilterTable = function(text) {{
+  var ft = (text || '').toLowerCase().trim();
+  document.querySelectorAll('table tbody[data-filterable]').forEach(function(tbody) {{
+    var found = 0;
+    tbody.querySelectorAll('tr:not(.filter-no-match)').forEach(function(row) {{
+      var hay = Array.from(row.querySelectorAll('td')).map(function(c){{ return c.textContent.toLowerCase(); }}).join(' ');
+      var ok = !ft || hay.indexOf(ft) !== -1;
+      row.style.display = ok ? '' : 'none';
+      if (ok) found++;
+    }});
+    var noRow = tbody.querySelector('.filter-no-match');
+    if (!noRow) {{
+      noRow = document.createElement('tr'); noRow.className = 'filter-no-match';
+      noRow.innerHTML = '<td colspan="99" style="color:#f0883e;padding:8px;text-align:center;font-size:12px">🔍 ' + (ft ? '{tr("metrics_no_results")}' + ' &quot;' + ft + '&quot;' : '') + '</td>';
+      tbody.appendChild(noRow);
+    }}
+    noRow.style.display = (ft && found === 0) ? '' : 'none';
+  }});
+}};
+</script>"""
         return self._base_html(tr("📏 Alcance & Links"), body)
 
     # ── 10. Intervalos entre pacotes ─────────────────────────────────────
@@ -1332,15 +1439,41 @@ window._metricsUpdateData = function(d) {{
 </div>
 <div class="card">
   <h3>{tr('Intervalo Médio entre Pacotes por Nó')}</h3>
+  <div style="margin-bottom:6px;font-size:11px;color:#8b949e">{tr("metrics_filter_hint")}</div>
   <table>
     <tr><th>ID</th><th>{tr('Nome')}</th><th>{tr('Média')}</th><th>Mín.</th><th>Máx.</th><th>{tr('Amostras')}</th><th>{tr('Frequência')}</th></tr>
-    <tbody id="intervals-tbody">{rows_html}</tbody>
+    <tbody id="intervals-tbody" data-filterable="1">{rows_html}</tbody>
   </table>
   <div style="color:#8b949e;font-size:10px;margin-top:8px;padding-top:8px;border-top:1px solid #21262d">
     {tr('ℹ️ Intervalos <30s = alta frequência · 30–180s = normal · >180s = baixa frequência')}
   </div>
 </div>
 <script>
+// Filtro activo — aplicado após cada update de dados
+var _currentFilter = '';
+window._metricsFilterTable = function(text) {{
+  _currentFilter = (text || '').toLowerCase().trim();
+  _applyFilter();
+}};
+function _applyFilter() {{
+  var ft = _currentFilter;
+  var tbody = document.getElementById('intervals-tbody');
+  if (!tbody) return;
+  var found = 0;
+  tbody.querySelectorAll('tr:not(.filter-no-match)').forEach(function(row) {{
+    var hay = Array.from(row.querySelectorAll('td')).map(function(c){{ return c.textContent.toLowerCase(); }}).join(' ');
+    var ok = !ft || hay.indexOf(ft) !== -1;
+    row.style.display = ok ? '' : 'none';
+    if (ok) found++;
+  }});
+  var noRow = tbody.querySelector('.filter-no-match');
+  if (!noRow) {{
+    noRow = document.createElement('tr'); noRow.className = 'filter-no-match';
+    noRow.innerHTML = '<td colspan="7" style="color:#f0883e;padding:8px;text-align:center;font-size:12px">🔍 ' + (ft ? '{tr("metrics_no_results")}' + ' &quot;' + ft + '&quot;' : '') + '</td>';
+    tbody.appendChild(noRow);
+  }}
+  noRow.style.display = (ft && found === 0) ? '' : 'none';
+}}
 window._metricsUpdateData = function(d) {{
   if (!d || !d.rows) return;
   var tbody = document.getElementById('intervals-tbody');
@@ -1358,7 +1491,9 @@ window._metricsUpdateData = function(d) {{
           + '<td style="color:#8b949e">'+cnt+'</td>'
           + '<td style="font-size:11px;color:#8b949e">'+freq+'</td></tr>';
   }});
+  // Preserva a linha .filter-no-match ao reconstruir
   tbody.innerHTML = html || '<tr><td colspan="7" class="no-data">—</td></tr>';
+  _applyFilter();   // reaplicar filtro após update dos dados
 }};
 </script>"""
         return self._base_html(tr("⏰ Intervalos"), body)
