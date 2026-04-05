@@ -931,6 +931,7 @@ class MainWindow(QMainWindow):
         self.proxy_model.set_filter_text(text)
         self.messages_tab.set_filter_text(text)
         self.nav_tab.set_filter_text(text)
+        self.metrics_tab.set_filter_text(text)
         # FIX-8: contador NÃO muda com pesquisa — reflecte sempre o total real
         if self.tab_widget.currentIndex() == self.TAB_MAP:
             self._refresh_map()
@@ -1423,6 +1424,8 @@ class MainWindow(QMainWindow):
             + tr("about_feat3")
             + tr("about_feat4")
             + tr("about_feat5")
+            + tr("about_feat6")
+            + tr("about_feat7")
         )
         features.setStyleSheet(f"color:{TEXT_MUTED};font-size:11px;line-height:1.8;")
         features.setAlignment(Qt.AlignLeft)

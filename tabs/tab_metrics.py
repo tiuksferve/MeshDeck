@@ -66,7 +66,8 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._reset_data()
-        self._page_ready = False
+        self._page_ready  = False
+        self._filter_text = ""    # texto do campo de busca global
         # _refresh_timer: dispara runJavaScript a cada 5s — corre SEMPRE,
         # independente do carregamento. O JS protege com if(window._metricsUpdateData).
         self._refresh_timer = QTimer(self)
@@ -188,6 +189,9 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
         self._page_ready = True
         self._update_refresh_label()
         self._refresh_current()   # refresh imediato ao carregar
+        # Reaplicar filtro se o utilizador já tem uma pesquisa activa
+        if self._filter_text:
+            self._apply_filter_to_js()
 
     def _on_clear(self):
         reply = QMessageBox.question(
@@ -279,6 +283,21 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
         from datetime import datetime
         ts = datetime.now().strftime("%H:%M:%S")
         self._lbl_last_refresh.setText(f"↻ {ts}")
+
+    def set_filter_text(self, text: str):
+        """Recebe o texto do campo de busca global e aplica-o às tabelas da métrica activa.
+        Passa o filtro ao JS via runJavaScript — sem recarregar o HTML."""
+        self._filter_text = text.strip().lower()
+        if self._page_ready:
+            self._apply_filter_to_js()
+
+    def _apply_filter_to_js(self):
+        """Envia o filtro actual ao JS da página para ocultar/mostrar linhas."""
+        import json as _json
+        ft = _json.dumps(self._filter_text)
+        self._chart_view.page().runJavaScript(
+            f"if(window._metricsFilterTable) window._metricsFilterTable({ft});"
+        )
 
     def _render_section(self, row: int):
         _, key = self.get_sections()[row]

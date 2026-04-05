@@ -10,7 +10,7 @@ from collections import defaultdict
 from i18n import tr
 from datetime import datetime, timedelta
 
-from PyQt5.QtCore import Qt, pyqtSignal, QTimer
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer, pyqtSlot, QObject
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QSplitter, QFrame, QLabel, QLineEdit, QPushButton,
@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (
     QSizePolicy, QHeaderView
 )
 from PyQt5.QtWebEngineWidgets import QWebEngineView
+from PyQt5.QtWebChannel import QWebChannel
 from PyQt5.QtGui import QColor, QFont
 
 from constants import (
@@ -29,6 +30,15 @@ from constants import (
 class ConversationContext:
     CHANNEL = "channel"
     DM      = "dm"
+
+
+class _ReplyBridge(QObject):
+    """Exposto ao JavaScript via QWebChannel para receber cliques de reply."""
+    reply_requested = pyqtSignal(str, str)   # (from_name, text_preview)
+
+    @pyqtSlot(str, str)
+    def requestReply(self, from_name: str, text_preview: str):
+        self.reply_requested.emit(from_name, text_preview)
 
 
 class MessagesTab(QWidget):
@@ -55,6 +65,8 @@ class MessagesTab(QWidget):
         self._node_choices_fn: Callable  = lambda: []
         self._filter_text: str           = ""
         self._batch_mode:  bool          = False  # suppresses _refresh_dm_list during batch loads
+        self._reply_from:  Optional[str] = None   # nome do remetente a quem se responde
+        self._reply_text:  Optional[str] = None   # preview do texto original
 
         self._build_ui()
 
@@ -66,11 +78,30 @@ class MessagesTab(QWidget):
         splitter = QSplitter(Qt.Horizontal)
         splitter.setHandleWidth(2)
 
+        # Painel esquerdo: splitter vertical entre lista de canais e lista de DMs.
+        # Ambas as secções são redimensionáveis pelo utilizador — resolve o problema
+        # de DMs invisíveis em ecrãs de baixa resolução.
         left = QWidget()
         left.setMaximumWidth(280)
         left.setMinimumWidth(180)
-        lv = QVBoxLayout(left)
-        lv.setContentsMargins(0, 0, 4, 0)
+        left_outer = QVBoxLayout(left)
+        left_outer.setContentsMargins(0, 0, 4, 0)
+        left_outer.setSpacing(0)
+
+        left_splitter = QSplitter(Qt.Vertical)
+        left_splitter.setHandleWidth(4)
+        left_splitter.setChildrenCollapsible(False)   # evita que DMs desapareçam em ecrãs pequenos
+        left_splitter.setStyleSheet(
+            f"QSplitter::handle{{background:{ACCENT_BLUE}44;"
+            f"border-radius:2px;margin:1px 4px;}}"
+            f"QSplitter::handle:hover{{background:{ACCENT_BLUE};}}"
+        )
+
+        # ── Secção Canais ──────────────────────────────────────────────────
+        chan_widget = QWidget()
+        chan_widget.setMinimumHeight(60)
+        lv = QVBoxLayout(chan_widget)
+        lv.setContentsMargins(0, 0, 0, 2)
         lv.setSpacing(4)
 
         self._chan_hdr = QLabel(tr("📻  Canais"))
@@ -85,14 +116,16 @@ class MessagesTab(QWidget):
         self.channel_list = QListWidget()
         self.channel_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self.channel_list.itemClicked.connect(self._on_channel_clicked)
-        self.channel_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.channel_list.setFixedHeight(34)
-        lv.addWidget(self.channel_list)
+        self.channel_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        lv.addWidget(self.channel_list, stretch=1)
+        left_splitter.addWidget(chan_widget)
 
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet(f"color:{BORDER_COLOR};margin:2px 0;")
-        lv.addWidget(sep)
+        # ── Secção DMs ────────────────────────────────────────────────────
+        dm_widget = QWidget()
+        dm_widget.setMinimumHeight(80)
+        dv = QVBoxLayout(dm_widget)
+        dv.setContentsMargins(0, 2, 0, 0)
+        dv.setSpacing(4)
 
         self._dm_hdr = QLabel(tr("📧  Mensagens Directas"))
         dm_hdr = self._dm_hdr
@@ -101,7 +134,7 @@ class MessagesTab(QWidget):
             f"padding:3px 6px;background:{PANEL_BG};"
             f"border:1px solid {BORDER_COLOR};border-radius:4px;"
         )
-        lv.addWidget(dm_hdr)
+        dv.addWidget(dm_hdr)
 
         self.dm_list = QTableWidget()
         self.dm_list.setColumnCount(2)
@@ -116,8 +149,20 @@ class MessagesTab(QWidget):
         self.dm_list.setShowGrid(False)
         self.dm_list.setAlternatingRowColors(True)
         self.dm_list.cellClicked.connect(self._on_dm_cell_clicked)
-        lv.addWidget(self.dm_list, stretch=1)
+        dv.addWidget(self.dm_list, stretch=1)
+        left_splitter.addWidget(dm_widget)
 
+        # Proporção inicial: canais ~30% / DMs ~70%.
+        # setCollapsible(False) garante que nenhuma secção fica a 0px
+        # mesmo em ecrãs de baixa resolução (ex: uConsole 1280×480).
+        left_splitter.setStretchFactor(0, 1)
+        left_splitter.setStretchFactor(1, 2)
+        left_splitter.setCollapsible(0, False)
+        left_splitter.setCollapsible(1, False)
+        left_splitter.setSizes([140, 340])
+        self._left_splitter = left_splitter   # guardamos ref para retranslate/restore
+
+        left_outer.addWidget(left_splitter)
         splitter.addWidget(left)
 
         right = QWidget()
@@ -136,6 +181,35 @@ class MessagesTab(QWidget):
         self.messages_view = QWebEngineView()
         self.messages_view.setContextMenuPolicy(Qt.NoContextMenu)
         rv.addWidget(self.messages_view, stretch=1)
+        # O webchannel será ligado após a criação do _web_channel (abaixo)
+
+        # Banner de reply — aparece quando o utilizador clica ↩ numa mensagem
+        self._reply_banner = QFrame()
+        self._reply_banner.setVisible(False)
+        self._reply_banner.setStyleSheet(
+            f"background:#1a1a2e;border:1px solid {ACCENT_BLUE}88;"
+            f"border-radius:6px;"
+        )
+        rb_layout = QHBoxLayout(self._reply_banner)
+        rb_layout.setContentsMargins(10, 5, 8, 5)
+        rb_layout.setSpacing(8)
+        self._reply_banner_lbl = QLabel()
+        self._reply_banner_lbl.setStyleSheet(
+            f"color:{ACCENT_BLUE};font-size:11px;border:none;background:transparent;"
+        )
+        self._reply_banner_lbl.setWordWrap(True)
+        rb_layout.addWidget(self._reply_banner_lbl, stretch=1)
+        btn_cancel_reply = QPushButton("✕")
+        btn_cancel_reply.setFixedSize(22, 22)
+        btn_cancel_reply.setToolTip(tr("Cancelar resposta"))
+        btn_cancel_reply.setStyleSheet(
+            f"QPushButton{{background:transparent;color:{TEXT_MUTED};"
+            f"border:none;font-size:13px;padding:0;}}"
+            f"QPushButton:hover{{color:{ACCENT_RED};}}"
+        )
+        btn_cancel_reply.clicked.connect(self._cancel_reply)
+        rb_layout.addWidget(btn_cancel_reply)
+        rv.addWidget(self._reply_banner)
 
         send_frame = QFrame()
         send_frame.setStyleSheet(
@@ -159,6 +233,13 @@ class MessagesTab(QWidget):
         sl.addWidget(self.btn_send)
 
         rv.addWidget(send_frame)
+
+        # Ligar o _ReplyBridge ao QWebChannel para receber cliques de Reply do JS
+        self._reply_bridge = _ReplyBridge(self)
+        self._reply_bridge.reply_requested.connect(self._on_reply_requested)
+        self._web_channel = QWebChannel(self)
+        self._web_channel.registerObject("replyBridge", self._reply_bridge)
+        self.messages_view.page().setWebChannel(self._web_channel)
         splitter.addWidget(right)
 
         splitter.setStretchFactor(0, 0)
@@ -275,16 +356,21 @@ class MessagesTab(QWidget):
     def update_channels(self, channels: List[tuple]):
         self.channel_list.clear()
         self.channel_map.clear()
-        for idx, name, _ in channels:
+        for entry in channels:
+            # Suporta tuplos (idx, name, psk) e (idx, name, psk, role)
+            idx  = entry[0]
+            name = entry[1]
+            role = entry[3] if len(entry) > 3 else None
+            # role: 0=DISABLED, 1=PRIMARY, 2=SECONDARY
+            # Canais DISABLED não são mostrados — não têm PSK activa nem uso
+            if role is not None and role == 0:
+                continue
             self.channel_map[idx] = name or tr("Canal {n}", n=idx)
             item = QListWidgetItem(self._fmt_channel(idx))
             item.setData(Qt.UserRole, idx)
             self.channel_list.addItem(item)
 
-        n    = self.channel_list.count()
-        row_h = 34
-        self.channel_list.setFixedHeight(max(34, n * row_h + 2))
-
+        n = self.channel_list.count()
         if n > 0 and self._ctx_channel is None:
             first = self.channel_list.item(0)
             self.channel_list.setCurrentItem(first)
@@ -461,10 +547,38 @@ class MessagesTab(QWidget):
                     self._display_conversation(key)
                 break
 
+    def _on_reply_requested(self, from_name: str, text_preview: str):
+        """Activado pelo botão ↩ no HTML via QWebChannel."""
+        self._reply_from = from_name
+        # Trunca o preview a 80 chars para não encher o banner
+        self._reply_text = text_preview[:80] + ("…" if len(text_preview) > 80 else "")
+        safe_from    = html.escape(self._reply_from)
+        safe_preview = html.escape(self._reply_text)
+        self._reply_banner_lbl.setText(
+            f"↩ {tr('A responder a')} <b>{safe_from}</b>: "
+            f"<i style='color:{TEXT_MUTED};'>{safe_preview}</i>"
+        )
+        self._reply_banner_lbl.setTextFormat(2)   # RichText
+        self._reply_banner.setVisible(True)
+        self.send_input.setFocus()
+
+    def _cancel_reply(self):
+        """Remove o contexto de reply."""
+        self._reply_from = None
+        self._reply_text = None
+        self._reply_banner.setVisible(False)
+
     def _on_send(self):
         text = self.send_input.text().strip()
         if not text:
             return
+
+        # Se há reply activo, prefixa com citação estilo blockquote
+        if self._reply_from and self._reply_text:
+            preview = self._reply_text.replace("\n", " ")
+            text = f"↩ {self._reply_from}: {preview}\n{text}"
+            self._cancel_reply()
+
         if self._ctx_type == ConversationContext.CHANNEL and self._ctx_channel is not None:
             self.send_channel_message.emit(self._ctx_channel, text)
         elif self._ctx_type == ConversationContext.DM and self._ctx_dm_id:
@@ -552,7 +666,18 @@ class MessagesTab(QWidget):
     def _html_header(self, key: str) -> str:
         is_dm = self._is_dm_key(key)
         bg    = DM_BG if is_dm else DARK_BG
-        return f"""<html><head><meta charset="utf-8"><style>
+        return f"""<html><head><meta charset="utf-8">
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+var replyBridge = null;
+new QWebChannel(qt.webChannelTransport, function(channel) {{
+    replyBridge = channel.objects.replyBridge;
+}});
+function sendReply(fromName, textPreview) {{
+    if (replyBridge) replyBridge.requestReply(fromName, textPreview);
+}}
+</script>
+<style>
 *{{box-sizing:border-box;margin:0;padding:0;}}
 body{{background:{bg};color:{TEXT_PRIMARY};
   font-family:'Menlo','Cascadia Code','Consolas',monospace;
@@ -574,8 +699,18 @@ body{{background:{bg};color:{TEXT_PRIMARY};
   border-radius:12px 2px 12px 12px;
   max-width:72%;padding:7px 11px 5px 11px;text-align:right;}}
 .sender{{font-weight:bold;font-size:12px;margin-bottom:3px;}}
-.body  {{font-size:15px;word-break:break-word;line-height:1.5;}}
-.meta  {{font-size:10px;color:{TEXT_MUTED};margin-top:4px;}}
+.body  {{font-size:15px;word-break:break-word;line-height:1.5;white-space:pre-wrap;}}
+.meta  {{font-size:10px;color:{TEXT_MUTED};margin-top:4px;display:flex;
+  align-items:center;gap:6px;}}
+.reply-btn{{
+  background:transparent;border:none;cursor:pointer;
+  color:{TEXT_MUTED};font-size:11px;padding:0 2px;
+  opacity:0.6;transition:opacity 0.15s;}}
+.reply-btn:hover{{opacity:1;color:{ACCENT_BLUE};}}
+.reply-quote{{
+  border-left:3px solid {ACCENT_BLUE}88;padding:3px 8px;
+  margin-bottom:5px;color:{TEXT_MUTED};font-size:12px;
+  font-style:italic;background:{DARK_BG}88;border-radius:0 4px 4px 0;}}
 </style></head><body>"""
 
     def _fmt_msg(self, msg: dict, prev_date) -> tuple:
@@ -592,11 +727,24 @@ body{{background:{bg};color:{TEXT_PRIMARY};
                 ds = f"&#8212; {msg_date.strftime('%d/%m/%Y')} &#8212;"
             parts.append(f'<div class="date-sep">{ds}</div>')
 
-        safe_text   = html.escape(msg["text"]).replace("\n", "<br>")
+        raw_text    = msg["text"]
         sender_esc  = html.escape(msg["from_"])
         time_str    = msg["time"].strftime("%H:%M")
         color       = msg["color"]
         label       = html.escape(msg["label"])
+
+        # Detecta prefixo de reply (↩ remetente: preview\nmensagem) e
+        # formata como blockquote destacado + texto da mensagem separado.
+        reply_quote_html = ""
+        display_text = raw_text
+        if raw_text.startswith("↩ ") and "\n" in raw_text:
+            quote_line, _, display_text = raw_text.partition("\n")
+            # quote_line: "↩ Nome: preview"
+            quote_content = html.escape(quote_line[2:])   # remove "↩ "
+            reply_quote_html = (
+                f'<div class="reply-quote">↩ {quote_content}</div>'
+            )
+        safe_text = html.escape(display_text).replace("\n", "<br>")
 
         status        = msg.get('status', '')
         status_detail = msg.get('status_detail', '')
@@ -615,9 +763,22 @@ body{{background:{bg};color:{TEXT_PRIMARY};
         else:
             status_html = ''
 
+        # Botão ↩ para mensagens recebidas — passa nome e texto (escapados) ao JS
+        reply_btn_html = ""
+        if not msg["outgoing"]:
+            safe_from_js = sender_esc.replace('"', "&quot;")
+            safe_text_js = html.escape(display_text[:80]).replace('"', "&quot;")
+            reply_btn_html = (
+                f'<button class="reply-btn" '
+                f'data-from="{safe_from_js}" data-text="{safe_text_js}" '
+                f'onclick="sendReply(this.dataset.from,this.dataset.text)" '
+                f'title="{tr("Responder")}">↩</button>'
+            )
+
         if msg["outgoing"]:
             parts.append(
                 '<div class="row-out"><div class="bubble-out">'
+                f'{reply_quote_html}'
                 f'<div class="sender" style="color:{color}">{sender_esc}</div>'
                 f'<div class="body">{safe_text}</div>'
                 f'<div class="meta">{label} &middot; {time_str}'
@@ -627,18 +788,20 @@ body{{background:{bg};color:{TEXT_PRIMARY};
         elif msg["dm"]:
             parts.append(
                 '<div class="row-in"><div class="bubble-dm">'
+                f'{reply_quote_html}'
                 f'<div class="sender" style="color:{color}">{sender_esc}'
                 f' <span style="color:{ACCENT_PURPLE};font-size:9px;">[DM]</span></div>'
                 f'<div class="body">{safe_text}</div>'
-                f'<div class="meta">{label} &middot; {time_str}</div>'
+                f'<div class="meta">{reply_btn_html}{label} &middot; {time_str}</div>'
                 '</div></div>'
             )
         else:
             parts.append(
                 '<div class="row-in"><div class="bubble-in">'
+                f'{reply_quote_html}'
                 f'<div class="sender" style="color:{color}">{sender_esc}</div>'
                 f'<div class="body">{safe_text}</div>'
-                f'<div class="meta">{label} &middot; {time_str}</div>'
+                f'<div class="meta">{reply_btn_html}{label} &middot; {time_str}</div>'
                 '</div></div>'
             )
         return "\n".join(parts), msg_date
