@@ -746,7 +746,12 @@ MESHTASTIC_CONFIG_DEFS = {
         ("JSON habilitado",         "json_enabled",            "bool",   None),
         ("TLS habilitado",          "tls_enabled",             "bool",   None),
         ("Root topic",              "root",                    "text",   None),
-        ("Proxy para cliente",      "proxy_to_client_enabled", "bool",   None),
+        # proxy_to_client_enabled: NÃO é um campo de configuração normal.
+        # Quando activo, o firmware envia pacotes mqttClientProxyMessage pelo
+        # canal API (TCP/Serial) esperando que o cliente ligado faça o relay
+        # para o broker MQTT. O MeshDeck não implementa este protocolo de proxy
+        # (previsto para versão futura). Mostrado como read-only com nota.
+        ("Proxy para cliente ⚠",   "proxy_to_client_enabled", "readonly_with_note", None),
         # map_reporting_enabled, map_report_settings, ok_to_mqtt não existem
         # nesta versão do proto (module_config.proto MQTTConfig field list).
     ],
@@ -1746,6 +1751,37 @@ class ConfigTab(QWidget):
             )
             lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
             return lbl
+        elif field_type == "readonly_with_note":
+            # Widget read-only com nota explicativa — para campos que existem no
+            # proto mas não são configuráveis nesta versão do MeshDeck.
+            # Layout: valor actual (lbl) + nota multiline com wordwrap.
+            container = QWidget()
+            container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            vl = QVBoxLayout(container)
+            vl.setContentsMargins(0, 0, 0, 4)
+            vl.setSpacing(4)
+
+            # Valor actual (read-only) — usa chaves i18n para PT/EN
+            val_str = tr("proxy_active") if current_val else tr("proxy_inactive")
+            val_lbl = QLabel(val_str)
+            val_lbl.setStyleSheet(
+                f"color:{ACCENT_BLUE};background:{DARK_BG};"
+                f"border:1px solid {BORDER_COLOR};border-radius:4px;"
+                f"padding:4px 8px;font-size:12px;"
+            )
+            val_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            vl.addWidget(val_lbl)
+
+            # Nota explicativa multiline — wordwrap garante que não corta
+            note = QLabel(tr("proxy_note"))
+            note.setStyleSheet(
+                f"color:{ACCENT_ORANGE};font-size:10px;font-style:italic;"
+            )
+            note.setWordWrap(True)
+            note.setMinimumWidth(200)
+            note.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            vl.addWidget(note)
+            return container
         elif field_type == "text":
             w = QLineEdit()
             w.setText(str(current_val) if current_val is not None else "")

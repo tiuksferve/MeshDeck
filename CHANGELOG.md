@@ -6,9 +6,23 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [1.0.2-beta.1] — 2026-04-02
+## [1.0.2-beta.1] — 2026-04-05
 
 ### Added
+
+- **GPS position refresh button (🔄) in the Navigation tab** — the Local Node
+  card now has a dedicated button to re-read the GPS position from the node
+  at any time, without reconnecting:
+  - Reads from `nodesByNum[local_num]['position']` (daemon cache, updated with
+    each POSITION_APP packet received from the firmware GPS)
+  - Falls back to `localConfig.position.fixed_lat/lon` for nodes with a fixed
+    position configured
+  - Button shows `⏳ Reading position…` while active, re-enables on result
+  - If no position is found, a 3-second warning is shown in the position label
+  - New signal `local_position_updated(lat, lon, alt, found)` in `MeshtasticWorker`
+  - New method `refresh_local_position()` in `MeshtasticWorker`
+  - Full PT/EN i18n: `nav_refresh_pos`, `nav_refresh_pos_tooltip`,
+    `nav_pos_refreshing`, `nav_pos_not_found`, `nav_pos_refreshed`
 
 - **USB Serial connection mode** — the Connection dialog now has two tabs:
   - **🌐 TCP/IP Network** — existing behaviour, connect to any `meshtasticd`
@@ -38,22 +52,67 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     enabling the Connect button
   - `closeEvent` in `MainWindow` terminates the bridge cleanly on normal exit
   - `_kill_stale_bridge` kills any orphaned bridge process from a previous abrupt
-    session (e.g. IDE stop button) before launching a new one — cross-platform:
-    `psutil` (preferred) → `lsof -sTCP:LISTEN` (macOS) → `ss` / `fuser` /
-    `/proc/net/tcp` (Linux) → `netstat` + `taskkill` (Windows)
-- **Serial mode indicator** in the connection status badge — when connected via
-  Serial the indicator shows `🟢 127.0.0.1:4403 · 🔌 Serial` instead of just
-  the host/port
-- **1.5 s stabilisation delay** before `TCPInterface` is created in Serial mode,
-  allowing the bridge to fully open the serial port and flush the input buffer
+    session — cross-platform: `psutil` → `lsof` → `ss`/`fuser`/`/proc/net/tcp` → `netstat`
+- **Serial mode indicator** in the connection status badge —
+  `🟢 127.0.0.1:4403 · 🔌 Serial` when connected via Serial
+- **1.5 s stabilisation delay** before `TCPInterface` creation in Serial mode
 - **Bridge log file** written to the OS temp directory (`meshdeck_bridge.log`)
-  for easier diagnosis of serial issues
 - `pyserial >= 3.5` added to `requirements.txt`
-- New i18n strings: `conn_tab_tcp`, `conn_tab_serial`, `conn_via_serial`,
-  `serial_port_label`, `serial_start_bridge`, `serial_refresh_tip`,
-  `serial_bridge_idle`, `serial_bridge_starting`, `serial_bridge_ready`,
-  `serial_bridge_timeout`, `serial_bridge_missing`, `serial_no_ports`,
-  `serial_no_pyserial`, `serial_select_port`, `serial_note` — full PT/EN
+
+### Fixed
+
+- **Configuration tab — critical save pipeline rewrite** (`tab_config.py`):
+  - **Root cause fixed:** `writeConfig("mqtt")` does `CopyFrom(self.moduleConfig.mqtt)`
+    internally — it reads from the node object, not from any external reference.
+    Previously the worker received `(obj, last, coerced)` where `obj` was resolved
+    in the UI thread and could diverge from the node's live object. Now the worker
+    stores `(field_parts, coerced)` and re-resolves the path from `self._node` at
+    save time, guaranteeing `setattr` and `CopyFrom` operate on the same object.
+  - **Proto3 bool=False serialisation:** fields set to `False` (protobuf default)
+    were not serialised on the wire — firmware received absence of field and kept
+    previous value. Fixed via double-set technique: `setattr(True)` → `setattr(False)`
+    forces the field into `ListFields()` so `CopyFrom` includes it.
+  - **`setOwner` called unconditionally:** now only called when `long_name`,
+    `short_name` or `is_licensed` actually changed vs. the value loaded from the node.
+  - **Enum fields displayed wrong:** `_read_section_values` now converts int enum
+    values to their string names using the protobuf DESCRIPTOR before populating
+    combo widgets; `_create_field_widget` simplified to use `findText` directly.
+  - **Sub-object resolution unified:** `_resolve_sub_obj()` helper with explicit
+    `SECTION_ATTR_NAME` map replaces fragmented camelCase/snake_case/write_name
+    guessing in both `_read_section_values` and `_save_config`.
+  - **`iface.localNode` used instead of `getNode("^local")`:** avoids stale
+    cache copies; fallback to `getNode` kept for older library versions.
+  - **Canned messages always sent even without changes:** widget now stores
+    `_original_value` (pipe-string) at build time; `_save_config` compares before
+    including in payload.
+  - **Canned messages not loading from node:** loading logic now tries
+    `cannedPluginMessage`, `cannedPluginMessageMessages`,
+    `_cannedMessageModuleMessages`, `get_canned_message()`, `getCannedMessages()`
+    in order of preference.
+  - **`proxy_to_client_enabled` behaviour clarified:** field is now read-only in
+    the UI with an explanatory note — it requires the client to implement the
+    `mqttClientProxyMessage` relay protocol, which MeshDeck does not yet support.
+    Planned for a future release.
+
+- **Configuration field audit** — all sections cross-checked against the official
+  `config.proto` and `module_config.proto`. Removed fields that do not exist in
+  the protobuf schema (would silently fail `setattr` and never reach the firmware):
+  - `moduleConfig.mqtt`: removed `map_reporting_enabled`, `map_report_settings.*`,
+    `ok_to_mqtt`
+  - `moduleConfig.serial`: removed `WS85` from mode enum
+  - `moduleConfig.storeForward`: removed `is_server`
+  - `moduleConfig.telemetry`: removed `health_update_interval`,
+    `health_telemetry_enabled`
+  - `moduleConfig.neighborInfo`: removed `transmit_over_lora`
+  - `localConfig.display`: removed `compass_north_top`, `backlight_secs`,
+    `tft_brightness`
+  - `moduleConfig.cannedMessage`: removed `FN_1`–`FN_12`, `NUMPAD_0`–`NUMPAD_9`
+    from `InputEventChar` enum
+
+- **Save confirmation dialog** now shows exactly what was sent to the node:
+  number of `writeConfig()` calls with section names, `setOwner` if name changed,
+  `setCannedMessages` if canned messages changed — instead of a single confusing
+  count that mixed all three.
 
 ### Credits
 
@@ -106,22 +165,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and compass/panel refreshes skipped when the tab is hidden, deferred to
   `showEvent`
 - **Multi-row highlight fix** — `refresh_all()` clears all `_selected_highlight`
-  flags before `beginResetModel`; `set_selected_highlight` emits `dataChanged`
-  only on rows that actually changed; `update_node` no longer emits
-  `BackgroundRole` on every packet, eliminating scroll lag
-- Local GPS position applied **once per batch** (not once per node), avoiding N
-  compass redraws during the initial load
-- Navigation Local Node and Target cards: content centred vertically with equal
-  stretch above and below (`addStretch(1)` on both sides)
+  flags before `beginResetModel`
+- Local GPS position applied **once per batch**, avoiding N compass redraws
+- Navigation Local Node and Target cards: content centred vertically
 - Spelling: `"favourite/favourites"` → `"favorite/favorites"` throughout EN strings
 
 ### Fixed
 
-- `setUniformRowHeights` crash — method does not exist on `QTableView`
-  (belongs to `QTreeView`); removed
+- `setUniformRowHeights` crash — method does not exist on `QTableView`; removed
 - `ScrollPerPixel` corrected to `QAbstractItemView.ScrollPerPixel`
-- Navigation tab `_target_snr_lbl` / `_target_alt_lbl` labels not cleared when
-  no target is selected
+- Navigation tab labels not cleared when no target is selected
 - `nav_gps_active` was displaying as literal text instead of the translated value
 
 ---

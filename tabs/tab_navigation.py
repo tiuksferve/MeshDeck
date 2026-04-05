@@ -14,11 +14,11 @@ Optimizações de performance para CM4:
 import math
 from typing import Optional, Dict, Any
 
-from PyQt5.QtCore import Qt, QByteArray, QTimer
+from PyQt5.QtCore import Qt, QByteArray, QTimer, pyqtSignal
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter,
     QTableWidget, QTableWidgetItem, QHeaderView,
-    QLabel, QAbstractItemView, QFrame
+    QLabel, QAbstractItemView, QFrame, QPushButton
 )
 from PyQt5.QtGui import QColor
 from PyQt5.QtSvg import QSvgWidget
@@ -138,6 +138,7 @@ COL_BATT=10; N_COLS=11
 
 class NavigationTab(QWidget):
     """Navigation tab — compass + GPS node table. CM4-optimised."""
+    refresh_position_requested = pyqtSignal()   # emitido pelo botão 🔄
 
     _DEBOUNCE_MS = 800   # 800ms on CM4 — coalesces bursts of 50+ node updates into one rebuild
 
@@ -198,6 +199,19 @@ class NavigationTab(QWidget):
                   self._local_name_lbl, self._local_id_lbl,
                   self._local_pos_lbl, self._local_gps_lbl):
             ll.addWidget(w)
+        # Botão 🔄 para reler posição GPS do nó local
+        self._btn_refresh_pos = QPushButton(tr("nav_refresh_pos"))
+        self._btn_refresh_pos.setToolTip(tr("nav_refresh_pos_tooltip"))
+        self._btn_refresh_pos.setStyleSheet(
+            f"QPushButton{{background:{PANEL_BG};color:{ACCENT_BLUE};"
+            f"border:1px solid {ACCENT_BLUE};border-radius:6px;"
+            f"padding:4px 8px;font-size:11px;margin-top:4px;}}"
+            f"QPushButton:hover{{background:{ACCENT_BLUE};color:#000;}}"
+            f"QPushButton:disabled{{color:{TEXT_MUTED};"
+            f"border-color:{TEXT_MUTED};background:{PANEL_BG};}}"
+        )
+        self._btn_refresh_pos.clicked.connect(self._on_refresh_pos_clicked)
+        ll.addWidget(self._btn_refresh_pos)
         ll.addStretch(1)
         top_h.addWidget(local_frame, stretch=2)
 
@@ -362,6 +376,26 @@ class NavigationTab(QWidget):
         # Distances changed — schedule one rebuild (debounced, cheap)
         self._schedule_rebuild()
 
+    def _on_refresh_pos_clicked(self):
+        """Desabilita o botão temporariamente e emite o sinal para o main."""
+        self._btn_refresh_pos.setEnabled(False)
+        self._btn_refresh_pos.setText(tr("nav_pos_refreshing"))
+        self.refresh_position_requested.emit()
+
+    def set_refresh_pos_result(self, found: bool):
+        """Chamado por main.py após o worker responder ao refresh."""
+        self._btn_refresh_pos.setEnabled(True)
+        self._btn_refresh_pos.setText(tr("nav_refresh_pos"))
+        if not found:
+            # Pisca o label de posição brevemente para dar feedback
+            self._local_pos_lbl.setText(f"⚠ {tr('nav_pos_not_found')}")
+            self._local_pos_lbl.setStyleSheet(
+                f"color:{ACCENT_RED};font-size:12px;"
+                f"background:transparent;border:none;text-align:center;"
+            )
+            # Restaura o estado correcto após 3s
+            QTimer.singleShot(3000, self._refresh_local_panel)
+
     def update_node(self, node_id: str, node_data: dict):
         """
         Store data and schedule a debounced rebuild.
@@ -415,6 +449,9 @@ class NavigationTab(QWidget):
         self._refresh_local_panel()
         self._refresh_compass()
         self._table_title.setText(tr("📍  Nós com localização GPS"))
+        if hasattr(self, "_btn_refresh_pos") and self._btn_refresh_pos.isEnabled():
+            self._btn_refresh_pos.setText(tr("nav_refresh_pos"))
+            self._btn_refresh_pos.setToolTip(tr("nav_refresh_pos_tooltip"))
 
     def clear(self):
         self._rebuild_timer.stop()

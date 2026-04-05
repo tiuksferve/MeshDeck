@@ -42,6 +42,8 @@ class MeshtasticWorker(QObject):
     neighbor_info_received  = pyqtSignal(str, list)   # (from_id, [(neighbor_id, snr), ...])
     # resultado do envio de posição: (sucesso, mensagem_para_ui)
     position_sent           = pyqtSignal(bool, str)
+    # resultado do refresh de posição local: (lat, lon, alt_or_None, found)
+    local_position_updated  = pyqtSignal(float, float, object, bool)
     # Pacote raw para métricas — emitido para TODOS os pacotes recebidos
     raw_packet_received     = pyqtSignal(dict)
     # Reconexão automática: (tentativa, delay_s)  |  tentativa=0 → reconectado
@@ -390,6 +392,67 @@ class MeshtasticWorker(QObject):
         except Exception as e:
             logger.error(f"Error sending position: {e}", exc_info=True)
             self.position_sent.emit(False, tr("Erro ao enviar posição: {msg}", msg=str(e)))
+
+    def refresh_local_position(self):
+        """
+        Relê a posição GPS do nó local da cache do daemon (nodesByNum)
+        e emite local_position_updated(lat, lon, alt, found).
+
+        Estratégia:
+          1. nodesByNum[local_num]['position'] — cache actualizada pelo daemon
+             com cada pacote POSITION_APP recebido do firmware.
+          2. localConfig.position fixed_lat/fixed_lon — fallback para posição fixa.
+
+        Emite found=False se nenhuma posição disponível, para que a UI
+        possa mostrar feedback adequado (ex: "⚠ Sem posição GPS").
+        """
+        if not self.iface or not self._connected:
+            self.local_position_updated.emit(0.0, 0.0, None, False)
+            return
+        try:
+            local_node = self.iface.localNode
+            local_num  = local_node.nodeNum if local_node else None
+
+            lat_i = lon_i = alt = None
+
+            # 1. Cache do daemon
+            if local_num and hasattr(self.iface, 'nodesByNum'):
+                pos   = self.iface.nodesByNum.get(local_num, {}).get('position', {})
+                lat_i = pos.get('latitudeI')
+                lon_i = pos.get('longitudeI')
+                alt   = pos.get('altitude')
+
+            # 2. Posição fixa na config do localNode
+            if not lat_i or not lon_i:
+                try:
+                    pos_cfg = getattr(local_node, 'localConfig', None)
+                    if pos_cfg:
+                        pos_cfg = getattr(pos_cfg, 'position', None)
+                    if pos_cfg:
+                        fixed_lat = getattr(pos_cfg, 'fixed_lat', None)
+                        fixed_lon = getattr(pos_cfg, 'fixed_lon', None)
+                        fixed_alt = getattr(pos_cfg, 'fixed_alt', None)
+                        if fixed_lat and fixed_lon:
+                            lat_i = int(fixed_lat * 1e7) if isinstance(fixed_lat, float) else int(fixed_lat)
+                            lon_i = int(fixed_lon * 1e7) if isinstance(fixed_lon, float) else int(fixed_lon)
+                            if fixed_alt:
+                                alt = int(fixed_alt)
+                            logger.debug(f"refresh_local_position: using fixed pos ({lat_i/1e7:.6f}, {lon_i/1e7:.6f})")
+                except Exception as cfg_err:
+                    logger.debug(f"refresh_local_position: fixed pos read failed: {cfg_err}")
+
+            if lat_i and lon_i:
+                lat = lat_i / 1e7
+                lon = lon_i / 1e7
+                logger.debug(f"refresh_local_position: found ({lat:.6f}, {lon:.6f})")
+                self.local_position_updated.emit(lat, lon, alt, True)
+            else:
+                logger.debug("refresh_local_position: no position available")
+                self.local_position_updated.emit(0.0, 0.0, None, False)
+
+        except Exception as e:
+            logger.error(f"refresh_local_position error: {e}", exc_info=True)
+            self.local_position_updated.emit(0.0, 0.0, None, False)
 
     def send_node_info(self):
         if not self.iface or not self._connected:

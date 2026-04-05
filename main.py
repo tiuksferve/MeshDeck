@@ -348,6 +348,7 @@ class MainWindow(QMainWindow):
 
         self.nav_tab = NavigationTab()
         self.tab_widget.addTab(self.nav_tab, tr("🧭  Navegação"))
+        self.nav_tab.refresh_position_requested.connect(self._on_refresh_local_position)
 
         self.metrics_tab = MetricsTab()
         self.tab_widget.addTab(self.metrics_tab, tr("📈 Métricas"))
@@ -588,6 +589,7 @@ class MainWindow(QMainWindow):
         # FIX-4: my_node_id_ready é o primeiro sinal — bloqueia inserção do nó local
         self.worker.my_node_id_ready.connect(self._on_my_node_id_ready)
         self.worker.local_node_ready.connect(self._on_local_node_ready)
+        self.worker.local_position_updated.connect(self._on_local_position_updated)
         self.worker.interface_ready.connect(self.config_tab.set_interface)
         self.worker.traceroute_result.connect(self._on_traceroute_result)
         self.worker.neighbor_info_received.connect(
@@ -1526,6 +1528,21 @@ class MainWindow(QMainWindow):
             self.worker.send_node_info()
             self.statusBar().showMessage(tr("📡 Info do Nó enviada para a rede."), 5000)
             QTimer.singleShot(3000, lambda: self.act_send_nodeinfo.setEnabled(True))
+
+    def _on_refresh_local_position(self):
+        """Botão 🔄 no card Local Node — pede ao worker para reler a posição GPS."""
+        if not self.worker or not self.worker._connected:
+            self.nav_tab.set_refresh_pos_result(False)
+            return
+        self.worker.refresh_local_position()
+
+    def _on_local_position_updated(self, lat: float, lon: float,
+                                   alt: object, found: bool):
+        """Resultado do refresh de posição — actualiza nav_tab."""
+        if found:
+            alt_f = float(alt) if alt is not None else None
+            self.nav_tab.update_local_position(lat, lon, alt_f)
+        self.nav_tab.set_refresh_pos_result(found)
 
     def _on_send_position(self):
         if not self.worker:
