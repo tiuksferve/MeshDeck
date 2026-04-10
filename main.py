@@ -170,6 +170,13 @@ class MainWindow(QMainWindow):
         self._poll_timer.setInterval(MeshtasticWorker.NODE_POLL_INTERVAL_MS)
         self._poll_timer.timeout.connect(self._poll_nodedb)
 
+        # Timer dedicado para métricas do nó local (15s).
+        # Necessário porque o worker filtra o loopback de TELEMETRY_APP do
+        # próprio nó, por isso lemos directamente do nodesByNum com mais frequência.
+        self._local_metrics_timer = QTimer(self)
+        self._local_metrics_timer.setInterval(15_000)
+        self._local_metrics_timer.timeout.connect(self._poll_local_metrics)
+
         # Debounce do mapa: agrupa vários updates consecutivos num único redesenho
         self._map_debounce = QTimer(self)
         self._map_debounce.setSingleShot(True)
@@ -475,6 +482,7 @@ class MainWindow(QMainWindow):
 
     def _connect(self):
         self._poll_timer.stop()
+        self._local_metrics_timer.stop()
         if self.worker:
             self.worker.stop()
             self.worker.deleteLater()
@@ -512,6 +520,7 @@ class MainWindow(QMainWindow):
         """Chamado após guardar configurações — desliga e abre o diálogo de espera."""
         # Pára o poll imediatamente
         self._poll_timer.stop()
+        self._local_metrics_timer.stop()
 
         # Desliga worker de forma segura (o nó pode já estar a reiniciar)
         if self.worker:
@@ -543,6 +552,7 @@ class MainWindow(QMainWindow):
 
     def _disconnect(self):
         self._poll_timer.stop()
+        self._local_metrics_timer.stop()
         self._pkt_timestamps.clear()
         self._stats_label.setText("📶 —")
         _FAVORITES.set_interface(None)
@@ -644,10 +654,12 @@ class MainWindow(QMainWindow):
             self.act_reset_nodedb.setEnabled(True)
             self.act_send_position.setEnabled(True)
             self._poll_timer.start()
+            self._local_metrics_timer.start()
             # Show loading message while node list populates
             self.statusBar().showMessage(tr("status_loading_nodes", n=0))
         else:
             self._poll_timer.stop()
+            self._local_metrics_timer.stop()
             self.conn_indicator.setText(tr("🔴  Desconectado"))
             self.conn_indicator.setStyleSheet(
                 f"color:{ACCENT_RED};font-weight:bold;font-size:12px;"
@@ -670,6 +682,7 @@ class MainWindow(QMainWindow):
         self.source_model.set_local_node_id(node_id, node_num)
         self.proxy_model.set_local_node_id(node_id)
         self.messages_tab.set_my_node_id(node_id)
+        self.metrics_tab.set_local_node_id(node_id)
         logger.info(f"Local node registered: id={node_id} num={node_num}")
 
     def _poll_nodedb(self):
@@ -679,6 +692,27 @@ class MainWindow(QMainWindow):
                 self.worker._sync_nodedb()
             except Exception as e:
                 logger.debug(f"NodeDB poll error: {e}")
+
+    def _poll_local_metrics(self):
+        """Lê telemetria actualizada do nó local do nodesByNum e alimenta a MetricsTab."""
+        try:
+            if not self.worker or not self.worker.iface or not self.worker._connected:
+                return
+            node_id = getattr(self, '_local_node_id_str', '')
+            if not node_id:
+                return
+            local_node = self.worker.iface.localNode
+            if not local_node:
+                return
+            local_num = local_node.nodeNum
+            if not local_num:
+                return
+            nodes_src = getattr(self.worker.iface, 'nodesByNum', {}) or {}
+            node_entry = nodes_src.get(local_num, {})
+            if node_entry:
+                self._feed_local_node_metrics(node_id, node_entry)
+        except Exception as e:
+            logger.debug(f"_poll_local_metrics error: {e}")
 
     def _on_nodes_batch(self, batch: list):
         if not batch:
@@ -808,6 +842,28 @@ class MainWindow(QMainWindow):
         """Alimenta a MetricsTab com dados de cada pacote recebido."""
         if packet is not None:
             self.metrics_tab.ingest_packet(packet, node_data)
+        else:
+            # Batch inicial ou update sem pacote (ex: nó local via _emit_node).
+            # Mesmo sem pacote, actualizamos campos do nó local se for ele.
+            local_nid = getattr(self.metrics_tab, '_local_nid', '')
+            if local_nid and node_id_string and node_id_string.lower() == local_nid.lower():
+                # Propagar campos de telemetria do nó local directamente
+                for field in ('channel_utilization', 'air_util_tx', 'battery_level',
+                              'voltage', 'uptime_seconds', 'hw_model'):
+                    val = node_data.get(field)
+                    if val is not None:
+                        if field == 'channel_utilization':
+                            self.metrics_tab._local_ch_util = float(val)
+                        elif field == 'air_util_tx':
+                            self.metrics_tab._local_air_tx = float(val)
+                        elif field == 'battery_level':
+                            self.metrics_tab._local_battery = int(val)
+                        elif field == 'voltage':
+                            self.metrics_tab._local_voltage = round(float(val), 3)
+                        elif field == 'uptime_seconds':
+                            self.metrics_tab._local_uptime = int(val)
+                        elif field == 'hw_model':
+                            self.metrics_tab._local_hw_model = str(val)
         # Regista posição GPS para cálculo de alcance de links
         lat = node_data.get('latitude')
         lon = node_data.get('longitude')
@@ -897,8 +953,64 @@ class MainWindow(QMainWindow):
                     local_data["public_key"]
                 )
                 logger.info(f"Local node inserted in table: {node_id}")
+
+                # ── Alimenta métricas do nó local ────────────────────────────
+                # O worker filtra os pacotes do próprio nó (loopback), por isso
+                # lemos directamente do nodesByNum aqui — única fonte fiável.
+                self._feed_local_node_metrics(node_id, node_entry)
+
             except Exception as e:
                 logger.debug(f"Error inserting local node in table: {e}")
+
+    def _feed_local_node_metrics(self, node_id: str, node_entry: dict):
+        """Lê telemetria do nó local directamente do nodesByNum e alimenta a MetricsTab.
+
+        Chamado em _on_local_node_ready (dados iniciais) e a cada _poll_local_metrics
+        (actualizações periódicas, pois o worker filtra o loopback de TELEMETRY_APP).
+        """
+        if not node_id or not hasattr(self, 'metrics_tab'):
+            return
+        try:
+            mt = self.metrics_tab
+            dm = node_entry.get('deviceMetrics', {}) or {}
+            user = node_entry.get('user', {}) or {}
+            pos  = node_entry.get('position', {}) or {}
+
+            # Telemetria de dispositivo
+            batt = dm.get('batteryLevel')
+            volt = dm.get('voltage')
+            uptm = dm.get('uptimeSeconds')
+            ch   = dm.get('channelUtilization')
+            air  = dm.get('airUtilTx')
+            hw   = user.get('hwModel', '') or node_entry.get('hwModel', '')
+
+            if batt is not None: mt._local_battery  = int(batt)
+            if volt is not None: mt._local_voltage   = round(float(volt), 3)
+            if uptm is not None: mt._local_uptime    = int(uptm)
+            if hw:               mt._local_hw_model  = str(hw)
+            if ch   is not None: mt._local_ch_util   = float(ch)
+            if air  is not None:
+                mt._local_air_tx = float(air)
+                import time as _time
+                dc = round(min(float(air) * 6, 100.0), 2)
+                mt._local_dc_ts.append((_time.time(), dc))
+                if len(mt._local_dc_ts) > 120:
+                    mt._local_dc_ts = mt._local_dc_ts[-120:]
+
+            # Nome curto para a tabela de métricas
+            sn = user.get('shortName', '') or user.get('short_name', '')
+            if sn and node_id:
+                mt._node_short[node_id] = sn
+
+            # Posição GPS
+            lat_i = pos.get('latitudeI')
+            lon_i = pos.get('longitudeI')
+            if lat_i is not None and lon_i is not None:
+                mt.ingest_node_position(node_id, lat_i / 1e7, lon_i / 1e7)
+
+            logger.debug(f"_feed_local_node_metrics: batt={batt} ch={ch} air={air} hw={hw}")
+        except Exception as e:
+            logger.debug(f"_feed_local_node_metrics error: {e}")
 
     def _update_local_node_label(self, has_position: bool):
         long_name   = getattr(self, '_local_long_name',   '')

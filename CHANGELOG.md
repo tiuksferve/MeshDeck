@@ -6,6 +6,130 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.3-beta] — 2026-04-10
+
+### Added
+
+- **🏠 Local Node metrics section** — new dedicated section (position 2 in the
+  sidebar, right after Overview) showing all key metrics of the local node in
+  one place:
+  - **Identification bar:** ID, short name, hardware model, uptime (counts up
+    live every second via `setInterval` without any Python roundtrip), GPS
+    coordinates
+  - **KPI row 1 — Hardware/Health:** battery level with voltage, channel
+    utilization (Ch. Util.), and airtime TX (Air TX, last 10 min)
+  - **Duty Cycle/h (estimated):** progress bar relative to the EU 10%/hour
+    legal limit (ETSI EN300.220), with colour-coded status (green < 7% /
+    orange 7–10% / red ≥ 10%); formula: `airUtilTx × 6`; note explaining the
+    extrapolation
+  - **KPI row 2 — RF & TX:** avg/min/max received SNR, messages sent with
+    ACK/NAK/relay breakdown, delivery rate, avg RTT and median RTT
+  - **Duty Cycle/h history chart** — line chart showing the duty cycle trend
+    over time with EU limit (10%) and warning (7%) reference lines; always
+    rendered (even before data arrives) to prevent layout flash
+  - All labels fully translated (PT/EN) via `tr()`; JS update labels passed in
+    `_data_local_node()` payload so language switching works without reload
+  - Data sourced via `_feed_local_node_metrics()` reading directly from
+    `iface.nodesByNum` — bypasses the worker loopback filter that discards
+    TELEMETRY_APP from the local node
+  - Dedicated `_local_metrics_timer` (15 s) separate from the NodeDB poll
+    (30 s), started/stopped with the connection lifecycle
+
+- **Metrics — complete audit and precision improvements:**
+  - **P10 percentile corrected** from `n//10` to `int(0.1*(n-1))` — for
+    n=15 the old formula gave index 1 (≈P13); now gives the correct P10
+  - **`_duplicates` windowed** — previously a cumulative counter (grew without
+    bound); now computed dynamically from `_pkt_ids` (5-minute window) via
+    `_count_duplicates()`, making the flood rate metric meaningful in long
+    sessions
+  - **ROUTING_APP NAK split into three counters:**
+    - `_routing_acks` — ACK with `requestId`, no error (real delivery confirm)
+    - `_routing_naks` — NAK with `requestId` + `errorReason` (delivery failure)
+    - `_routing_fw_errs` — `errorReason` without `requestId` (internal firmware
+      errors: `NO_ROUTE`, `MAX_RETRANSMIT`, etc.)  
+    The Reliability section now shows all three separately
+  - **`_ch_util` / `_air_tx` TTL expiry** — values older than 30 minutes are
+    excluded from averages and KPIs via `_ch_util_active()` /
+    `_air_tx_active()` helpers; nodes that go offline no longer distort the
+    network averages indefinitely
+  - **`n_gps_unique` now counts `_node_pos`** (validated coordinates) instead
+    of POSITION_APP packet count — filters out (0, 0) and invalid coords
+  - **`ingest_node_position` validates coordinates** — rejects `(0, 0)` and
+    near-zero values (< 0.001°) that indicate no GPS fix
+  - **`_node_pos` initialised in `_reset_data()`** — previously lazy-initialised;
+    "Clear data" now correctly wipes GPS positions
+  - **`_ch_util_ts` series appended after merge** — previously appended inside
+    the `TELEMETRY_APP` branch before `node_data` override; now appended after
+    the unified single-source read, ensuring the series reflects the final value
+  - **Duty cycle note** in Channel & Airtime clarified — label changed to
+    "estimated hourly duty cycle (10-min extrapolation)" throughout
+
+- **Metrics — Latency section JS update** — `_metricsUpdateData` for the
+  Latency section was previously empty (KPIs only updated on manual reload);
+  now updates RTT avg/median/P90/min/max and the histogram chart every 5 s
+
+- **Metrics — Overview table column fix** — "Top Nodes" table was misaligned
+  after the first 5 s JS update: the Python initial render had 4 columns but
+  the JS rebuild generated 5 (added separate ID column). Both are now aligned
+  at 5 columns (ID · Name · Packets · Ch. Util. · Battery)
+
+- **Metrics — Channel & Airtime duty cycle KPI fix** — the "Worst Node" KPI
+  card showed the correct value on initial render but switched to the network
+  average (`duty_avg`) after the first JS update. Fixed: `_data_channel()` now
+  exports `worst_dc` and `worst_name`; the JS update uses `d.worst_dc`
+
+### Changed
+
+- **Metrics refresh strategy for Local Node** — uses `setHtml` with a MD5 hash
+  guard instead of `runJavaScript`. The `QWebEngineView` with injected `setHtml`
+  content creates an `about:blank` origin context; `window._metricsUpdateData`
+  was unreliable across reloads. The hash compares `ch_util`, `air_tx`,
+  `dc_est`, `battery`, `msgs_sent`, `msgs_acked`, `snr_rx_avg`, `delivery` —
+  `setHtml` only fires when something actually changed, preventing unnecessary
+  flash
+
+- **Uptime counter is now live** — `_data_local_node()` exports `uptime_raw`
+  (seconds from firmware) and `uptime_ts` (epoch when read); a `setInterval(1000)`
+  in the page JS increments the display every second; `_metricsUpdateData`
+  updates `_uptimeRaw`/`_uptimeTs` on each payload so the counter stays synced
+
+- **`_on_local_node_ready`** now calls `_feed_local_node_metrics()` immediately
+  after connection — local node telemetry is visible as soon as the connection
+  is established, without waiting for the first 15 s poll
+
+- **`_poll_nodedb`** (30 s) no longer includes local metrics polling; replaced
+  by dedicated `_local_metrics_timer` (15 s)
+
+### Fixed
+
+- **Local Node section stuck on wait screen** — `local_node` re-added to
+  `_WAITING_SECTIONS`; `set_local_node_id()` now resets `_was_waiting` and
+  calls `_refresh_current()` immediately, triggering the `setHtml` transition
+  without waiting for the next 5 s timer tick
+
+- **Duty Cycle history chart layout flash** — previously the chart card was
+  only injected into the DOM when `n_dc > 1`; on the first reload with data
+  the card appeared from nothing, causing a visible layout shift. Now the card
+  is always rendered with a `⏳ Awaiting telemetry data…` placeholder when no
+  data is available yet; only the canvas contents change when data arrives
+
+- **`_html_reliability` crash** (`AttributeError: '_duplicates'`) — the render
+  method had its own inline calculation block copied from the original version,
+  directly accessing `self._duplicates`, `self._routing_acks`, etc. — attributes
+  that no longer exist after the data mixin refactor. The method now uses
+  `_data_reliability()` as the single source of truth, like all other sections
+
+- **Double `_data_local_node()` call** in `_html_local_node` — called once at
+  the top of the function and again after the `if not self._local_nid` branch;
+  second call removed
+
+- **`window.location.reload()` in wait-screen JS** — the wait-screen stub
+  previously contained JS that called `window.location.reload()` when a nid
+  arrived via `runJavaScript`; this causes undefined behaviour in
+  `QWebEngineView` with `setHtml`. Replaced with a no-op `function(d){}`
+
+---
+
 ## [1.0.2-beta.1] — 2026-04-05
 
 ### Added
@@ -225,6 +349,7 @@ First public release.
 > (ClockworkPi uConsole CM4) with a live Meshtastic network. Expect occasional
 > rough edges; bug reports and pull requests are welcome.
 
+[1.0.3-beta]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.3-beta
 [1.0.2-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.2-beta.1
 [1.0.1-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.1-beta.1
 [1.0.0-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.0-beta.1

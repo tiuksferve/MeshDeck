@@ -5,7 +5,7 @@ Interface gráfica avançada para monitorização, comunicação e configuraçã
 Desenvolvida e optimizada para o **ClockworkPi uConsole CM4**, mas funciona em
 qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
 
-**Versão:** 1.0.2-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
+**Versão:** 1.0.3-beta &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
 
 ---
 
@@ -103,23 +103,30 @@ ligação. A preferência é guardada entre sessões via `QSettings`.
 - `proxy_to_client_enabled` mostrado como read-only com nota explicativa
   (requer protocolo `mqttClientProxyMessage` — previsto para versão futura)
 
-### 📊 Métricas em Tempo Real (10 Secções)
+### 📊 Métricas em Tempo Real (11 Secções)
 
-Actualização automática a cada 5 segundos via JavaScript sem recarregar o HTML.
+Actualização automática a cada 5 segundos. A secção Nó Local recarrega quando os dados mudam (hash MD5); as restantes actualizam via JavaScript sem recarregar o HTML.
 
 | Secção | Tipo | O que mede |
 |--------|------|-----------|
 | 📊 Visão Geral | Misto | Pacotes, nós activos, SNR, taxa entrega, airtime |
+| 🏠 Nó Local | 🏠 Local | Bateria, Ch. Util., Air TX, duty cycle/h (limite EU), SNR RX, msgs enviadas/ACK/NAK, RTT, uptime (contador live), GPS |
 | 📡 Canal & Airtime | 🌐 Rede | Ch. utilization, airtime TX, duty cycle EU (ETSI EN300.220) |
 | 📶 Qualidade RF | 🌐 Rede | Histograma SNR, distribuição hops, avaliação automática |
 | 📦 Tráfego | 🌐 Rede | Pacotes por tipo, pacotes/min, RF vs MQTT, padrão routing |
 | 🔋 Nós & Bateria | 🌐 Rede | Bateria, tensão, uptime, modelo hardware, GPS |
-| ✅ Fiabilidade | 🏠 Local | ACK/NAK/pendente, taxa entrega, duplicados, prob. colisão |
+| ✅ Fiabilidade | Misto | ACK/NAK/erros FW separados, taxa entrega, flood windowed, prob. colisão |
 | ⏱ Latência (RTT) | 🏠 Local | RTT médio/mín/máx/P90 entre envio e ACK |
 | 🔗 Vizinhança | 🌐 Rede | Pares de vizinhos directos com SNR (NeighborInfo) |
 | 📏 Alcance & Links | 🌐 Rede | Distância km entre vizinhos com GPS (Haversine) |
 | ⏰ Intervalos | 🌐 Rede | Intervalo médio entre pacotes por nó |
 
+**Melhorias de precisão na v1.0.3-beta:**
+- P10 de SNR corrigido para `int(0.1*(n-1))` — `n//10` dava valor errado para amostras pequenas
+- Taxa de flood windowed (janela 5 min), deixou de ser cumulativa
+- Erros `ROUTING_APP` separados: ACK / NAK-entrega / Erros FW (NO_ROUTE, MAX_RETRANSMIT)
+- `_ch_util` / `_air_tx` expiram após 30 min sem actualização (TTL)
+- Contagem de GPS usa `_node_pos` com coordenadas validadas
 ### 🔌 Conectividade e Robustez
 
 - Ligação TCP ao daemon **meshtasticd** (por defeito `localhost:4403`)
@@ -207,7 +214,7 @@ meshdeck/
 │   ├── tab_messages.py      ← MessagesTab (canais, DMs PKI/PSK)
 │   ├── tab_navigation.py    ← NavigationTab (bússola, tabela GPS, refresh posição)
 │   ├── tab_config.py        ← ConfigTab, ChannelsTab, MESHTASTIC_CONFIG_DEFS
-│   ├── tab_metrics.py       ← MetricsTab (orquestração das 10 secções)
+│   ├── tab_metrics.py       ← MetricsTab (orquestração das 11 secções)
 │   ├── metrics_data.py      ← MetricsDataMixin (ingestão e cálculo de dados)
 │   └── metrics_render.py    ← MetricsRenderMixin (geração HTML/JS/Chart.js)
 └── requirements.txt
