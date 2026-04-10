@@ -5,7 +5,7 @@ Advanced graphical interface for monitoring, communication and configuration of
 Built and optimised for the **ClockworkPi uConsole CM4**, but runs on any
 Linux/macOS/Windows system with Python 3 and PyQt5.
 
-**Version:** 1.0.2-beta.1 &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Year:** 2026
+**Version:** 1.0.3-beta &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Year:** 2026
 
 ---
 
@@ -104,22 +104,32 @@ connection dialog. The preference is saved between sessions via `QSettings`.
 - `proxy_to_client_enabled` displayed as read-only with explanatory note
   (requires `mqttClientProxyMessage` relay protocol — planned for a future release)
 
-### 📊 Real-Time Metrics (10 Sections)
+### 📊 Real-Time Metrics (11 Sections)
 
-Auto-refreshes every 5 seconds via JavaScript without reloading the HTML page.
+Auto-refreshes every 5 seconds. The Local Node section reloads when data
+changes (hash-guarded `setHtml`); all other sections update via JavaScript
+without reloading the HTML page.
 
 | Section | Type | What it measures |
-|---------|------|-----------------| 
+|---------|------|-----------------|
 | 📊 Overview | Mixed | Packets, active nodes, SNR, delivery rate, airtime |
+| 🏠 Local Node | 🏠 Local | Battery, Ch. Util., Air TX, duty cycle/h (EU limit), SNR RX, messages sent/ACK/NAK, RTT, uptime (live counter), GPS |
 | 📡 Channel & Airtime | 🌐 Network | Ch. utilization, airtime TX, EU duty cycle (ETSI EN300.220) |
 | 📶 RF Quality | 🌐 Network | SNR histogram, hop distribution, quality assessment |
 | 📦 Traffic | 🌐 Network | Packets by type, packets/min, RF vs MQTT, routing pattern |
 | 🔋 Nodes & Battery | 🌐 Network | Battery, voltage, uptime, hardware model, GPS count |
-| ✅ Reliability | 🏠 Local | ACK/NAK/pending, delivery rate, duplicates, collision probability |
+| ✅ Reliability | Mixed | ACK/NAK/fw-errors separated, delivery rate, windowed flood rate, collision estimate |
 | ⏱ Latency (RTT) | 🏠 Local | RTT avg/min/max/P90 between send and ACK |
 | 🔗 Neighbourhood | 🌐 Network | Direct neighbour pairs with SNR (NeighborInfo) |
 | 📏 Range & Links | 🌐 Network | km distance between GPS-equipped neighbours (Haversine) |
 | ⏰ Intervals | 🌐 Network | Average time between packets per node |
+
+**Metric precision improvements in v1.0.3-beta:**
+- SNR P10 corrected to `int(0.1*(n-1))` — was `n//10` (wrong for small samples)
+- Flood rate windowed to match the 5-minute `_pkt_ids` window (was cumulative)
+- `ROUTING_APP` errors split: ACK / NAK-delivery / FW-errors (NO_ROUTE, MAX_RETRANSMIT)
+- `_ch_util` / `_air_tx` expire after 30 min of no update (TTL)
+- GPS node count uses validated `_node_pos` entries, not raw POSITION_APP packet count
 
 ### 🔌 Connectivity and Robustness
 
@@ -208,7 +218,7 @@ meshdeck/
 │   ├── tab_messages.py      ← MessagesTab (channels, PKI/PSK DMs)
 │   ├── tab_navigation.py    ← NavigationTab (compass, GPS table, position refresh)
 │   ├── tab_config.py        ← ConfigTab, ChannelsTab, MESHTASTIC_CONFIG_DEFS
-│   ├── tab_metrics.py       ← MetricsTab (orchestrates 10 metric sections)
+│   ├── tab_metrics.py       ← MetricsTab (orchestrates 11 metric sections)
 │   ├── metrics_data.py      ← MetricsDataMixin (data ingestion and calculation)
 │   └── metrics_render.py    ← MetricsRenderMixin (HTML/JS/Chart.js generation)
 └── requirements.txt

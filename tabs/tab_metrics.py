@@ -48,6 +48,7 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
         """Returns sections with translated labels."""
         return [
             (tr("📊 Visão Geral"),      "overview"),
+            (tr("🏠 Nó Local"),         "local_node"),
             (tr("📡 Canal & Airtime"),  "channel"),
             (tr("📶 Qualidade RF"),     "rf"),
             (tr("📦 Tráfego"),          "traffic"),
@@ -201,6 +202,7 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
         )
         if reply == QMessageBox.Yes:
             self._reset_data()
+            self._local_node_sig = None   # força re-render da secção local_node
             self._render_section(self._section_list.currentRow())
 
     def _section_has_data(self, key: str) -> bool:
@@ -209,11 +211,12 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
         if key == 'neighbors':   return bool(self._nb_links)
         if key == 'range_links': return bool(self._data_range_links()['rows'])
         if key == 'rf':          return bool(self._snr_values or self._hops_values)
-        if key == 'channel':     return bool(self._ch_util or self._air_tx)
+        if key == 'channel':     return bool(self._ch_util_active() or self._air_tx_active() or self._ch_util_ts)
         if key == 'nodes':       return bool(self._battery or self._packets)
-        return True   # secções sem ecrã de espera consideram-se sempre com dados
+        return True
 
-    # Secções que mostram ecrã de espera enquanto não há dados
+    # Secções que mostram ecrã de espera enquanto não há dados.
+    # local_node é gerido exclusivamente pelo hash guard em _refresh_current.
     _WAITING_SECTIONS = {'intervals', 'neighbors', 'range_links', 'rf', 'channel', 'nodes'}
 
     def _refresh_current(self):
@@ -242,6 +245,27 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
                     self._render_section(row)
                 return
             self._was_waiting[key] = not has_data_now
+
+        # local_node usa setHtml com hash guard — sem runJavaScript.
+        # O hash compara os campos que mudam; setHtml só corre quando há mudança real.
+        # O ecrã de espera (sem nid) também é controlado pelo hash: sig='_waiting'.
+        if key == 'local_node':
+            import hashlib as _hl
+            if not self._local_nid:
+                sig = '_waiting'
+            else:
+                d = self._data_local_node()
+                sig = _hl.md5(str((
+                    d.get('ch_util'), d.get('air_tx'), d.get('dc_est'),
+                    d.get('battery'), d.get('msgs_sent'), d.get('msgs_acked'),
+                    d.get('snr_rx_avg'), d.get('delivery'),
+                )).encode()).hexdigest()
+            last = getattr(self, '_local_node_sig', None)
+            if sig != last:
+                self._local_node_sig = sig
+                self._page_ready = False
+                self._chart_view.setHtml(self._html_local_node())
+            return
 
         data_fn = {
             'overview':    self._data_overview,
@@ -303,9 +327,17 @@ class MetricsTab(MetricsDataMixin, MetricsRenderMixin, QWidget):
         _, key = self.get_sections()[row]
         self._current_key = key
         self._page_ready   = False
+        # Quando se força um render manual de local_node, invalida o hash
+        # para que o setHtml corra sem comparação.
+        if key == 'local_node':
+            self._local_node_sig = None
+            self._chart_view.setHtml(self._html_local_node())
+            self._update_refresh_label()
+            return
         # Não parar _refresh_timer — corre sempre e é protegido pelo JS
         html_fn = {
             'overview':    self._html_overview,
+            'local_node':  self._html_local_node,
             'channel':     self._html_channel,
             'rf':          self._html_rf,
             'traffic':     self._html_traffic,

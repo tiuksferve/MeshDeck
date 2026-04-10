@@ -1093,4 +1093,46 @@ _STRINGS: dict = {
     "reply_to":                     {"pt": "A responder a",      "en": "Replying to"},
     "cancel_reply":                 {"pt": "Cancelar resposta",  "en": "Cancel reply"},
     "msg_reply_btn":                {"pt": "Responder",          "en": "Reply"},
+
+    # ── Métricas — Nó Local ──────────────────────────────────────────────────
+    "🏠 Nó Local":                  {"pt": "🏠 Nó Local",                       "en": "🏠 Local Node"},
+    "Métricas e estado do nó local · {hora}":
+                                    {"pt": "Métricas e estado do nó local · {hora}",
+                                     "en": "Local node metrics and status · {hora}"},
+    "Canal observado pelo nó":      {"pt": "Canal observado pelo nó",            "en": "Channel observed by node"},
+    "TX deste nó nos últimos 10 min":
+                                    {"pt": "TX deste nó nos últimos 10 min",     "en": "This node's TX in last 10 min"},
+    "Duty Cycle/h Estimado (airUtilTx × 6)":
+                                    {"pt": "Duty Cycle/h Estimado (airUtilTx × 6)",
+                                     "en": "Estimated Duty Cycle/h (airUtilTx × 6)"},
+    "Duty Cycle/h — Histórico":     {"pt": "Duty Cycle/h — Histórico",          "en": "Duty Cycle/h — History"},
+    "Limite EU_868/EU_433: 10%/hora · Aviso: 7%/hora":
+                                    {"pt": "Limite EU_868/EU_433: 10%/hora · Aviso: 7%/hora",
+                                     "en": "EU_868/EU_433 limit: 10%/hour · Warning: 7%/hour"},
+    "Estimativa: airUtilTx (média 10 min) × 6. Precisa em regime estacionário; pode sobrestimar após burst de TX.":
+                                    {"pt": "Estimativa: airUtilTx (média 10 min) × 6. Precisa em regime estacionário; pode sobrestimar após burst de TX.",
+                                     "en": "Estimate: airUtilTx (10 min avg) × 6. Accurate in steady state; may overestimate after TX burst."},
+    "Estimativa: airUtilTx × 6. Extrapolação de 10 min para 1 hora — válida em regime estacionário.":
+                                    {"pt": "Estimativa: airUtilTx × 6. Extrapolação de 10 min para 1 hora — válida em regime estacionário.",
+                                     "en": "Estimate: airUtilTx × 6. Extrapolation from 10 min to 1 hour — valid in steady state."},
+    "SNR Médio Recebido":           {"pt": "SNR Médio Recebido",                 "en": "Avg Received SNR"},
+    "Msgs Enviadas":                {"pt": "Msgs Enviadas",                      "en": "Msgs Sent"},
+    "pacotes":                      {"pt": "pacotes",                            "en": "packets"},
+    "Sem posição GPS":              {"pt": "Sem posição GPS",                    "en": "No GPS position"},
+    "⏳ Aguardando identificação do nó local...":
+                                    {"pt": "⏳ Aguardando identificação do nó local...",
+                                     "en": "⏳ Awaiting local node identification..."},
+    "A secção Nó Local aparece após a ligação estar estabelecida.":
+                                    {"pt": "A secção Nó Local aparece após a ligação estar estabelecida.",
+                                     "en": "The Local Node section appears once the connection is established."},
+    "NAK = requestId + errorReason · Erros FW = sem requestId":
+                                    {"pt": "NAK = requestId + errorReason · Erros FW = sem requestId",
+                                     "en": "NAK = requestId + errorReason · FW Errors = no requestId"},
+    "⚡ Alimentação externa":        {"pt": "⚡ Alimentação externa",             "en": "⚡ External power"},
+    # Labels JS do Nó Local (passados via _data_local_node para update sem reload)
+    "lbl_dc_optimal":               {"pt": "✅ Óptimo",                          "en": "✅ Optimal"},
+    "lbl_dc_warn":                  {"pt": "⚠ Próximo do limite",               "en": "⚠ Near limit"},
+    "lbl_dc_exceeded":              {"pt": "🚨 LIMITE EXCEDIDO",                "en": "🚨 LIMIT EXCEEDED"},
+    "RTT médio":                    {"pt": "RTT médio",                          "en": "Avg RTT"},
+    "mediana":                      {"pt": "mediana",                            "en": "median"},
 }
