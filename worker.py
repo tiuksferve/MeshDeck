@@ -468,11 +468,48 @@ class MeshtasticWorker(QObject):
             user_data  = me.get('user', {})
             long_name  = user_data.get('longName', '')
             short_name = user_data.get('shortName', '')
-            # setOwner reenvia o NODEINFO_APP broadcast com os dados actuais
-            local_node.setOwner(long_name=long_name, short_name=short_name)
-            logger.info(f"send_node_info: via setOwner ('{long_name}' / '{short_name}')")
+
+            # Construct User protobuf message manually to avoid administrative save & reboot
+            from meshtastic.protobuf import mesh_pb2, portnums_pb2
+            user_pkt = mesh_pb2.User()
+            user_pkt.id = user_data.get('id', '')
+            user_pkt.long_name = long_name
+            user_pkt.short_name = short_name
+
+            hw_model = user_data.get('hwModel')
+            if hw_model is not None:
+                try:
+                    user_pkt.hw_model = int(hw_model)
+                except (ValueError, TypeError):
+                    pass
+
+            pk = user_data.get('publicKey')
+            if pk:
+                if isinstance(pk, str):
+                    try:
+                        user_pkt.public_key = base64.b64decode(pk)
+                    except Exception:
+                        pass
+                elif isinstance(pk, bytes):
+                    user_pkt.public_key = pk
+
+            mac = user_data.get('macaddr')
+            if mac:
+                if isinstance(mac, bytes):
+                    user_pkt.macaddr = mac
+
+            # Broadcast to the mesh via channel 0 (Primary)
+            self.iface.sendData(
+                user_pkt,
+                destinationId=BROADCAST_NUM,
+                portNum=portnums_pb2.PortNum.NODEINFO_APP,
+                wantAck=False,
+                wantResponse=False,
+                channelIndex=0
+            )
+            logger.info(f"send_node_info: broadcasted User packet manually (no reboot)")
         except Exception as e:
-            logger.error(f"Error sending NODEINFO: {e}", exc_info=True)
+            logger.error(f"Error sending manual NODEINFO: {e}", exc_info=True)
             self.error_occurred.emit(tr("err_nodeinfo", err=e))
 
     def send_direct_message(self, dest_id: str, text: str):
@@ -880,11 +917,21 @@ class MeshtasticWorker(QObject):
                                   .get('user', {}).get('id'))
 
             # Emite o pacote raw para métricas com fromId resolvido
-            # (feito após resolução de ID para garantir fromId correcto)
             try:
                 pkt_copy = dict(packet)
                 if from_id_string and not pkt_copy.get('fromId'):
                     pkt_copy['fromId'] = from_id_string
+
+                # Enriquece com contexto do NodeDB (shortName e hopsAway)
+                if self.iface and from_id_num:
+                    nodes_src = getattr(self.iface, 'nodesByNum', {}) or {}
+                    node_db_entry = nodes_src.get(int(from_id_num), {})
+                    if node_db_entry:
+                        if not pkt_copy.get('shortName'):
+                            pkt_copy['shortName'] = node_db_entry.get('user', {}).get('shortName')
+                        if pkt_copy.get('hopsAway') is None:
+                            pkt_copy['hopsAway'] = node_db_entry.get('hopsAway')
+
                 self.raw_packet_received.emit(pkt_copy)
             except Exception:
                 pass
