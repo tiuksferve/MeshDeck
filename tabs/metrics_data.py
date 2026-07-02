@@ -113,99 +113,216 @@ class MetricsDataMixin:
                 self._local_node_sig = None
 
     # ── ingestão ─────────────────────────────────────────────────────────
+    # ── ingestão ─────────────────────────────────────────────────────────
     def ingest_packet(self, packet: dict, node_data: dict):
+        """
+        [DEPRECATED] Mantido temporariamente para compatibilidade com batch inicial.
+        Redireciona para ingest_raw_packet para garantir lógica única.
+        """
+        if not packet:
+            # Update sem pacote (ex: poll manual do nó local)
+            self._update_from_node_data(packet.get('fromId', '') if packet else '', node_data)
+            return
+
+        # Garante que o pacote tem o node_data fundido se necessário
+        p = dict(packet)
+        if node_data:
+            if not p.get('shortName'): p['shortName'] = node_data.get('short_name')
+            if p.get('hopsAway') is None: p['hopsAway'] = node_data.get('hops_away')
+
+        self.ingest_raw_packet(p)
+
+    def _update_from_node_data(self, nid: str, node_data: dict):
+        """Fallback para actualização de métricas sem recepção de pacote real."""
+        if not nid or not node_data: return
+        ts = time.time()
+        for field, target in [('battery_level', '_battery'), ('voltage', '_voltage'),
+                             ('uptime_seconds', '_uptime'), ('hw_model', '_hw_model')]:
+            val = node_data.get(field)
+            if val is not None:
+                if field == 'voltage': val = round(float(val), 3)
+                getattr(self, target)[nid] = val
+
+        # Telemetria com TTL
+        ch_util = node_data.get('channel_utilization')
+        air_tx  = node_data.get('air_util_tx')
+        if ch_util is not None: self._ch_util[nid] = {'val': float(ch_util), 'ts': ts}
+        if air_tx  is not None: self._air_tx[nid]  = {'val': float(air_tx),  'ts': ts}
+
+        if self._local_nid and nid == self._local_nid:
+            if ch_util is not None: self._local_ch_util = float(ch_util)
+            if air_tx is not None:  self._local_air_tx = float(air_tx)
+            if node_data.get('battery_level') is not None: self._local_battery = int(node_data['battery_level'])
+            if node_data.get('voltage') is not None:       self._local_voltage = round(float(node_data['voltage']), 3)
+            if node_data.get('uptime_seconds') is not None: self._local_uptime = int(node_data['uptime_seconds'])
+
+        # Posição
+        lat = node_data.get('latitude')
+        lon = node_data.get('longitude')
+        if lat is not None and lon is not None:
+            self.ingest_node_position(nid, lat, lon)
+
+    def ingest_raw_packet(self, packet: dict):
+        """
+        Master Ingester: processa todos os pacotes recebidos pela rede (RF e MQTT).
+        Unifica a detecção de duplicados, contagem de tráfego, telemetria e fiabilidade.
+        Garante que loopbacks do nó local são processados para estatísticas de rede.
+        """
         ts      = time.time()
+        pkt_id  = packet.get('id')
         nid     = packet.get('fromId', '')
-        portnum = (packet.get('decoded') or {}).get('portnum', 'UNKNOWN_APP')
+        decoded = packet.get('decoded') or {}
+        portnum = decoded.get('portnum', 'UNKNOWN_APP')
         snr     = packet.get('rxSnr')
         via_mqtt = packet.get('viaMqtt', False)
 
-        sn = (node_data.get('short_name') or '').strip()
-        if nid and sn:
-            self._node_short[nid] = sn
+        # Contexto resolvido pelo worker
+        short_name = packet.get('shortName')
+        hops       = packet.get('hopsAway')
 
-        hops = node_data.get('hops_away')
+        if nid and short_name:
+            self._node_short[nid] = short_name
+
+        # 1. Timeline e Contadores (RF Qual, Tráfego)
+        # -------------------------------------------
         self._packets.append((ts, nid, portnum, snr, hops, via_mqtt))
         if len(self._packets) > 5000:
             self._packets = self._packets[-4000:]
 
         if snr is not None:
-            self._snr_values.append(float(snr))
-            if len(self._snr_values) > 2000:
-                self._snr_values = self._snr_values[-1500:]
+            val_snr = float(snr)
+            self._snr_values.append(val_snr)
+            if len(self._snr_values) > 2000: self._snr_values = self._snr_values[-1500:]
+            # Perspectiva do nó local (sinal de entrada)
+            self._local_snr_rx.append(val_snr)
+            if len(self._local_snr_rx) > 500: self._local_snr_rx = self._local_snr_rx[-400:]
 
         if hops is not None:
             self._hops_values.append(int(hops))
-            if len(self._hops_values) > 2000:
-                self._hops_values = self._hops_values[-1500:]
+            if len(self._hops_values) > 2000: self._hops_values = self._hops_values[-1500:]
 
         self._portnum_counts[portnum] = self._portnum_counts.get(portnum, 0) + 1
 
-        # FIX: fonte única — node_data (já mergeado pelo worker).
-        # Antes havia dupla leitura: raw protobuf + node_data; a série
-        # _ch_util_ts era appendada antes do merge, com valor possivelmente errado.
-        batt    = node_data.get('battery_level')
-        ch_util = node_data.get('channel_utilization')
-        air_tx  = node_data.get('air_util_tx')
-        volt    = node_data.get('voltage')
-        uptm    = node_data.get('uptime_seconds')
-        hw      = node_data.get('hw_model', '')
+        # 2. Duplicados — FIX: _count_duplicates() recalcula dinamicamente
+        # ---------------------------------------------------------------
+        if pkt_id and nid:
+            if pkt_id in self._pkt_ids:
+                self._pkt_ids[pkt_id]['count'] += 1
+                self._pkt_ids[pkt_id]['ts'] = ts
+            else:
+                self._pkt_ids[pkt_id] = {'from': nid, 'ts': ts, 'count': 1}
+                self._pkt_ids_ever += 1
+            cutoff_ids = ts - 300
+            self._pkt_ids = {k: v for k, v in self._pkt_ids.items() if v['ts'] >= cutoff_ids}
 
-        if nid:
-            if batt    is not None: self._battery[nid] = int(batt)
-            if volt    is not None: self._voltage[nid] = round(float(volt), 3)
-            if uptm    is not None: self._uptime[nid]  = int(uptm)
-            if hw:                  self._hw_model[nid] = hw
-            if ch_util is not None: self._ch_util[nid] = {'val': float(ch_util), 'ts': ts}
-            if air_tx  is not None: self._air_tx[nid]  = {'val': float(air_tx),  'ts': ts}
+        # 3. Telemetria e Saúde (TELEMETRY_APP)
+        # -------------------------------------
+        if portnum == 'TELEMETRY_APP':
+            tel = decoded.get('telemetry', {})
+            dm  = tel.get('deviceMetrics', {})
+            if dm and nid:
+                batt    = dm.get('batteryLevel')
+                ch_util = dm.get('channelUtilization')
+                air_tx  = dm.get('airUtilTx')
+                volt    = dm.get('voltage')
+                uptm    = dm.get('uptimeSeconds')
 
-        # Série temporal ch_util — appendada APÓS merge completo
-        if ch_util is not None and nid:
-            active_ch = self._ch_util_active()
-            if active_ch:
-                avg = sum(active_ch.values()) / len(active_ch)
-                self._ch_util_ts.append((ts, round(avg, 1)))
-                if len(self._ch_util_ts) > 120:
-                    self._ch_util_ts = self._ch_util_ts[-120:]
+                if batt    is not None: self._battery[nid] = int(batt)
+                if volt    is not None: self._voltage[nid] = round(float(volt), 3)
+                if uptm    is not None: self._uptime[nid]  = int(uptm)
+                if ch_util is not None: self._ch_util[nid] = {'val': float(ch_util), 'ts': ts}
+                if air_tx  is not None: self._air_tx[nid]  = {'val': float(air_tx),  'ts': ts}
 
-        # Métricas específicas do nó local
-        if self._local_nid and nid == self._local_nid:
-            if ch_util is not None: self._local_ch_util = float(ch_util)
-            if air_tx  is not None:
-                self._local_air_tx = float(air_tx)
-                dc = round(min(float(air_tx) * 6, 100.0), 2)
-                self._local_dc_ts.append((ts, dc))
-                if len(self._local_dc_ts) > 120:
-                    self._local_dc_ts = self._local_dc_ts[-120:]
-            if batt is not None: self._local_battery  = int(batt)
-            if volt is not None: self._local_voltage   = round(float(volt), 3)
-            if uptm is not None: self._local_uptime    = int(uptm)
-            if hw:               self._local_hw_model  = hw
+                # Série temporal ch_util (média activa)
+                active_ch = self._ch_util_active()
+                if active_ch:
+                    avg = sum(active_ch.values()) / len(active_ch)
+                    self._ch_util_ts.append((ts, round(avg, 1)))
+                    if len(self._ch_util_ts) > 120: self._ch_util_ts = self._ch_util_ts[-120:]
 
-        # SNR de pacotes recebidos (perspectiva do nó local = rxSnr)
-        if snr is not None:
-            self._local_snr_rx.append(float(snr))
-            if len(self._local_snr_rx) > 500:
-                self._local_snr_rx = self._local_snr_rx[-400:]
+                # Métricas específicas do nó local
+                if self._local_nid and nid == self._local_nid:
+                    if ch_util is not None: self._local_ch_util = float(ch_util)
+                    if air_tx is not None:
+                        self._local_air_tx = float(air_tx)
+                        dc = round(min(float(air_tx) * 6, 100.0), 2)
+                        self._local_dc_ts.append((ts, dc))
+                        if len(self._local_dc_ts) > 120: self._local_dc_ts = self._local_dc_ts[-120:]
+                    if batt is not None: self._local_battery = int(batt)
+                    if volt is not None: self._local_voltage = round(float(volt), 3)
+                    if uptm is not None: self._local_uptime  = int(uptm)
 
-        # Nós activos (a cada 60s)
-        if not self._nodes_active_ts or ts - self._nodes_active_ts[-1][0] >= 60:
-            cutoff = ts - 7200
-            active = len(set(p[1] for p in self._packets if p[0] >= cutoff))
-            self._nodes_active_ts.append((ts, active))
-            if len(self._nodes_active_ts) > 120:
-                self._nodes_active_ts = self._nodes_active_ts[-120:]
+        # 4. Posição (POSITION_APP e NODEINFO_APP)
+        # ----------------------------------------
+        pos = decoded.get('position', {})
+        if pos and nid:
+            lat_i = pos.get('latitudeI') or pos.get('latitude_i')
+            lon_i = pos.get('longitudeI') or pos.get('longitude_i')
+            if lat_i is not None and lon_i is not None:
+                lat, lon = lat_i / 1e7, lon_i / 1e7
+                if abs(lat) > 0.001 or abs(lon) > 0.001:
+                    self._node_pos[nid] = (lat, lon)
 
-        # Intervalo entre pacotes por nó
+        # 5. Vizinhança (NEIGHBORINFO_APP)
+        # --------------------------------
+        if portnum == 'NEIGHBORINFO_APP':
+            ni = decoded.get('neighborinfo', {}) or decoded.get('neighborInfo', {})
+            nbs = ni.get('neighbors', [])
+            if nid and nbs:
+                parsed = []
+                for nb in nbs:
+                    nb_num = nb.get('nodeId') or nb.get('node_id')
+                    if nb_num:
+                        parsed.append((f"!{int(nb_num):08x}", float(nb.get('snr', 0.0))))
+                if parsed: self._nb_links[nid] = parsed
+
+        # 6. Fiabilidade de Entrega (ROUTING_APP)
+        # ---------------------------------------
+        if portnum == 'ROUTING_APP':
+            routing    = decoded.get('routing', {}) or {}
+            err        = (routing.get('errorReason', 'NONE') or 'NONE').upper()
+            request_id = decoded.get('requestId', 0)
+            has_err    = (err != 'NONE' and err != '')
+
+            if has_err:
+                if request_id: self._routing_naks += 1     # NAK de entrega
+                else:          self._routing_fw_errs += 1  # Erro interno
+            elif request_id:
+                self._routing_acks += 1                    # ACK de entrega
+
+        # 7. Hardware Model (NODEINFO_APP)
+        # --------------------------------
+        if portnum == 'NODEINFO_APP' and nid:
+            hw = (decoded.get('user', {}) or {}).get('hwModel', '')
+            if hw:
+                self._hw_model[nid] = hw
+                if self._local_nid and nid == self._local_nid:
+                    self._local_hw_model = hw
+
+        # 8. Intervalo entre pacotes por nó
+        # ---------------------------------
         if nid:
             entry = self._pkt_intervals.setdefault(nid, {'last': None, 'vals': []})
             if entry['last'] is not None:
                 interval = ts - entry['last']
                 if 1 < interval < 3600:
                     entry['vals'].append(round(interval, 1))
-                    if len(entry['vals']) > 100:
-                        entry['vals'] = entry['vals'][-80:]
+                    if len(entry['vals']) > 100: entry['vals'] = entry['vals'][-80:]
             entry['last'] = ts
+
+        # 9. Histórico de Nós Activos (a cada 60s)
+        # ----------------------------------------
+        if not self._nodes_active_ts or ts - self._nodes_active_ts[-1][0] >= 60:
+            cutoff = ts - 7200
+            active = len(set(p[1] for p in self._packets if p[0] >= cutoff))
+            self._nodes_active_ts.append((ts, active))
+            if len(self._nodes_active_ts) > 120: self._nodes_active_ts = self._nodes_active_ts[-120:]
+
+    def ingest_node_position(self, nid: str, lat: float, lon: float):
+        """FIX: _node_pos inicializado em _reset_data; filtra coords (0,0)."""
+        if nid and lat is not None and lon is not None:
+            if abs(lat) > 0.001 or abs(lon) > 0.001:
+                self._node_pos[nid] = (lat, lon)
 
     def ingest_message_status(self, req_id: int, status: str):
         if req_id not in self._sent_packet_ids:
@@ -240,49 +357,9 @@ class MetricsDataMixin:
             self._refresh_current()
 
     def ingest_neighbor_info(self, from_id: str, neighbors: list):
+        """Wrapper para compatibilidade se chamado manualmente."""
         if from_id and neighbors:
             self._nb_links[from_id] = neighbors
-
-    def ingest_raw_packet(self, packet: dict):
-        """FIX: separação de NAK de entrega vs erros internos de firmware."""
-        ts      = time.time()
-        pkt_id  = packet.get('id')
-        nid     = packet.get('fromId', '')
-        decoded = packet.get('decoded') or {}
-        portnum = decoded.get('portnum', '')
-
-        # Duplicados — FIX: _count_duplicates() recalcula dinamicamente
-        if pkt_id and nid:
-            if pkt_id in self._pkt_ids:
-                self._pkt_ids[pkt_id]['count'] += 1
-                self._pkt_ids[pkt_id]['ts'] = ts
-            else:
-                self._pkt_ids[pkt_id] = {'from': nid, 'ts': ts, 'count': 1}
-                self._pkt_ids_ever += 1
-            cutoff_ids = ts - 300
-            self._pkt_ids = {k: v for k, v in self._pkt_ids.items()
-                             if v['ts'] >= cutoff_ids}
-
-        # ACK/NAK da rede — separação correcta
-        if portnum == 'ROUTING_APP':
-            routing    = decoded.get('routing', {}) or {}
-            err        = (routing.get('errorReason', 'NONE') or 'NONE').upper()
-            request_id = decoded.get('requestId', 0)
-            has_err    = (err != 'NONE' and err != '')
-
-            if has_err:
-                if request_id:
-                    self._routing_naks += 1      # NAK de entrega (tem destinatário)
-                else:
-                    self._routing_fw_errs += 1   # Erro interno firmware
-            elif request_id:
-                self._routing_acks += 1          # ACK de entrega
-
-    def ingest_node_position(self, nid: str, lat: float, lon: float):
-        """FIX: _node_pos inicializado em _reset_data; filtra coords (0,0)."""
-        if nid and lat is not None and lon is not None:
-            if abs(lat) > 0.001 or abs(lon) > 0.001:
-                self._node_pos[nid] = (lat, lon)
 
     # ── helpers ──────────────────────────────────────────────────────────
     def _ts_label(self, ts: float) -> str:

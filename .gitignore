@@ -15,6 +15,9 @@ venv/
 env/
 .env/
 
+# scratch
+scratch/
+
 # User data
 ~/.meshtastic_monitor_favorites.json
 *.json
