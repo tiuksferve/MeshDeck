@@ -8,6 +8,11 @@ Uso:
     # ou dentro da pasta meshdeck/:
     python3 -m meshdeck.main
 """
+
+import os
+os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = "--no-sandbox --disable-gpu --disable-software-rasterizer"
+os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
+
 import sys
 import time
 import logging
@@ -839,36 +844,10 @@ class MainWindow(QMainWindow):
             self._map_debounce.start()  # debounce: reagrupa updates rápidos
 
     def _on_node_updated_metrics(self, node_id_string: str, node_data: dict, packet):
-        """Alimenta a MetricsTab com dados de cada pacote recebido."""
-        if packet is not None:
-            self.metrics_tab.ingest_packet(packet, node_data)
-        else:
+        """Alimenta a MetricsTab. Se houver pacote, o raw_packet_received já tratou."""
+        if packet is None:
             # Batch inicial ou update sem pacote (ex: nó local via _emit_node).
-            # Mesmo sem pacote, actualizamos campos do nó local se for ele.
-            local_nid = getattr(self.metrics_tab, '_local_nid', '')
-            if local_nid and node_id_string and node_id_string.lower() == local_nid.lower():
-                # Propagar campos de telemetria do nó local directamente
-                for field in ('channel_utilization', 'air_util_tx', 'battery_level',
-                              'voltage', 'uptime_seconds', 'hw_model'):
-                    val = node_data.get(field)
-                    if val is not None:
-                        if field == 'channel_utilization':
-                            self.metrics_tab._local_ch_util = float(val)
-                        elif field == 'air_util_tx':
-                            self.metrics_tab._local_air_tx = float(val)
-                        elif field == 'battery_level':
-                            self.metrics_tab._local_battery = int(val)
-                        elif field == 'voltage':
-                            self.metrics_tab._local_voltage = round(float(val), 3)
-                        elif field == 'uptime_seconds':
-                            self.metrics_tab._local_uptime = int(val)
-                        elif field == 'hw_model':
-                            self.metrics_tab._local_hw_model = str(val)
-        # Regista posição GPS para cálculo de alcance de links
-        lat = node_data.get('latitude')
-        lon = node_data.get('longitude')
-        if lat is not None and lon is not None:
-            self.metrics_tab.ingest_node_position(node_id_string, lat, lon)
+            self.metrics_tab.ingest_packet(None, node_data)
 
     def _on_worker_error(self, message: str):
         QMessageBox.critical(self, tr("Erro no Meshtastic"), message)

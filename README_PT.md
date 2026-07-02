@@ -5,7 +5,7 @@ Interface gráfica avançada para monitorização, comunicação e configuraçã
 Desenvolvida e optimizada para o **ClockworkPi uConsole CM4**, mas funciona em
 qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
 
-**Versão:** 1.0.3-beta &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
+**Versão:** 1.0.4-beta &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
 
 ---
 
@@ -121,12 +121,12 @@ Actualização automática a cada 5 segundos. A secção Nó Local recarrega qua
 | 📏 Alcance & Links | 🌐 Rede | Distância km entre vizinhos com GPS (Haversine) |
 | ⏰ Intervalos | 🌐 Rede | Intervalo médio entre pacotes por nó |
 
-**Melhorias de precisão na v1.0.3-beta:**
-- P10 de SNR corrigido para `int(0.1*(n-1))` — `n//10` dava valor errado para amostras pequenas
-- Taxa de flood windowed (janela 5 min), deixou de ser cumulativa
-- Erros `ROUTING_APP` separados: ACK / NAK-entrega / Erros FW (NO_ROUTE, MAX_RETRANSMIT)
-- `_ch_util` / `_air_tx` expiram após 30 min sem actualização (TTL)
-- Contagem de GPS usa `_node_pos` com coordenadas validadas
+**Precisão e performance na v1.0.4-beta:**
+- **Deduplicação de nó local:** `FIX-4` garante registo do ID antes do processamento de batches.
+- **Otimização de polling:** `FIX-5` reduz uso de CPU no CM4 ao evitar redesenhos redundantes.
+- **Correção do contador:** `FIX-8` mostra agora a contagem real de nós filtrados.
+- **Separação de fiabilidade:** erros internos de firmware separados de falhas de entrega (NAK).
+- **Melhorias legadas (v1.0.3):** correção do P10 de SNR, taxa de flood windowed e expiração TTL de telemetria inativa.
 ### 🔌 Conectividade e Robustez
 
 - Ligação TCP ao daemon **meshtasticd** (por defeito `localhost:4403`)

@@ -6,6 +6,23 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.4-beta] — 2026-07-02
+
+### Added
+
+- **⚡ Stability and GUI Threading:**
+  - `TCPInterface.close()` and `SerialInterface.close()` now run in dedicated background threads to prevent UI lockups during disconnection or node reboots.
+  - Non-blocking connection sequence using `threading` ensures the main UI remains responsive during TCP handshakes.
+  - Reconnection watchdog timer (12s) prevents the worker from getting stuck if the pubsub event "connection.established" never arrives.
+
+- **📊 Metrics & Performance:**
+  - **Early Local Node Registration:** configured filters now block the local node ID before any data batch is processed, preventing duplicate entries in the UI.
+  - **Optimized Polling:** the safety-net poll (30s) now skip UI redrawing if the NodeDB hasn't changed, significantly reducing CPU usage on target hardware (ClockworkPi CM4).
+  - **Corrected Node Counter:** the UI node counter now reflects the actual filtered visible count from the proxy model.
+  - **Reliability Influx Split:** internal firmware errors (e.g., `NO_ROUTE`, `MAX_RETRANSMIT`) are now correctly separated from user-generated delivery failures (NAK with `requestId`).
+
+---
+
 ## [1.0.3-beta] — 2026-04-10
 
 ### Added
@@ -349,6 +366,7 @@ First public release.
 > (ClockworkPi uConsole CM4) with a live Meshtastic network. Expect occasional
 > rough edges; bug reports and pull requests are welcome.
 
+[1.0.4-beta]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.4-beta
 [1.0.3-beta]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.3-beta
 [1.0.2-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.2-beta.1
 [1.0.1-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.1-beta.1

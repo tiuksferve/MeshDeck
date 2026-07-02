@@ -452,9 +452,10 @@ window._metricsFilterTable=function(text){{_currentFilter=(text||'').toLowerCase
         # Stats SNR
         snr_sorted = sorted(self._snr_values)
         n = len(snr_sorted)
-        snr_avg  = round(sum(snr_sorted) / n, 1)         if n else None
-        snr_med  = round(snr_sorted[n // 2], 1)          if n else None
-        snr_p10  = round(snr_sorted[max(0, n//10)], 1)   if n else None  # percentil 10 (pior)
+        snr_avg  = round(sum(snr_sorted) / n, 1) if n else None
+        snr_med  = round(snr_sorted[n // 2], 1)  if n else None
+        # FIX: formula correspondente ao _data_rf no metrics_data.py
+        snr_p10  = round(snr_sorted[int(0.1 * (n - 1))], 1) if n else None
 
         body = f"""
 <div class="subtitle" id="snr-n">{tr("Distribuição de SNR e hops · {n} amostras", n=len(self._snr_values))}</div>
@@ -783,9 +784,8 @@ window._metricsUpdateData = function(d) {{
         hw_labels = [h for h, _ in hw_sorted]
         hw_values = [c for _, c in hw_sorted]
 
-        # Nós únicos com GPS
-        n_gps_unique = len(set(p[1] for p in self._packets
-                               if p[2] == 'POSITION_APP' and p[1]))
+        # Nós únicos com GPS — FIX: usa _node_pos (igual ao _data_nodes)
+        n_gps_unique = len(self._node_pos)
 
         # Tabela de nós com bateria (tensão e uptime incluídos)
         batt_rows = ""
