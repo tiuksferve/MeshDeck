@@ -6,6 +6,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.5-beta] — 2026-07-09
+
+### Fixed
+
+- **👻 Node Duplicity and Ghost Nodes:**
+  - Standardized all Node ID formats by enforcing lowercase hexadecimal string conversion (`.lower()`) across metrics, worker processes, and neighbor calculations.
+  - Applied 32-bit unsigned integer masking (`& 0xffffffff`) to prevent numeric overflow and mismatching when converting numeric IDs to hexadecimal strings.
+  - Exchanged firmware-level administrative reboot-triggering calls (like `local_node.setOwner()`) for manual `User` protobuf packet broadcasts, resolving unwanted node reboots.
+
+- **🌐 Internationalization (i18n):**
+  - Wrapped previously hardcoded outgoing message status labels (`📤 Enviado`, `📤 DM`, `📤 DM PKI`, and `"Eu"`) inside the `tr()` translation wrapper.
+  - Restored numerous missing transition strings in `i18n.py` that caused translations to incorrectly fall back to Portuguese, specifically status tooltips, reply components, dialog boxes, and metrics labels.
+  - Standardized "pacotes" metrics translation to "packets" when the app interface is set to English.
+
+---
+
 ## [1.0.4-beta] — 2026-07-02
 
 ### Added
@@ -366,6 +382,7 @@ First public release.
 > (ClockworkPi uConsole CM4) with a live Meshtastic network. Expect occasional
 > rough edges; bug reports and pull requests are welcome.
 
+[1.0.5-beta]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.5-beta
 [1.0.4-beta]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.4-beta
 [1.0.3-beta]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.3-beta
 [1.0.2-beta.1]: https://github.com/tiuksferve/MeshDeck/releases/tag/v1.0.2-beta.1

@@ -472,7 +472,11 @@ class MeshtasticWorker(QObject):
             # Construct User protobuf message manually to avoid administrative save & reboot
             from meshtastic.protobuf import mesh_pb2, portnums_pb2
             user_pkt = mesh_pb2.User()
-            user_pkt.id = user_data.get('id', '')
+            # Ensure we have a valid, normalized ID for the User packet
+            nid = user_data.get('id')
+            if not nid and local_num:
+                nid = f"!{local_num & 0xffffffff:08x}"
+            user_pkt.id = nid.lower() if nid else ""
             user_pkt.long_name = long_name
             user_pkt.short_name = short_name
 
@@ -580,7 +584,7 @@ class MeshtasticWorker(QObject):
                         node    = self.iface.nodes.get(from_num, {})
                         from_id = node.get('user', {}).get('id', '')
                     if not from_id:
-                        from_id = f"!{int(from_num):08x}"
+                        from_id = f"!{int(from_num) & 0xffffffff:08x}".lower()
             if not from_id:
                 return
 
@@ -607,7 +611,7 @@ class MeshtasticWorker(QObject):
                     to_node = self.iface.nodesByNum.get(to_num, {})
                     to_id   = to_node.get('user', {}).get('id', '')
                 if not to_id:
-                    to_id = f"!{to_num:08x}"
+                    to_id = f"!{to_num & 0xffffffff:08x}"
 
             if pki_encrypted:
                 pk_raw = packet.get('publicKey')
@@ -727,7 +731,7 @@ class MeshtasticWorker(QObject):
                 local_num = self.iface.localNode.nodeNum
                 if local_num:
                     self._local_num_known = local_num
-                    self._local_id_known  = f"!{int(local_num):08x}"
+                    self._local_id_known  = f"!{int(local_num) & 0xffffffff:08x}"
         except Exception as e:
             logger.warning(f"Could not determine local nodeNum: {e}")
 
@@ -771,14 +775,14 @@ class MeshtasticWorker(QObject):
                     continue
                 try:
                     num     = int(node.get('num') or raw_key)
-                    from_id = node.get('user', {}).get('id') or f"!{num:08x}"
+                    from_id = (node.get('user', {}).get('id') or f"!{num & 0xffffffff:08x}").lower()
                 except (TypeError, ValueError):
                     continue
                 neighbors = []
                 for nb in neighbors_raw:
                     nb_num = nb.get('nodeId') or nb.get('node_id')
                     if nb_num:
-                        neighbors.append((f"!{int(nb_num):08x}", float(nb.get('snr', 0.0))))
+                        neighbors.append((f"!{int(nb_num) & 0xffffffff:08x}", float(nb.get('snr', 0.0))))
                 if neighbors:
                     self.neighbor_info_received.emit(from_id, neighbors)
         except Exception as e:
@@ -848,7 +852,7 @@ class MeshtasticWorker(QObject):
         nid = node.get('user', {}).get('id')
         if not nid and num:
             try:
-                nid = f"!{int(num):08x}"
+                nid = f"!{int(num) & 0xffffffff:08x}".lower()
             except (TypeError, ValueError):
                 return
         if not nid:
@@ -866,7 +870,7 @@ class MeshtasticWorker(QObject):
             from_id_string = packet.get('fromId', '')
             if not from_id_string and from_id_num:
                 try:
-                    from_id_string = f"!{int(from_id_num):08x}"
+                    from_id_string = f"!{int(from_id_num) & 0xffffffff:08x}".lower()
                 except (TypeError, ValueError):
                     return
             if not from_id_string:
@@ -953,7 +957,7 @@ class MeshtasticWorker(QObject):
                             pass
                     if not is_local and local_num is not None and from_id_string:
                         try:
-                            is_local = from_id_string.lower() == f'!{int(local_num):08x}'
+                            is_local = (from_id_string.lower() == f'!{int(local_num) & 0xffffffff:08x}')
                         except (TypeError, ValueError):
                             pass
                     if is_local:
@@ -1039,7 +1043,7 @@ class MeshtasticWorker(QObject):
                                 uid = self.iface.nodesByNum.get(ni, {}).get('user', {}).get('id', '')
                                 if uid:
                                     return uid
-                            return f"!{ni:08x}"
+                            return f"!{ni & 0xffffffff:08x}"
                         except (TypeError, ValueError):
                             return None
 
@@ -1101,7 +1105,7 @@ class MeshtasticWorker(QObject):
                         for nb in neighbors_raw:
                             nb_num = nb.get('nodeId') or nb.get('node_id')
                             if nb_num:
-                                neighbors.append((f"!{int(nb_num):08x}",
+                                neighbors.append((f"!{int(nb_num) & 0xffffffff:08x}",
                                                   float(nb.get('snr', 0.0))))
                         if neighbors:
                             self.neighbor_info_received.emit(from_id_string, neighbors)
@@ -1233,7 +1237,7 @@ class MeshtasticWorker(QObject):
         if not nid:
             if node_id_num:
                 try:
-                    nid = f"!{int(node_id_num):08x}"
+                    nid = f"!{int(node_id_num) & 0xffffffff:08x}".lower()
                 except (TypeError, ValueError):
                     return
             else:

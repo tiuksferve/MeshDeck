@@ -684,11 +684,12 @@ class MainWindow(QMainWindow):
         node_num = None
         if self.worker and self.worker.iface and self.worker.iface.localNode:
             node_num = self.worker.iface.localNode.nodeNum
-        self.source_model.set_local_node_id(node_id, node_num)
-        self.proxy_model.set_local_node_id(node_id)
-        self.messages_tab.set_my_node_id(node_id)
-        self.metrics_tab.set_local_node_id(node_id)
-        logger.info(f"Local node registered: id={node_id} num={node_num}")
+        nid_lower = node_id.lower() if node_id else ""
+        self.source_model.set_local_node_id(nid_lower, node_num)
+        self.proxy_model.set_local_node_id(nid_lower)
+        self.messages_tab.set_my_node_id(nid_lower)
+        self.metrics_tab.set_local_node_id(nid_lower)
+        logger.info(f"Local node registered: id={nid_lower} num={node_num}")
 
     def _poll_nodedb(self):
         """FIX-5: polling como safety-net — não redesenha se nada mudou."""
@@ -732,7 +733,7 @@ class MainWindow(QMainWindow):
         local_pos_updated = False
         for num, node in batch:
             user       = node.get('user', {})
-            nid        = user.get('id') or f"!{num:08x}"
+            nid        = (user.get('id') or f"!{num & 0xffffffff:08x}").lower()
             pos        = node.get('position', {})
             lat_i      = pos.get('latitudeI')
             lon_i      = pos.get('longitudeI')
@@ -863,7 +864,7 @@ class MainWindow(QMainWindow):
                              gps_enabled: bool, has_position: bool):
         self._local_long_name   = long_name
         self._local_short_name  = short_name
-        self._local_node_id_str = node_id
+        self._local_node_id_str = node_id.lower() if node_id else ""
         self._local_gps_enabled = gps_enabled
         self._local_has_pos     = has_position
         self._update_local_node_label(has_position)

@@ -532,15 +532,15 @@ class MessagesTab(QWidget):
 
     def add_outgoing_channel_message(self, channel_index: int, text: str, packet_id: int = 0):
         key   = f"ch:{channel_index}"
-        entry = self._build_entry(datetime.now(), self._my_node_id or "Eu", text,
-                                  label="📤 Enviado", is_dm=False, outgoing=True,
+        entry = self._build_entry(datetime.now(), self._my_node_id or tr("Eu"), text,
+                                  label=tr("📤 Enviado"), is_dm=False, outgoing=True,
                                   packet_id=packet_id)
         self._store_and_display(key, entry)
 
     def add_outgoing_dm(self, dest_id: str, text: str, pki: bool = False, packet_id: int = 0):
         key   = f"dm:{dest_id}"
-        label = "📤 DM PKI" if pki else "📤 DM"
-        entry = self._build_entry(datetime.now(), self._my_node_id or "Eu", text,
+        label = tr("📤 DM PKI") if pki else tr("📤 DM")
+        entry = self._build_entry(datetime.now(), self._my_node_id or tr("Eu"), text,
                                   label=label, is_dm=True, outgoing=True, packet_id=packet_id)
         self._store_and_display(key, entry)
 
@@ -599,7 +599,7 @@ class MessagesTab(QWidget):
 
     def _build_entry(self, timestamp: datetime, from_id: str, text: str,
                      label: str, is_dm: bool, outgoing: bool, packet_id: int = 0) -> dict:
-        friendly = "Eu" if outgoing else self.node_names.get(from_id, from_id)
+        friendly = tr("Eu") if outgoing else self.node_names.get(from_id, from_id)
         color    = ACCENT_GREEN if outgoing else self._color(from_id)
         status   = 'sending' if outgoing else ''
         return dict(time=timestamp, from_=friendly, from_id=from_id,

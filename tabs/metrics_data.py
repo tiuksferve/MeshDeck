@@ -273,7 +273,7 @@ class MetricsDataMixin:
                 for nb in nbs:
                     nb_num = nb.get('nodeId') or nb.get('node_id')
                     if nb_num:
-                        parsed.append((f"!{int(nb_num):08x}", float(nb.get('snr', 0.0))))
+                        parsed.append((f"!{int(nb_num) & 0xffffffff:08x}".lower(), float(nb.get('snr', 0.0))))
                 if parsed: self._nb_links[nid] = parsed
 
         # 6. Fiabilidade de Entrega (ROUTING_APP)

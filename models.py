@@ -364,16 +364,19 @@ class NodeTableModel(QAbstractTableModel):
                     and node_id_string.lower() == self._local_node_id)
 
     def update_node_silent(self, node_id_string: str, node_data: Dict[str, Any]) -> bool:
-        if node_id_string in self._node_index:
-            row = self._node_index[node_id_string]
+        nid = node_id_string.lower() if node_id_string else ""
+        if not nid: return False
+
+        if nid in self._node_index:
+            row = self._node_index[nid]
             _safe_update(self._nodes[row], node_data)
             return False
         else:
             # Nó local é agora permitido — aparece no topo com destaque visual
-            node_data["id_string"] = node_id_string
+            node_data["id_string"] = nid
             row = len(self._nodes)
             self._nodes.append(node_data)
-            self._node_index[node_id_string] = row
+            self._node_index[nid] = row
             return True
 
     def refresh_all(self):
@@ -389,8 +392,11 @@ class NodeTableModel(QAbstractTableModel):
         self.node_inserted.emit()
 
     def update_node(self, node_id_string: str, node_data: Dict[str, Any], packet=None):
-        if node_id_string in self._node_index:
-            row = self._node_index[node_id_string]
+        nid = node_id_string.lower() if node_id_string else ""
+        if not nid: return
+
+        if nid in self._node_index:
+            row = self._node_index[nid]
             _safe_update(self._nodes[row], node_data)
             if packet is not None:
                 self._nodes[row]["last_packet"] = packet
@@ -402,14 +408,14 @@ class NodeTableModel(QAbstractTableModel):
         else:
             row = len(self._nodes)
             self.beginInsertRows(QModelIndex(), row, row)
-            node_data["id_string"] = node_id_string
+            node_data["id_string"] = nid
             if packet is not None:
                 node_data["last_packet"] = packet
             self._nodes.append(node_data)
-            self._node_index[node_id_string] = row
+            self._node_index[nid] = row
             self.endInsertRows()
-            is_local = self._is_local_node(node_id_string, node_data.get('id_num'))
-            logger.info(f"Model: NEW node {node_id_string} inserted{'  [LOCAL]' if is_local else ''}")
+            is_local = self._is_local_node(nid, node_data.get('id_num'))
+            logger.info(f"Model: NEW node {nid} inserted{'  [LOCAL]' if is_local else ''}")
             self.node_inserted.emit()
 
     def set_selected_highlight(self, node_id_string: Optional[str]):
