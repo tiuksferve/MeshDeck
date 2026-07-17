@@ -5,7 +5,7 @@ Interface gráfica avançada para monitorização, comunicação e configuraçã
 Desenvolvida e optimizada para o **ClockworkPi uConsole CM4**, mas funciona em
 qualquer sistema Linux/macOS/Windows com Python 3 e PyQt5.
 
-**Versão:** 1.0.4-beta &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
+**Versão:** 1.0.5-beta &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Ano:** 2026
 
 ---
 
@@ -121,12 +121,11 @@ Actualização automática a cada 5 segundos. A secção Nó Local recarrega qua
 | 📏 Alcance & Links | 🌐 Rede | Distância km entre vizinhos com GPS (Haversine) |
 | ⏰ Intervalos | 🌐 Rede | Intervalo médio entre pacotes por nó |
 
-**Precisão e performance na v1.0.4-beta:**
-- **Deduplicação de nó local:** `FIX-4` garante registo do ID antes do processamento de batches.
-- **Otimização de polling:** `FIX-5` reduz uso de CPU no CM4 ao evitar redesenhos redundantes.
-- **Correção do contador:** `FIX-8` mostra agora a contagem real de nós filtrados.
-- **Separação de fiabilidade:** erros internos de firmware separados de falhas de entrega (NAK).
-- **Melhorias legadas (v1.0.3):** correção do P10 de SNR, taxa de flood windowed e expiração TTL de telemetria inativa.
+**Estabilidade, identidade de nós e traduções na v1.0.5-beta:**
+- **Duplicidade e Nós Fantasma:** Padronização do formato de IDs de nós para lowercase e aplicação de máscara de 32-bit unsigned integer para evitar duplicação errónea.
+- **Prevenção de Reboots:** Envio de dados do utilizador alterado para transmissões manuais em pacotes User do protobuf, evitando reboots físicos indesejados.
+- **Internacionalização (i18n):** Tradução dos rótulos de estado e remetente em mensagens de saída, e adição de chaves de internacionalização outrora em falta (metadados de chat, banners de resposta, status de gravação de config).
+- **Melhorias legadas (v1.0.4):** Deduplicação de nó local, otimização de polling, separação de erros e melhorias de contagem.
 ### 🔌 Conectividade e Robustez
 
 - Ligação TCP ao daemon **meshtasticd** (por defeito `localhost:4403`)

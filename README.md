@@ -5,7 +5,7 @@ Advanced graphical interface for monitoring, communication and configuration of
 Built and optimised for the **ClockworkPi uConsole CM4**, but runs on any
 Linux/macOS/Windows system with Python 3 and PyQt5.
 
-**Version:** 1.0.4-beta &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Year:** 2026
+**Version:** 1.0.5-beta &nbsp;·&nbsp; **Callsign:** CT7BRA &nbsp;·&nbsp; **Year:** 2026
 
 ---
 
@@ -124,12 +124,11 @@ without reloading the HTML page.
 | 📏 Range & Links | 🌐 Network | km distance between GPS-equipped neighbours (Haversine) |
 | ⏰ Intervals | 🌐 Network | Average time between packets per node |
 
-**Metric precision and performance in v1.0.4-beta:**
-- **Local node deduplication:** `FIX-4` ensures the local node is registered before data batches.
-- **Poll optimization:** `FIX-5` reduces CPU usage on CM4 by skipping redundant redraws.
-- **Node counter fix:** `FIX-8` provides accurate filtered visible counts.
-- **Reliability split:** separated internal firmware errors from delivery NAKs.
-- **Legacy improvements (v1.0.3):** SNR P10 correction, windowed flood rate, and TTL expiry for inactive telemetry.
+**Stability, node identity, and translation corrections in v1.0.5-beta:**
+- **Node Duplicity & Ghost Nodes:** Standardized Node ID case and added 32-bit unsigned integer masking fallback to prevent ghost node duplicates.
+- **Reboot Prevention:** Shifted owner info broadcasts to manual User protobuf packets, avoiding unwanted hardware reboots.
+- **Internationalization (i18n):** Resolved hardcoded Portuguese status labels and added missing keys for message templates, reply banners, metrics, and saving dialogs.
+- **Legacy improvements (v1.0.4):** Local node deduplication, poll optimization, reliability separation, and counter fixes.
 
 ### 🔌 Connectivity and Robustness
 

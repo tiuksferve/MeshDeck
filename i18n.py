@@ -258,6 +258,15 @@ _STRINGS: dict = {
     "Falha: {err}":                 {"pt": "Falha: {err}",                      "en": "Failure: {err}"},
     "dm_header":                    {"pt": "📧  DM  →  {label}{enc}",           "en": "📧  DM  →  {label}{enc}"},
     "channel_header":               {"pt": "📻  # {idx}  ·  {name}",           "en": "📻  # {idx}  ·  {name}"},
+    "Eu":                           {"pt": "Eu",                                "en": "Me"},
+    "📤 Enviado":                   {"pt": "📤 Enviado",                        "en": "📤 Sent"},
+    "📤 DM":                        {"pt": "📤 DM",                             "en": "📤 DM"},
+    "📤 DM PKI":                    {"pt": "📤 DM PKI",                         "en": "📤 DM PKI"},
+    "cancel_reply":                 {"pt": "Cancelar resposta",                  "en": "Cancel reply"},
+    "reply_to":                     {"pt": "Responder a",                        "en": "Reply to"},
+    "msg_reply_btn":                {"pt": "Responder a esta mensagem",          "en": "Reply to this message"},
+    "Hoje":                         {"pt": "Hoje",                               "en": "Today"},
+    "Ontem":                        {"pt": "Ontem",                              "en": "Yesterday"},
     # ── Mapa — popup de nó ────────────────────────────────────────────────────
     "popup_via":                    {"pt": "Via:",                              "en": "Via:"},
     "popup_snr":                    {"pt": "SNR:",                              "en": "SNR:"},
@@ -307,6 +316,21 @@ _STRINGS: dict = {
     "Canais Guardados":             {"pt": "Canais Guardados",                   "en": "Channels Saved"},
     "{n} canal(ais) guardados no nó.":
                                     {"pt": "{n} canal(ais) guardados no nó.",   "en": "{n} channel(s) saved to the node."},
+    "nome":                         {"pt": "nome",                              "en": "name"},
+    "msgs":                         {"pt": "canned msgs",                       "en": "canned msgs"},
+    "guardado":                     {"pt": "guardado",                          "en": "saved"},
+    "Configuração guardada com sucesso!":
+                                    {"pt": "Configuração guardada com sucesso!", "en": "Configuration saved successfully!"},
+    "Configuração Guardada":        {"pt": "Configuração Guardada",             "en": "Configuration Saved"},
+    "writeConfig() enviados":       {"pt": "writeConfig() enviados",            "en": "writeConfig() sent"},
+    "setOwner (nome do nó)":        {"pt": "setOwner (nome do nó)",             "en": "setOwner (node name)"},
+    "setCannedMessages":            {"pt": "setCannedMessages",                 "en": "setCannedMessages"},
+    "⚠ Nada guardado":              {"pt": "⚠ Nada guardado",                   "en": "⚠ Nothing saved"},
+    "Não foram detectadas alterações para guardar.":
+                                    {"pt": "Não foram detectadas alterações para guardar.",
+                                     "en": "No changes detected to save."},
+    "Erros":                        {"pt": "Erros",                             "en": "Errors"},
+    "Sem Alterações":               {"pt": "Sem Alterações",                    "en": "No Changes"},
     "Erro ao guardar canais:\\n{e}":{"pt": "Erro ao guardar canais:\\n{e}",     "en": "Error saving channels:\\n{e}"},
     "Erro ao aplicar canal {n}: {e}":
                                     {"pt": "Erro ao aplicar canal {n}: {e}",    "en": "Error applying channel {n}: {e}"},
@@ -821,9 +845,6 @@ _STRINGS: dict = {
     "⏳ Aguardando dados suficientes para avaliação...":
                                     {"pt": "⏳ Aguardando dados suficientes para avaliação...",
                                      "en": "⏳ Awaiting sufficient data for assessment..."},
-    "Distribuição de qualidade em {n} pacotes:":
-                                    {"pt": "Distribuição de qualidade em {n} pacotes:",
-                                     "en": "Quality distribution over {n} pacotes:"},
     "✅ Rede em excelentes condições RF. A grande maioria dos pacotes chega com sinal forte.":
                                     {"pt": "✅ <b>Rede em excelentes condições RF.</b> A grande maioria dos pacotes chega com sinal forte.",
                                      "en": "✅ <b>Network in excellent RF conditions.</b> The vast majority of packets arrive with strong signal."},
