@@ -1,3 +1,28 @@
+**ATTENTION - SUPPORT FOR THIS APP HAS ENDED.**
+
+**GO TO: http://github.com/tiuksferve/MeshDeckWeb**
+
+--
+
+--
+
+--
+
+--
+
+--
+
+--
+
+--
+
+--
+
+--
+
+👍
+
+
 # 📡 MeshDeck — uConsole CM4
 
 Advanced graphical interface for monitoring, communication and configuration of
